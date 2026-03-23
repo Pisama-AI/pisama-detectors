@@ -453,6 +453,270 @@ def calculate_cost(
     )
 
 
+# ============================================================
+# Enterprise detectors
+# ============================================================
+
+@_register("grounding", "Detect source misattribution and ungrounded claims", "production")
+def detect_grounding(
+    agent_output: str,
+    source_documents: List[str],
+    task: Optional[str] = None,
+) -> Any:
+    """Detect grounding failures (claims not supported by sources)."""
+    from app.detection_enterprise.grounding import GroundingDetector
+    detector = GroundingDetector()
+    return detector.detect(agent_output=agent_output, source_documents=source_documents, task=task)
+
+
+@_register("retrieval_quality", "Detect retrieval quality degradation", "beta")
+def detect_retrieval_quality(
+    query: str,
+    retrieved_documents: List[str],
+    agent_output: str,
+) -> Any:
+    """Detect poor retrieval quality in RAG systems."""
+    from app.detection_enterprise.retrieval_quality import RetrievalQualityDetector
+    detector = RetrievalQualityDetector()
+    return detector.detect(query=query, retrieved_documents=retrieved_documents, agent_output=agent_output)
+
+
+@_register("quality_gate", "Detect quality gate bypass", "enterprise")
+def detect_quality_gate(
+    task: str,
+    agent_output: str,
+    required_gates: Optional[List[str]] = None,
+) -> Any:
+    """Detect quality gate bypass in agent workflows."""
+    from app.detection_enterprise.quality_gate import QualityGateDetector
+    detector = QualityGateDetector()
+    return detector.detect(task=task, agent_output=agent_output, required_gates=required_gates)
+
+
+@_register("tool_provision", "Detect tool provision failures", "enterprise")
+def detect_tool_provision(
+    task: str,
+    agent_output: str,
+    available_tools: Optional[List[str]] = None,
+    tool_calls: Optional[List[Dict[str, Any]]] = None,
+) -> Any:
+    """Detect tool provision failures (wrong tools, missing tools)."""
+    from app.detection_enterprise.tool_provision import ToolProvisionDetector
+    detector = ToolProvisionDetector()
+    return detector.detect(task=task, agent_output=agent_output, available_tools=available_tools, tool_calls=tool_calls)
+
+
+# ============================================================
+# LangGraph-specific detectors
+# ============================================================
+
+@_register("langgraph_recursion", "Detect LangGraph recursion limit issues", "production")
+def detect_langgraph_recursion(trace: Dict[str, Any]) -> Any:
+    """Detect recursion issues in LangGraph executions."""
+    from app.detection_enterprise.orchestrator import LangGraphRecursionDetector
+    detector = LangGraphRecursionDetector()
+    return detector.detect_graph_execution(trace)
+
+
+@_register("langgraph_state_corruption", "Detect LangGraph state corruption", "production")
+def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> Any:
+    """Detect state corruption in LangGraph graph state."""
+    from app.detection_enterprise.orchestrator import LangGraphStateCorruptionDetector
+    detector = LangGraphStateCorruptionDetector()
+    return detector.detect_graph_execution(trace)
+
+
+@_register("langgraph_edge_misroute", "Detect LangGraph edge misrouting", "beta")
+def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> Any:
+    """Detect edge misrouting in LangGraph conditional edges."""
+    from app.detection_enterprise.orchestrator import LangGraphEdgeMisrouteDetector
+    detector = LangGraphEdgeMisrouteDetector()
+    return detector.detect_graph_execution(trace)
+
+
+@_register("langgraph_checkpoint_corruption", "Detect LangGraph checkpoint corruption", "beta")
+def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> Any:
+    """Detect checkpoint corruption in LangGraph persistence."""
+    from app.detection_enterprise.orchestrator import LangGraphCheckpointCorruptionDetector
+    detector = LangGraphCheckpointCorruptionDetector()
+    return detector.detect_graph_execution(trace)
+
+
+@_register("langgraph_parallel_sync", "Detect LangGraph parallel branch sync failures", "beta")
+def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> Any:
+    """Detect parallel branch synchronization issues in LangGraph."""
+    from app.detection_enterprise.orchestrator import LangGraphParallelSyncDetector
+    detector = LangGraphParallelSyncDetector()
+    return detector.detect_graph_execution(trace)
+
+
+@_register("langgraph_tool_failure", "Detect LangGraph tool execution failures", "production")
+def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> Any:
+    """Detect tool execution failures in LangGraph."""
+    from app.detection_enterprise.orchestrator import LangGraphToolFailureDetector
+    detector = LangGraphToolFailureDetector()
+    return detector.detect_graph_execution(trace)
+
+
+# ============================================================
+# Dify-specific detectors
+# ============================================================
+
+@_register("dify_classifier_drift", "Detect Dify classifier drift", "beta")
+def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
+    """Detect classifier drift in Dify intent routing."""
+    from app.detection_enterprise.orchestrator import DifyClassifierDriftDetector
+    detector = DifyClassifierDriftDetector()
+    return detector.detect(trace)
+
+
+@_register("dify_iteration_escape", "Detect Dify iteration escape", "beta")
+def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
+    """Detect iteration escape in Dify loop nodes."""
+    from app.detection_enterprise.orchestrator import DifyIterationEscapeDetector
+    detector = DifyIterationEscapeDetector()
+    return detector.detect(trace)
+
+
+@_register("dify_rag_poisoning", "Detect Dify RAG poisoning", "production")
+def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
+    """Detect RAG knowledge base poisoning in Dify."""
+    from app.detection_enterprise.orchestrator import DifyRagPoisoningDetector
+    detector = DifyRagPoisoningDetector()
+    return detector.detect(trace)
+
+
+@_register("dify_tool_schema_mismatch", "Detect Dify tool schema mismatch", "beta")
+def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
+    """Detect tool schema mismatches in Dify."""
+    from app.detection_enterprise.orchestrator import DifyToolSchemaMismatchDetector
+    detector = DifyToolSchemaMismatchDetector()
+    return detector.detect(trace)
+
+
+@_register("dify_variable_leak", "Detect Dify variable leak", "production")
+def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
+    """Detect variable leaks between Dify workflow branches."""
+    from app.detection_enterprise.orchestrator import DifyVariableLeakDetector
+    detector = DifyVariableLeakDetector()
+    return detector.detect(trace)
+
+
+@_register("dify_model_fallback", "Detect Dify model fallback issues", "beta")
+def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
+    """Detect silent model fallback in Dify."""
+    from app.detection_enterprise.orchestrator import DifyModelFallbackDetector
+    detector = DifyModelFallbackDetector()
+    return detector.detect(trace)
+
+
+# ============================================================
+# n8n-specific detectors
+# ============================================================
+
+@_register("n8n_cycle", "Detect n8n workflow cycles", "production")
+def detect_n8n_cycle(trace: Dict[str, Any]) -> Any:
+    """Detect cycles in n8n workflow execution."""
+    from app.detection_enterprise.orchestrator import N8NCycleDetector
+    detector = N8NCycleDetector()
+    return detector.detect(trace)
+
+
+@_register("n8n_error", "Detect n8n execution errors", "production")
+def detect_n8n_error(trace: Dict[str, Any]) -> Any:
+    """Detect error patterns in n8n workflows."""
+    from app.detection_enterprise.orchestrator import N8NErrorDetector
+    detector = N8NErrorDetector()
+    return detector.detect(trace)
+
+
+@_register("n8n_timeout", "Detect n8n timeout issues", "production")
+def detect_n8n_timeout(trace: Dict[str, Any]) -> Any:
+    """Detect timeout issues in n8n executions."""
+    from app.detection_enterprise.orchestrator import N8NTimeoutDetector
+    detector = N8NTimeoutDetector()
+    return detector.detect(trace)
+
+
+@_register("n8n_complexity", "Detect n8n workflow complexity issues", "beta")
+def detect_n8n_complexity(trace: Dict[str, Any]) -> Any:
+    """Detect excessive complexity in n8n workflows."""
+    from app.detection_enterprise.orchestrator import N8NComplexityDetector
+    detector = N8NComplexityDetector()
+    return detector.detect(trace)
+
+
+@_register("n8n_schema", "Detect n8n schema mismatches", "beta")
+def detect_n8n_schema(trace: Dict[str, Any]) -> Any:
+    """Detect schema mismatches between n8n nodes."""
+    from app.detection_enterprise.orchestrator import N8NSchemaDetector
+    detector = N8NSchemaDetector()
+    return detector.detect(trace)
+
+
+@_register("n8n_resource", "Detect n8n resource issues", "beta")
+def detect_n8n_resource(trace: Dict[str, Any]) -> Any:
+    """Detect resource issues in n8n workflows."""
+    from app.detection_enterprise.orchestrator import N8NResourceDetector
+    detector = N8NResourceDetector()
+    return detector.detect(trace)
+
+
+# ============================================================
+# OpenClaw-specific detectors
+# ============================================================
+
+@_register("openclaw_session_loop", "Detect OpenClaw session loops", "beta")
+def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
+    """Detect session loops in OpenClaw."""
+    from app.detection_enterprise.orchestrator import OpenClawSessionLoopDetector
+    detector = OpenClawSessionLoopDetector()
+    return detector.detect(trace)
+
+
+@_register("openclaw_sandbox_escape", "Detect OpenClaw sandbox escape", "production")
+def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
+    """Detect sandbox escape attempts in OpenClaw."""
+    from app.detection_enterprise.orchestrator import OpenClawSandboxEscapeDetector
+    detector = OpenClawSandboxEscapeDetector()
+    return detector.detect(trace)
+
+
+@_register("openclaw_tool_abuse", "Detect OpenClaw tool abuse", "production")
+def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
+    """Detect tool abuse patterns in OpenClaw."""
+    from app.detection_enterprise.orchestrator import OpenClawToolAbuseDetector
+    detector = OpenClawToolAbuseDetector()
+    return detector.detect(trace)
+
+
+@_register("openclaw_spawn_chain", "Detect OpenClaw spawn chain issues", "beta")
+def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
+    """Detect excessive spawn chains in OpenClaw."""
+    from app.detection_enterprise.orchestrator import OpenClawSpawnChainDetector
+    detector = OpenClawSpawnChainDetector()
+    return detector.detect(trace)
+
+
+@_register("openclaw_channel_mismatch", "Detect OpenClaw channel mismatch", "beta")
+def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
+    """Detect channel mismatches in OpenClaw communication."""
+    from app.detection_enterprise.orchestrator import OpenClawChannelMismatchDetector
+    detector = OpenClawChannelMismatchDetector()
+    return detector.detect(trace)
+
+
+@_register("openclaw_elevated_risk", "Detect OpenClaw elevated risk actions", "production")
+def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> Any:
+    """Detect elevated risk actions in OpenClaw."""
+    from app.detection_enterprise.orchestrator import OpenClawElevatedRiskDetector
+    detector = OpenClawElevatedRiskDetector()
+    return detector.detect(trace)
+
+
+# ============================================================
+
+
 def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
     """Run all applicable detectors on trace data.
 

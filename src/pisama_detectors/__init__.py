@@ -32,6 +32,7 @@ if os.path.exists(_backend_path):
 
 # Public API — simplified detection functions
 from ._api import (
+    # Core detectors (17)
     detect_loop,
     detect_corruption,
     detect_injection,
@@ -49,30 +50,42 @@ from ._api import (
     detect_completion,
     detect_convergence,
     calculate_cost,
+    # Enterprise detectors (4)
+    detect_grounding,
+    detect_retrieval_quality,
+    detect_quality_gate,
+    detect_tool_provision,
+    # LangGraph detectors (6)
+    detect_langgraph_recursion,
+    detect_langgraph_state_corruption,
+    detect_langgraph_edge_misroute,
+    detect_langgraph_checkpoint_corruption,
+    detect_langgraph_parallel_sync,
+    detect_langgraph_tool_failure,
+    # Dify detectors (6)
+    detect_dify_classifier_drift,
+    detect_dify_iteration_escape,
+    detect_dify_rag_poisoning,
+    detect_dify_tool_schema_mismatch,
+    detect_dify_variable_leak,
+    detect_dify_model_fallback,
+    # n8n detectors (6)
+    detect_n8n_cycle,
+    detect_n8n_error,
+    detect_n8n_timeout,
+    detect_n8n_complexity,
+    detect_n8n_schema,
+    detect_n8n_resource,
+    # OpenClaw detectors (6)
+    detect_openclaw_session_loop,
+    detect_openclaw_sandbox_escape,
+    detect_openclaw_tool_abuse,
+    detect_openclaw_spawn_chain,
+    detect_openclaw_channel_mismatch,
+    detect_openclaw_elevated_risk,
+    # Utilities
     run_all_detectors,
     DETECTOR_REGISTRY,
 )
 
 __version__ = "0.1.0"
-
-__all__ = [
-    "detect_loop",
-    "detect_corruption",
-    "detect_injection",
-    "detect_hallucination",
-    "detect_persona_drift",
-    "detect_coordination",
-    "detect_overflow",
-    "detect_derailment",
-    "detect_context_neglect",
-    "detect_communication",
-    "detect_specification",
-    "detect_decomposition",
-    "detect_workflow",
-    "detect_withholding",
-    "detect_completion",
-    "detect_convergence",
-    "calculate_cost",
-    "run_all_detectors",
-    "DETECTOR_REGISTRY",
-]
