@@ -49,6 +49,7 @@ from ._api import (
     detect_withholding,
     detect_completion,
     detect_convergence,
+    detect_context_pressure,
     calculate_cost,
     # Enterprise detectors (4)
     detect_grounding,
@@ -85,6 +86,7 @@ from ._api import (
     detect_openclaw_elevated_risk,
     # Utilities
     run_all_detectors,
+    _try_run_detector,
     DETECTOR_REGISTRY,
 )
 

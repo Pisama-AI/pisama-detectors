@@ -714,6 +714,30 @@ def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> Any:
     return detector.detect(trace)
 
 
+@_register("context_pressure", "Detect context-pressure-induced quality degradation", "beta")
+def detect_context_pressure(
+    states: List[Dict[str, Any]],
+    context_limit: Optional[int] = None,
+    task_complexity: Optional[str] = None,
+) -> Any:
+    """Detect when agent output quality degrades due to context window saturation.
+
+    Signals: token trajectory, output length decline, premature wrap-up language,
+    quality cliff, scope narrowing.
+
+    Args:
+        states: List of state dicts with token_count, state_delta, sequence_num.
+        context_limit: Model context window size (auto-detected if None).
+        task_complexity: Optional task description for scope analysis.
+    """
+    from app.detection.context_pressure import context_pressure_detector
+    return context_pressure_detector.detect(
+        states=states,
+        context_limit=context_limit,
+        task_complexity=task_complexity,
+    )
+
+
 # ============================================================
 
 
