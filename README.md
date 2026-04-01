@@ -1,8 +1,8 @@
 # pisama-detectors
 
-42 failure detectors for LLM agent systems. Detect loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, and more.
+Failure detectors for LLM agent systems. Detect loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, and more.
 
-Built on the [MAST taxonomy](https://docs.pisama.com/mast) (Multi-Agent System Testing).
+Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
 
 ## Quick Start
 
@@ -87,4 +87,4 @@ for name, info in DETECTOR_REGISTRY.items():
 
 ## Self-Healing
 
-Want automated fixes? Upgrade to [Pisama Cloud](https://pisama.ai) for self-healing — automatic fix generation, checkpoint rollback, and approval workflows on top of these detectors.
+Want automated fixes? See [Pisama](https://pisama.ai) for self-healing — automatic fix generation, checkpoint rollback, and approval workflows on top of these detectors.

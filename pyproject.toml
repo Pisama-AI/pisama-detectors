@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "Pisama Team", email = "team@pisama.dev" }
+    { name = "Pisama Team", email = "team@pisama.ai" }
 ]
 keywords = [
     "ai", "agents", "testing", "failure-detection",
@@ -43,7 +43,7 @@ full = [
 
 [project.urls]
 Homepage = "https://github.com/tn-pisama/pisama-detectors"
-Documentation = "https://docs.pisama.com/detectors"
+Documentation = "https://docs.pisama.ai/detectors"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pisama_detectors"]
