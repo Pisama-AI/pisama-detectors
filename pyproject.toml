@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pisama-detectors"
 version = "0.1.0"
-description = "44 failure detectors for LLM agent systems — detect loops, hallucinations, injection, coordination failures, and more"
+description = "50 failure detectors for LLM agent systems — detect loops, hallucinations, injection, coordination failures, and more"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

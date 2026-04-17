@@ -1,7 +1,7 @@
-"""Pisama Detectors — 44 failure detectors for LLM agent systems.
+"""Pisama Detectors — 50 failure detectors for LLM agent systems.
 
 Detect loops, hallucinations, prompt injection, state corruption,
-coordination failures, persona drift, and 38 more failure modes
+coordination failures, persona drift, and 44 more failure modes
 in your multi-agent AI systems.
 
 Usage:
