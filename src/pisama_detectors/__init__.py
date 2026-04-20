@@ -1,8 +1,12 @@
-"""Pisama Detectors — 50 failure detectors for LLM agent systems.
+"""Pisama Detectors — 42 failure detectors for LLM agent systems.
 
 Detect loops, hallucinations, prompt injection, state corruption,
-coordination failures, persona drift, and 44 more failure modes
+coordination failures, persona drift, and 36 more failure modes
 in your multi-agent AI systems.
+
+Advanced detectors (grounding, retrieval_quality, quality_gate,
+tool_provision) and calibrated production weights are available
+via Pisama Cloud.
 
 Usage:
     from pisama_detectors import detect_loop, detect_injection, detect_corruption
@@ -20,17 +24,6 @@ Usage:
     print(result.detected, result.attack_type)
 """
 
-import sys
-import os
-
-# Add the backend to path so we can import detectors
-_backend_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "backend")
-if os.path.exists(_backend_path):
-    _backend_path = os.path.abspath(_backend_path)
-    if _backend_path not in sys.path:
-        sys.path.insert(0, _backend_path)
-
-# Public API — simplified detection functions
 from ._api import (
     # Core detectors (17)
     detect_loop,
@@ -51,11 +44,6 @@ from ._api import (
     detect_convergence,
     detect_context_pressure,
     calculate_cost,
-    # Enterprise detectors (4)
-    detect_grounding,
-    detect_retrieval_quality,
-    detect_quality_gate,
-    detect_tool_provision,
     # LangGraph detectors (6)
     detect_langgraph_recursion,
     detect_langgraph_state_corruption,

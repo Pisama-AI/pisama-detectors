@@ -50,18 +50,20 @@ def detect_loop(
     Returns:
         LoopDetectionResult with detected, confidence, loop_type, etc.
     """
-    from app.detection.loop import MultiLevelLoopDetector, StateSnapshot
+    from pisama_detectors.detection.loop import MultiLevelLoopDetector, StateSnapshot
+    import json
 
     snapshots = []
     for i, state in enumerate(states):
         snapshots.append(StateSnapshot(
-            step=i,
-            state=state,
-            timestamp=state.get("timestamp"),
+            agent_id=str(state.get("agent_id", "agent")),
+            state_delta=state,
+            content=json.dumps(state, sort_keys=True, default=str),
+            sequence_num=i,
         ))
 
     detector = MultiLevelLoopDetector()
-    return detector.detect(snapshots)
+    return detector.detect_loop(snapshots)
 
 
 @_register("corruption", "Detect state corruption and invalid transitions", "production")
@@ -78,11 +80,11 @@ def detect_corruption(
     Returns:
         CorruptionResult with detected, confidence, issues
     """
-    from app.detection.corruption import SemanticCorruptionDetector, StateSnapshot
+    from pisama_detectors.detection.corruption import SemanticCorruptionDetector, StateSnapshot
 
     detector = SemanticCorruptionDetector()
-    prev = StateSnapshot(data=prev_state)
-    curr = StateSnapshot(data=current_state)
+    prev = StateSnapshot(state_delta=prev_state, agent_id=str(prev_state.get("agent_id", "agent")))
+    curr = StateSnapshot(state_delta=current_state, agent_id=str(current_state.get("agent_id", "agent")))
     return detector.detect_corruption_with_confidence(prev_state=prev, current_state=curr)
 
 
@@ -98,10 +100,10 @@ def detect_injection(
     Returns:
         InjectionResult with detected, confidence, attack_type
     """
-    from app.detection.injection import InjectionDetector
+    from pisama_detectors.detection.injection import InjectionDetector
 
     detector = InjectionDetector()
-    return detector.detect(text=text)
+    return detector.detect_injection(text=text)
 
 
 @_register("hallucination", "Detect factual inaccuracies and fabrications", "production")
@@ -118,7 +120,7 @@ def detect_hallucination(
     Returns:
         HallucinationResult with detected, confidence, issues
     """
-    from app.detection.hallucination import HallucinationDetector
+    from pisama_detectors.detection.hallucination import HallucinationDetector
 
     detector = HallucinationDetector()
     return detector.detect_hallucination(output=output, context="\n".join(sources) if sources else None)
@@ -142,7 +144,7 @@ def detect_persona_drift(
     Returns:
         PersonaConsistencyResult with score, deviations
     """
-    from app.detection.persona import PersonaConsistencyScorer, Agent
+    from pisama_detectors.detection.persona import PersonaConsistencyScorer, Agent
 
     agent = Agent(
         id=agent_id,
@@ -167,19 +169,20 @@ def detect_coordination(
     Returns:
         CoordinationAnalysisResult with issues, severity
     """
-    from app.detection.coordination import CoordinationAnalyzer, Message
+    from pisama_detectors.detection.coordination import CoordinationAnalyzer, Message
 
     parsed_messages = []
-    for msg in messages:
+    for idx, msg in enumerate(messages):
         parsed_messages.append(Message(
-            sender=msg.get("sender", "unknown"),
-            receiver=msg.get("receiver", "unknown"),
+            from_agent=msg.get("sender", msg.get("from_agent", "unknown")),
+            to_agent=msg.get("receiver", msg.get("to_agent", "unknown")),
             content=msg.get("content", ""),
-            timestamp=msg.get("timestamp"),
+            timestamp=float(msg.get("timestamp", idx)),
+            acknowledged=msg.get("acknowledged", False),
         ))
 
     analyzer = CoordinationAnalyzer()
-    return analyzer.analyze(
+    return analyzer.analyze_coordination(
         messages=parsed_messages,
         agent_ids=agent_ids or [],
     )
@@ -201,7 +204,7 @@ def detect_overflow(
     Returns:
         OverflowResult with detected, severity, token counts
     """
-    from app.detection.overflow import ContextOverflowDetector
+    from pisama_detectors.detection.overflow import ContextOverflowDetector
 
     detector = ContextOverflowDetector()
     # Estimate token count from context length (rough: 1 token ≈ 4 chars)
@@ -223,7 +226,7 @@ def detect_derailment(
     Returns:
         DerailmentResult with detected, severity, explanation
     """
-    from app.detection.derailment import TaskDerailmentDetector
+    from pisama_detectors.detection.derailment import TaskDerailmentDetector
 
     detector = TaskDerailmentDetector()
     return detector.detect(task=task, output=output)
@@ -243,7 +246,7 @@ def detect_context_neglect(
     Returns:
         ContextNeglectResult with detected, severity
     """
-    from app.detection.context import ContextNeglectDetector
+    from pisama_detectors.detection.context import ContextNeglectDetector
 
     detector = ContextNeglectDetector()
     return detector.detect(context=context, output=output)
@@ -263,7 +266,7 @@ def detect_communication(
     Returns:
         CommunicationBreakdownResult with detected, breakdown_type
     """
-    from app.detection.communication import CommunicationBreakdownDetector
+    from pisama_detectors.detection.communication import CommunicationBreakdownDetector
 
     detector = CommunicationBreakdownDetector()
     return detector.detect(
@@ -286,7 +289,7 @@ def detect_specification(
     Returns:
         SpecificationMismatchResult with detected, mismatch_type
     """
-    from app.detection.specification import SpecificationMismatchDetector
+    from pisama_detectors.detection.specification import SpecificationMismatchDetector
 
     detector = SpecificationMismatchDetector()
     return detector.detect(
@@ -309,7 +312,7 @@ def detect_decomposition(
     Returns:
         DecompositionResult with detected, issues
     """
-    from app.detection.decomposition import TaskDecompositionDetector
+    from pisama_detectors.detection.decomposition import TaskDecompositionDetector
 
     detector = TaskDecompositionDetector()
     return detector.detect(
@@ -320,42 +323,54 @@ def detect_decomposition(
 
 @_register("workflow", "Detect workflow execution issues", "beta")
 def detect_workflow(
-    workflow_definition: Dict[str, Any],
-    execution_result: Dict[str, Any],
+    nodes: List[Dict[str, Any]],
 ) -> Any:
     """Detect workflow design and execution issues.
 
     Args:
-        workflow_definition: Workflow definition/spec
-        execution_result: Execution trace/result
+        nodes: List of workflow node dicts with keys id, name, node_type,
+            incoming, outgoing, has_error_handler (optional), is_terminal (optional).
 
     Returns:
         WorkflowAnalysisResult with issues
     """
-    from app.detection.workflow import FlawedWorkflowDetector
+    from pisama_detectors.detection.workflow import FlawedWorkflowDetector, WorkflowNode
 
+    workflow_nodes = [
+        WorkflowNode(
+            id=n.get("id", f"node_{i}"),
+            name=n.get("name", n.get("id", f"node_{i}")),
+            node_type=n.get("node_type", "agent"),
+            incoming=n.get("incoming", []),
+            outgoing=n.get("outgoing", []),
+            has_error_handler=n.get("has_error_handler", False),
+            is_terminal=n.get("is_terminal", False),
+        )
+        for i, n in enumerate(nodes)
+    ]
     detector = FlawedWorkflowDetector()
-    return detector.detect(
-        workflow_definition=workflow_definition,
-        execution_result=execution_result,
-    )
+    return detector.detect(workflow_nodes)
 
 
 @_register("withholding", "Detect information withholding", "beta")
 def detect_withholding(
     agent_output: str,
-    internal_state: Dict[str, Any],
+    internal_state: Any,
 ) -> Any:
     """Detect information withholding.
 
     Args:
         agent_output: What the agent said
-        internal_state: Agent's internal state
+        internal_state: Agent's internal state (str or dict; dicts are serialized)
 
     Returns:
         WithholdingResult with detected, issues
     """
-    from app.detection.withholding import InformationWithholdingDetector
+    import json
+    from pisama_detectors.detection.withholding import InformationWithholdingDetector
+
+    if not isinstance(internal_state, str):
+        internal_state = json.dumps(internal_state, default=str)
 
     detector = InformationWithholdingDetector()
     return detector.detect(
@@ -382,7 +397,7 @@ def detect_completion(
     Returns:
         CompletionResult with detected, issues
     """
-    from app.detection.completion import CompletionMisjudgmentDetector
+    from pisama_detectors.detection.completion import CompletionMisjudgmentDetector
 
     detector = CompletionMisjudgmentDetector()
     return detector.detect(
@@ -409,7 +424,7 @@ def detect_convergence(
     Returns:
         ConvergenceResult with detected, failure_type, severity
     """
-    from app.detection.convergence import ConvergenceDetector
+    from pisama_detectors.detection.convergence import ConvergenceDetector
 
     # Normalize metrics to dicts if plain floats
     normalized = []
@@ -443,67 +458,14 @@ def calculate_cost(
     Returns:
         CostResult with cost_usd, tokens
     """
-    from app.detection.cost import CostCalculator
+    from pisama_detectors.detection.cost import CostCalculator
 
     calculator = CostCalculator()
-    return calculator.calculate(
+    return calculator.calculate_cost(
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )
-
-
-# ============================================================
-# Enterprise detectors
-# ============================================================
-
-@_register("grounding", "Detect source misattribution and ungrounded claims", "production")
-def detect_grounding(
-    agent_output: str,
-    source_documents: List[str],
-    task: Optional[str] = None,
-) -> Any:
-    """Detect grounding failures (claims not supported by sources)."""
-    from app.detection_enterprise.grounding import GroundingDetector
-    detector = GroundingDetector()
-    return detector.detect(agent_output=agent_output, source_documents=source_documents, task=task)
-
-
-@_register("retrieval_quality", "Detect retrieval quality degradation", "beta")
-def detect_retrieval_quality(
-    query: str,
-    retrieved_documents: List[str],
-    agent_output: str,
-) -> Any:
-    """Detect poor retrieval quality in RAG systems."""
-    from app.detection_enterprise.retrieval_quality import RetrievalQualityDetector
-    detector = RetrievalQualityDetector()
-    return detector.detect(query=query, retrieved_documents=retrieved_documents, agent_output=agent_output)
-
-
-@_register("quality_gate", "Detect quality gate bypass", "enterprise")
-def detect_quality_gate(
-    task: str,
-    agent_output: str,
-    required_gates: Optional[List[str]] = None,
-) -> Any:
-    """Detect quality gate bypass in agent workflows."""
-    from app.detection_enterprise.quality_gate import QualityGateDetector
-    detector = QualityGateDetector()
-    return detector.detect(task=task, agent_output=agent_output, required_gates=required_gates)
-
-
-@_register("tool_provision", "Detect tool provision failures", "enterprise")
-def detect_tool_provision(
-    task: str,
-    agent_output: str,
-    available_tools: Optional[List[str]] = None,
-    tool_calls: Optional[List[Dict[str, Any]]] = None,
-) -> Any:
-    """Detect tool provision failures (wrong tools, missing tools)."""
-    from app.detection_enterprise.tool_provision import ToolProvisionDetector
-    detector = ToolProvisionDetector()
-    return detector.detect(task=task, agent_output=agent_output, available_tools=available_tools, tool_calls=tool_calls)
 
 
 # ============================================================
@@ -513,7 +475,7 @@ def detect_tool_provision(
 @_register("langgraph_recursion", "Detect LangGraph recursion limit issues", "production")
 def detect_langgraph_recursion(trace: Dict[str, Any]) -> Any:
     """Detect recursion issues in LangGraph executions."""
-    from app.detection_enterprise.orchestrator import LangGraphRecursionDetector
+    from pisama_detectors.detection.langgraph import LangGraphRecursionDetector
     detector = LangGraphRecursionDetector()
     return detector.detect_graph_execution(trace)
 
@@ -521,7 +483,7 @@ def detect_langgraph_recursion(trace: Dict[str, Any]) -> Any:
 @_register("langgraph_state_corruption", "Detect LangGraph state corruption", "production")
 def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> Any:
     """Detect state corruption in LangGraph graph state."""
-    from app.detection_enterprise.orchestrator import LangGraphStateCorruptionDetector
+    from pisama_detectors.detection.langgraph import LangGraphStateCorruptionDetector
     detector = LangGraphStateCorruptionDetector()
     return detector.detect_graph_execution(trace)
 
@@ -529,7 +491,7 @@ def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> Any:
 @_register("langgraph_edge_misroute", "Detect LangGraph edge misrouting", "beta")
 def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> Any:
     """Detect edge misrouting in LangGraph conditional edges."""
-    from app.detection_enterprise.orchestrator import LangGraphEdgeMisrouteDetector
+    from pisama_detectors.detection.langgraph import LangGraphEdgeMisrouteDetector
     detector = LangGraphEdgeMisrouteDetector()
     return detector.detect_graph_execution(trace)
 
@@ -537,7 +499,7 @@ def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> Any:
 @_register("langgraph_checkpoint_corruption", "Detect LangGraph checkpoint corruption", "beta")
 def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> Any:
     """Detect checkpoint corruption in LangGraph persistence."""
-    from app.detection_enterprise.orchestrator import LangGraphCheckpointCorruptionDetector
+    from pisama_detectors.detection.langgraph import LangGraphCheckpointCorruptionDetector
     detector = LangGraphCheckpointCorruptionDetector()
     return detector.detect_graph_execution(trace)
 
@@ -545,7 +507,7 @@ def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> Any:
 @_register("langgraph_parallel_sync", "Detect LangGraph parallel branch sync failures", "beta")
 def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> Any:
     """Detect parallel branch synchronization issues in LangGraph."""
-    from app.detection_enterprise.orchestrator import LangGraphParallelSyncDetector
+    from pisama_detectors.detection.langgraph import LangGraphParallelSyncDetector
     detector = LangGraphParallelSyncDetector()
     return detector.detect_graph_execution(trace)
 
@@ -553,7 +515,7 @@ def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> Any:
 @_register("langgraph_tool_failure", "Detect LangGraph tool execution failures", "production")
 def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> Any:
     """Detect tool execution failures in LangGraph."""
-    from app.detection_enterprise.orchestrator import LangGraphToolFailureDetector
+    from pisama_detectors.detection.langgraph import LangGraphToolFailureDetector
     detector = LangGraphToolFailureDetector()
     return detector.detect_graph_execution(trace)
 
@@ -565,7 +527,7 @@ def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> Any:
 @_register("dify_classifier_drift", "Detect Dify classifier drift", "beta")
 def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
     """Detect classifier drift in Dify intent routing."""
-    from app.detection_enterprise.orchestrator import DifyClassifierDriftDetector
+    from pisama_detectors.detection.dify import DifyClassifierDriftDetector
     detector = DifyClassifierDriftDetector()
     return detector.detect(trace)
 
@@ -573,7 +535,7 @@ def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
 @_register("dify_iteration_escape", "Detect Dify iteration escape", "beta")
 def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
     """Detect iteration escape in Dify loop nodes."""
-    from app.detection_enterprise.orchestrator import DifyIterationEscapeDetector
+    from pisama_detectors.detection.dify import DifyIterationEscapeDetector
     detector = DifyIterationEscapeDetector()
     return detector.detect(trace)
 
@@ -581,7 +543,7 @@ def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
 @_register("dify_rag_poisoning", "Detect Dify RAG poisoning", "production")
 def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
     """Detect RAG knowledge base poisoning in Dify."""
-    from app.detection_enterprise.orchestrator import DifyRagPoisoningDetector
+    from pisama_detectors.detection.dify import DifyRagPoisoningDetector
     detector = DifyRagPoisoningDetector()
     return detector.detect(trace)
 
@@ -589,7 +551,7 @@ def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
 @_register("dify_tool_schema_mismatch", "Detect Dify tool schema mismatch", "beta")
 def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
     """Detect tool schema mismatches in Dify."""
-    from app.detection_enterprise.orchestrator import DifyToolSchemaMismatchDetector
+    from pisama_detectors.detection.dify import DifyToolSchemaMismatchDetector
     detector = DifyToolSchemaMismatchDetector()
     return detector.detect(trace)
 
@@ -597,7 +559,7 @@ def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
 @_register("dify_variable_leak", "Detect Dify variable leak", "production")
 def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
     """Detect variable leaks between Dify workflow branches."""
-    from app.detection_enterprise.orchestrator import DifyVariableLeakDetector
+    from pisama_detectors.detection.dify import DifyVariableLeakDetector
     detector = DifyVariableLeakDetector()
     return detector.detect(trace)
 
@@ -605,7 +567,7 @@ def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
 @_register("dify_model_fallback", "Detect Dify model fallback issues", "beta")
 def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
     """Detect silent model fallback in Dify."""
-    from app.detection_enterprise.orchestrator import DifyModelFallbackDetector
+    from pisama_detectors.detection.dify import DifyModelFallbackDetector
     detector = DifyModelFallbackDetector()
     return detector.detect(trace)
 
@@ -617,49 +579,49 @@ def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
 @_register("n8n_cycle", "Detect n8n workflow cycles", "production")
 def detect_n8n_cycle(trace: Dict[str, Any]) -> Any:
     """Detect cycles in n8n workflow execution."""
-    from app.detection_enterprise.orchestrator import N8NCycleDetector
+    from pisama_detectors.detection.n8n import N8NCycleDetector
     detector = N8NCycleDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 @_register("n8n_error", "Detect n8n execution errors", "production")
 def detect_n8n_error(trace: Dict[str, Any]) -> Any:
     """Detect error patterns in n8n workflows."""
-    from app.detection_enterprise.orchestrator import N8NErrorDetector
+    from pisama_detectors.detection.n8n import N8NErrorDetector
     detector = N8NErrorDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 @_register("n8n_timeout", "Detect n8n timeout issues", "production")
 def detect_n8n_timeout(trace: Dict[str, Any]) -> Any:
     """Detect timeout issues in n8n executions."""
-    from app.detection_enterprise.orchestrator import N8NTimeoutDetector
+    from pisama_detectors.detection.n8n import N8NTimeoutDetector
     detector = N8NTimeoutDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 @_register("n8n_complexity", "Detect n8n workflow complexity issues", "beta")
 def detect_n8n_complexity(trace: Dict[str, Any]) -> Any:
     """Detect excessive complexity in n8n workflows."""
-    from app.detection_enterprise.orchestrator import N8NComplexityDetector
+    from pisama_detectors.detection.n8n import N8NComplexityDetector
     detector = N8NComplexityDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 @_register("n8n_schema", "Detect n8n schema mismatches", "beta")
 def detect_n8n_schema(trace: Dict[str, Any]) -> Any:
     """Detect schema mismatches between n8n nodes."""
-    from app.detection_enterprise.orchestrator import N8NSchemaDetector
+    from pisama_detectors.detection.n8n import N8NSchemaDetector
     detector = N8NSchemaDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 @_register("n8n_resource", "Detect n8n resource issues", "beta")
 def detect_n8n_resource(trace: Dict[str, Any]) -> Any:
     """Detect resource issues in n8n workflows."""
-    from app.detection_enterprise.orchestrator import N8NResourceDetector
+    from pisama_detectors.detection.n8n import N8NResourceDetector
     detector = N8NResourceDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow(trace)
 
 
 # ============================================================
@@ -669,7 +631,7 @@ def detect_n8n_resource(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_session_loop", "Detect OpenClaw session loops", "beta")
 def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
     """Detect session loops in OpenClaw."""
-    from app.detection_enterprise.orchestrator import OpenClawSessionLoopDetector
+    from pisama_detectors.detection.openclaw import OpenClawSessionLoopDetector
     detector = OpenClawSessionLoopDetector()
     return detector.detect(trace)
 
@@ -677,7 +639,7 @@ def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_sandbox_escape", "Detect OpenClaw sandbox escape", "production")
 def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
     """Detect sandbox escape attempts in OpenClaw."""
-    from app.detection_enterprise.orchestrator import OpenClawSandboxEscapeDetector
+    from pisama_detectors.detection.openclaw import OpenClawSandboxEscapeDetector
     detector = OpenClawSandboxEscapeDetector()
     return detector.detect(trace)
 
@@ -685,7 +647,7 @@ def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_tool_abuse", "Detect OpenClaw tool abuse", "production")
 def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
     """Detect tool abuse patterns in OpenClaw."""
-    from app.detection_enterprise.orchestrator import OpenClawToolAbuseDetector
+    from pisama_detectors.detection.openclaw import OpenClawToolAbuseDetector
     detector = OpenClawToolAbuseDetector()
     return detector.detect(trace)
 
@@ -693,7 +655,7 @@ def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_spawn_chain", "Detect OpenClaw spawn chain issues", "beta")
 def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
     """Detect excessive spawn chains in OpenClaw."""
-    from app.detection_enterprise.orchestrator import OpenClawSpawnChainDetector
+    from pisama_detectors.detection.openclaw import OpenClawSpawnChainDetector
     detector = OpenClawSpawnChainDetector()
     return detector.detect(trace)
 
@@ -701,7 +663,7 @@ def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_channel_mismatch", "Detect OpenClaw channel mismatch", "beta")
 def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
     """Detect channel mismatches in OpenClaw communication."""
-    from app.detection_enterprise.orchestrator import OpenClawChannelMismatchDetector
+    from pisama_detectors.detection.openclaw import OpenClawChannelMismatchDetector
     detector = OpenClawChannelMismatchDetector()
     return detector.detect(trace)
 
@@ -709,7 +671,7 @@ def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
 @_register("openclaw_elevated_risk", "Detect OpenClaw elevated risk actions", "production")
 def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> Any:
     """Detect elevated risk actions in OpenClaw."""
-    from app.detection_enterprise.orchestrator import OpenClawElevatedRiskDetector
+    from pisama_detectors.detection.openclaw import OpenClawElevatedRiskDetector
     detector = OpenClawElevatedRiskDetector()
     return detector.detect(trace)
 
@@ -730,7 +692,7 @@ def detect_context_pressure(
         context_limit: Model context window size (auto-detected if None).
         task_complexity: Optional task description for scope analysis.
     """
-    from app.detection.context_pressure import context_pressure_detector
+    from pisama_detectors.detection.context_pressure import context_pressure_detector
     return context_pressure_detector.detect(
         states=states,
         context_limit=context_limit,
