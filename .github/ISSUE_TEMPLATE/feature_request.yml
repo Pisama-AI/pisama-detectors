@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a new detector, framework adapter, or API change
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: the calibration pipeline, golden datasets, and advanced
+        detectors (grounding, retrieval_quality, quality_gate, tool_provision)
+        are not in scope for this repo — those live in Pisama Cloud. Everything
+        else is on the table.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New detector
+        - New framework adapter (e.g. CrewAI, Autogen, Semantic Kernel)
+        - API change
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What failure mode or workflow does this cover?
+      description: What can you not do today, or what produces a wrong answer today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: Function signature, inputs, expected outputs. Pseudocode is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you look at, and why is this better?
+    validations:
+      required: false

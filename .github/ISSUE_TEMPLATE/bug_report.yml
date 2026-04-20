@@ -1,0 +1,89 @@
+name: Bug report
+description: A detector fires incorrectly, crashes, or returns something unexpected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The more specific the reproducer, the faster a fix lands.
+
+  - type: input
+    id: version
+    attributes:
+      label: pisama-detectors version
+      placeholder: "e.g. 0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.11.8"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: detector
+    attributes:
+      label: Which detector
+      options:
+        - loop
+        - corruption
+        - injection
+        - hallucination
+        - persona_drift
+        - coordination
+        - overflow
+        - context_neglect
+        - context_pressure
+        - specification
+        - decomposition
+        - convergence
+        - cost
+        - derailment
+        - communication
+        - workflow
+        - withholding
+        - completion
+        - LangGraph (any)
+        - Dify (any)
+        - n8n (any)
+        - OpenClaw (any)
+        - other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Failure type
+      options:
+        - False positive (detector fires when nothing is wrong)
+        - False negative (detector misses a real failure)
+        - Crash / exception
+        - Wrong output shape or field
+        - Performance
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducer
+      description: A self-contained Python snippet. Assume a clean `pip install pisama-detectors`.
+      render: python
+      placeholder: |
+        from pisama_detectors import detect_loop
+        r = detect_loop(states=[...])
+        print(r)
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      description: What did you expect to happen, and what happened instead?
+    validations:
+      required: true
