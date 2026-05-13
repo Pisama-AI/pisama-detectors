@@ -1,0 +1,212 @@
+{
+  "benchmark": "TRAIL (PatronusAI)",
+  "result": {
+    "run_id": "dfad8a45",
+    "started_at": "2026-04-09T04:56:25.239569",
+    "completed_at": "2026-04-09T04:56:50.738279",
+    "duration_seconds": 25.5,
+    "total_traces": 148,
+    "processed_traces": 148,
+    "total_annotations": 841,
+    "mapped_annotations": 813,
+    "prediction_count": 813,
+    "positive_count": 484,
+    "joint_accuracy": 0.599,
+    "macro_f1": 0.7535,
+    "micro_f1": 0.7463,
+    "error_count": 0
+  },
+  "per_category_f1": {
+    "Context Handling Failures": {
+      "category": "Context Handling Failures",
+      "precision": 1.0,
+      "recall": 0.9565,
+      "f1": 0.9778,
+      "tp": 44,
+      "fp": 0,
+      "fn": 2,
+      "support": 46
+    },
+    "Formatting Errors": {
+      "category": "Formatting Errors",
+      "precision": 1.0,
+      "recall": 0.2959,
+      "f1": 0.4567,
+      "tp": 58,
+      "fp": 0,
+      "fn": 138,
+      "support": 196
+    },
+    "Goal Deviation": {
+      "category": "Goal Deviation",
+      "precision": 1.0,
+      "recall": 0.7077,
+      "f1": 0.8288,
+      "tp": 46,
+      "fp": 0,
+      "fn": 19,
+      "support": 65
+    },
+    "Incorrect Memory Usage": {
+      "category": "Incorrect Memory Usage",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "support": 2
+    },
+    "Incorrect Problem Identification": {
+      "category": "Incorrect Problem Identification",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 28,
+      "fp": 0,
+      "fn": 0,
+      "support": 28
+    },
+    "Instruction Non-compliance": {
+      "category": "Instruction Non-compliance",
+      "precision": 1.0,
+      "recall": 0.5909,
+      "f1": 0.7429,
+      "tp": 91,
+      "fp": 0,
+      "fn": 63,
+      "support": 154
+    },
+    "Language-only hallucinations": {
+      "category": "Language-only hallucinations",
+      "precision": 1.0,
+      "recall": 0.7925,
+      "f1": 0.8842,
+      "tp": 42,
+      "fp": 0,
+      "fn": 11,
+      "support": 53
+    },
+    "Poor Information Retrieval": {
+      "category": "Poor Information Retrieval",
+      "precision": 1.0,
+      "recall": 0.8049,
+      "f1": 0.8919,
+      "tp": 33,
+      "fp": 0,
+      "fn": 8,
+      "support": 41
+    },
+    "Resource Abuse": {
+      "category": "Resource Abuse",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 57,
+      "fp": 0,
+      "fn": 0,
+      "support": 57
+    },
+    "Resource Exhaustion": {
+      "category": "Resource Exhaustion",
+      "precision": 1.0,
+      "recall": 0.3333,
+      "f1": 0.5,
+      "tp": 1,
+      "fp": 0,
+      "fn": 2,
+      "support": 3
+    },
+    "Task Orchestration": {
+      "category": "Task Orchestration",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 49,
+      "support": 49
+    },
+    "Tool Output Misinterpretation": {
+      "category": "Tool Output Misinterpretation",
+      "precision": 1.0,
+      "recall": 0.4118,
+      "f1": 0.5833,
+      "tp": 7,
+      "fp": 0,
+      "fn": 10,
+      "support": 17
+    },
+    "Tool Selection Errors": {
+      "category": "Tool Selection Errors",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 45,
+      "fp": 0,
+      "fn": 0,
+      "support": 45
+    },
+    "Tool-related hallucinations": {
+      "category": "Tool-related hallucinations",
+      "precision": 1.0,
+      "recall": 0.5192,
+      "f1": 0.6835,
+      "tp": 27,
+      "fp": 0,
+      "fn": 25,
+      "support": 52
+    }
+  },
+  "per_impact": {
+    "HIGH": {
+      "total": 285,
+      "detected": 200,
+      "missed": 85,
+      "accuracy": 0.7018
+    },
+    "MEDIUM": {
+      "total": 357,
+      "detected": 204,
+      "missed": 153,
+      "accuracy": 0.5714
+    },
+    "LOW": {
+      "total": 171,
+      "detected": 80,
+      "missed": 91,
+      "accuracy": 0.4678
+    }
+  },
+  "per_source": {
+    "gaia": {
+      "traces": 117,
+      "annotations": 557,
+      "joint_accuracy": 0.6275,
+      "macro_f1": 0.7025
+    },
+    "swe-bench": {
+      "traces": 31,
+      "annotations": 256,
+      "joint_accuracy": 0.5373,
+      "macro_f1": 0.7347
+    }
+  },
+  "category_mapping": {
+    "Language-only hallucinations": "hallucination",
+    "Tool-related hallucinations": "hallucination",
+    "Poor Information Retrieval": "retrieval_quality",
+    "Tool Output Misinterpretation": "grounding",
+    "Incorrect Problem Identification": "specification",
+    "Context Handling Failures": "context",
+    "Incorrect Memory Usage": "context",
+    "Resource Abuse": "loop",
+    "Goal Deviation": "derailment",
+    "Instruction Non-compliance": "derailment",
+    "Task Orchestration": "coordination",
+    "Formatting Errors": "completion",
+    "Tool Selection Errors": "workflow",
+    "Resource Exhaustion": "overflow"
+  },
+  "generated_at": "2026-04-09T04:56:50.741666"
+}

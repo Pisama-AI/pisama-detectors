@@ -1,0 +1,592 @@
+{
+  "gpt-5.4": {
+    "result": null,
+    "per_category_f1": {
+      "Context Handling Failures": {
+        "category": "Context Handling Failures",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 46,
+        "support": 46
+      },
+      "Formatting Errors": {
+        "category": "Formatting Errors",
+        "precision": 0.2588,
+        "recall": 0.1122,
+        "f1": 0.1566,
+        "tp": 22,
+        "fp": 63,
+        "fn": 174,
+        "support": 196
+      },
+      "Goal Deviation": {
+        "category": "Goal Deviation",
+        "precision": 0.1364,
+        "recall": 0.0462,
+        "f1": 0.069,
+        "tp": 3,
+        "fp": 19,
+        "fn": 62,
+        "support": 65
+      },
+      "Incorrect Memory Usage": {
+        "category": "Incorrect Memory Usage",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 2,
+        "support": 2
+      },
+      "Incorrect Problem Identification": {
+        "category": "Incorrect Problem Identification",
+        "precision": 0.0244,
+        "recall": 0.0357,
+        "f1": 0.029,
+        "tp": 1,
+        "fp": 40,
+        "fn": 27,
+        "support": 28
+      },
+      "Instruction Non-compliance": {
+        "category": "Instruction Non-compliance",
+        "precision": 0.1474,
+        "recall": 0.1494,
+        "f1": 0.1484,
+        "tp": 23,
+        "fp": 133,
+        "fn": 131,
+        "support": 154
+      },
+      "Language-only hallucinations": {
+        "category": "Language-only hallucinations",
+        "precision": 0.3778,
+        "recall": 0.3208,
+        "f1": 0.3469,
+        "tp": 17,
+        "fp": 28,
+        "fn": 36,
+        "support": 53
+      },
+      "Poor Information Retrieval": {
+        "category": "Poor Information Retrieval",
+        "precision": 0.0429,
+        "recall": 0.0732,
+        "f1": 0.0541,
+        "tp": 3,
+        "fp": 67,
+        "fn": 38,
+        "support": 41
+      },
+      "Resource Abuse": {
+        "category": "Resource Abuse",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 37,
+        "fn": 57,
+        "support": 57
+      },
+      "Resource Exhaustion": {
+        "category": "Resource Exhaustion",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 5,
+        "fn": 3,
+        "support": 3
+      },
+      "Task Orchestration": {
+        "category": "Task Orchestration",
+        "precision": 0.1084,
+        "recall": 0.1837,
+        "f1": 0.1364,
+        "tp": 9,
+        "fp": 74,
+        "fn": 40,
+        "support": 49
+      },
+      "Tool Output Misinterpretation": {
+        "category": "Tool Output Misinterpretation",
+        "precision": 0.0588,
+        "recall": 0.2353,
+        "f1": 0.0941,
+        "tp": 4,
+        "fp": 64,
+        "fn": 13,
+        "support": 17
+      },
+      "Tool Selection Errors": {
+        "category": "Tool Selection Errors",
+        "precision": 0.1034,
+        "recall": 0.2,
+        "f1": 0.1364,
+        "tp": 9,
+        "fp": 78,
+        "fn": 36,
+        "support": 45
+      },
+      "Tool-related hallucinations": {
+        "category": "Tool-related hallucinations",
+        "precision": 0.1064,
+        "recall": 0.0962,
+        "f1": 0.101,
+        "tp": 5,
+        "fp": 42,
+        "fn": 47,
+        "support": 52
+      }
+    }
+  },
+  "gpt-5.4-mini": {
+    "result": null,
+    "per_category_f1": {
+      "Context Handling Failures": {
+        "category": "Context Handling Failures",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 14,
+        "fn": 46,
+        "support": 46
+      },
+      "Formatting Errors": {
+        "category": "Formatting Errors",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 31,
+        "fn": 196,
+        "support": 196
+      },
+      "Goal Deviation": {
+        "category": "Goal Deviation",
+        "precision": 0.0159,
+        "recall": 0.0154,
+        "f1": 0.0156,
+        "tp": 1,
+        "fp": 62,
+        "fn": 64,
+        "support": 65
+      },
+      "Incorrect Memory Usage": {
+        "category": "Incorrect Memory Usage",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 1,
+        "fn": 2,
+        "support": 2
+      },
+      "Incorrect Problem Identification": {
+        "category": "Incorrect Problem Identification",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 41,
+        "fn": 28,
+        "support": 28
+      },
+      "Instruction Non-compliance": {
+        "category": "Instruction Non-compliance",
+        "precision": 0.0312,
+        "recall": 0.013,
+        "f1": 0.0183,
+        "tp": 2,
+        "fp": 62,
+        "fn": 152,
+        "support": 154
+      },
+      "Language-only hallucinations": {
+        "category": "Language-only hallucinations",
+        "precision": 0.0556,
+        "recall": 0.0377,
+        "f1": 0.0449,
+        "tp": 2,
+        "fp": 34,
+        "fn": 51,
+        "support": 53
+      },
+      "Poor Information Retrieval": {
+        "category": "Poor Information Retrieval",
+        "precision": 0.0282,
+        "recall": 0.0488,
+        "f1": 0.0357,
+        "tp": 2,
+        "fp": 69,
+        "fn": 39,
+        "support": 41
+      },
+      "Resource Abuse": {
+        "category": "Resource Abuse",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 4,
+        "fn": 57,
+        "support": 57
+      },
+      "Resource Exhaustion": {
+        "category": "Resource Exhaustion",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 8,
+        "fn": 3,
+        "support": 3
+      },
+      "Resource-related hallucinations": {
+        "category": "Resource-related hallucinations",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 2,
+        "fn": 0,
+        "support": 0
+      },
+      "Task Orchestration": {
+        "category": "Task Orchestration",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 44,
+        "fn": 49,
+        "support": 49
+      },
+      "Tool Output Misinterpretation": {
+        "category": "Tool Output Misinterpretation",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 56,
+        "fn": 17,
+        "support": 17
+      },
+      "Tool Selection Errors": {
+        "category": "Tool Selection Errors",
+        "precision": 0.02,
+        "recall": 0.0222,
+        "f1": 0.0211,
+        "tp": 1,
+        "fp": 49,
+        "fn": 44,
+        "support": 45
+      },
+      "Tool-related hallucinations": {
+        "category": "Tool-related hallucinations",
+        "precision": 0.0417,
+        "recall": 0.0577,
+        "f1": 0.0484,
+        "tp": 3,
+        "fp": 69,
+        "fn": 49,
+        "support": 52
+      }
+    }
+  },
+  "gemini-3.1-pro": {
+    "result": null,
+    "per_category_f1": {
+      "Context Handling Failures": {
+        "category": "Context Handling Failures",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 5,
+        "fn": 46,
+        "support": 46
+      },
+      "Formatting Errors": {
+        "category": "Formatting Errors",
+        "precision": 0.1905,
+        "recall": 0.0408,
+        "f1": 0.0672,
+        "tp": 8,
+        "fp": 34,
+        "fn": 188,
+        "support": 196
+      },
+      "Goal Deviation": {
+        "category": "Goal Deviation",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 65,
+        "support": 65
+      },
+      "Incorrect Memory Usage": {
+        "category": "Incorrect Memory Usage",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 2,
+        "support": 2
+      },
+      "Incorrect Problem Identification": {
+        "category": "Incorrect Problem Identification",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 4,
+        "fn": 28,
+        "support": 28
+      },
+      "Instruction Non-compliance": {
+        "category": "Instruction Non-compliance",
+        "precision": 0.1579,
+        "recall": 0.0195,
+        "f1": 0.0347,
+        "tp": 3,
+        "fp": 16,
+        "fn": 151,
+        "support": 154
+      },
+      "Language-only hallucinations": {
+        "category": "Language-only hallucinations",
+        "precision": 0.463,
+        "recall": 0.4717,
+        "f1": 0.4673,
+        "tp": 25,
+        "fp": 29,
+        "fn": 28,
+        "support": 53
+      },
+      "Poor Information Retrieval": {
+        "category": "Poor Information Retrieval",
+        "precision": 0.0667,
+        "recall": 0.0244,
+        "f1": 0.0357,
+        "tp": 1,
+        "fp": 14,
+        "fn": 40,
+        "support": 41
+      },
+      "Resource Abuse": {
+        "category": "Resource Abuse",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 57,
+        "support": 57
+      },
+      "Resource Exhaustion": {
+        "category": "Resource Exhaustion",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 7,
+        "fn": 3,
+        "support": 3
+      },
+      "Task Orchestration": {
+        "category": "Task Orchestration",
+        "precision": 0.4,
+        "recall": 0.0408,
+        "f1": 0.0741,
+        "tp": 2,
+        "fp": 3,
+        "fn": 47,
+        "support": 49
+      },
+      "Tool Output Misinterpretation": {
+        "category": "Tool Output Misinterpretation",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 5,
+        "fn": 17,
+        "support": 17
+      },
+      "Tool Selection Errors": {
+        "category": "Tool Selection Errors",
+        "precision": 0.5263,
+        "recall": 0.2222,
+        "f1": 0.3125,
+        "tp": 10,
+        "fp": 9,
+        "fn": 35,
+        "support": 45
+      },
+      "Tool-related hallucinations": {
+        "category": "Tool-related hallucinations",
+        "precision": 0.1724,
+        "recall": 0.0962,
+        "f1": 0.1235,
+        "tp": 5,
+        "fp": 24,
+        "fn": 47,
+        "support": 52
+      }
+    }
+  },
+  "gemini-3.1-flash-lite": {
+    "result": null,
+    "per_category_f1": {
+      "Context Handling Failures": {
+        "category": "Context Handling Failures",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 46,
+        "support": 46
+      },
+      "Formatting Errors": {
+        "category": "Formatting Errors",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 21,
+        "fn": 196,
+        "support": 196
+      },
+      "Goal Deviation": {
+        "category": "Goal Deviation",
+        "precision": 0.1176,
+        "recall": 0.0308,
+        "f1": 0.0488,
+        "tp": 2,
+        "fp": 15,
+        "fn": 63,
+        "support": 65
+      },
+      "Incorrect Memory Usage": {
+        "category": "Incorrect Memory Usage",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 1,
+        "fn": 2,
+        "support": 2
+      },
+      "Incorrect Problem Identification": {
+        "category": "Incorrect Problem Identification",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 7,
+        "fn": 28,
+        "support": 28
+      },
+      "Instruction Non-compliance": {
+        "category": "Instruction Non-compliance",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 14,
+        "fn": 154,
+        "support": 154
+      },
+      "Language-only hallucinations": {
+        "category": "Language-only hallucinations",
+        "precision": 0.125,
+        "recall": 0.0377,
+        "f1": 0.058,
+        "tp": 2,
+        "fp": 14,
+        "fn": 51,
+        "support": 53
+      },
+      "Poor Information Retrieval": {
+        "category": "Poor Information Retrieval",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 24,
+        "fn": 41,
+        "support": 41
+      },
+      "Resource Abuse": {
+        "category": "Resource Abuse",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 1,
+        "fn": 57,
+        "support": 57
+      },
+      "Resource Exhaustion": {
+        "category": "Resource Exhaustion",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 6,
+        "fn": 3,
+        "support": 3
+      },
+      "Task Orchestration": {
+        "category": "Task Orchestration",
+        "precision": 0.0078,
+        "recall": 0.0204,
+        "f1": 0.0113,
+        "tp": 1,
+        "fp": 127,
+        "fn": 48,
+        "support": 49
+      },
+      "Tool Output Misinterpretation": {
+        "category": "Tool Output Misinterpretation",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fp": 8,
+        "fn": 17,
+        "support": 17
+      },
+      "Tool Selection Errors": {
+        "category": "Tool Selection Errors",
+        "precision": 0.0303,
+        "recall": 0.0222,
+        "f1": 0.0256,
+        "tp": 1,
+        "fp": 32,
+        "fn": 44,
+        "support": 45
+      },
+      "Tool-related hallucinations": {
+        "category": "Tool-related hallucinations",
+        "precision": 0.1667,
+        "recall": 0.0577,
+        "f1": 0.0857,
+        "tp": 3,
+        "fp": 15,
+        "fn": 49,
+        "support": 52
+      }
+    }
+  }
+}
