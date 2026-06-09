@@ -80,3 +80,25 @@ jobs:
 
       - name: Twine check
         run: python -m twine check dist/*
+
+      - name: Assert wheel contains only wrapper (no engine leak)
+        run: |
+          python - <<'PY'
+          import zipfile, sys
+          wheels = list(__import__('pathlib').Path('dist').glob('*.whl'))
+          assert wheels, 'No wheel found in dist/'
+          allowed_prefixes = (
+              'pisama_detectors/__init__.py',
+              'pisama_detectors/_api.py',
+              'pisama_detectors/_config.py',
+              'pisama_detectors/py.typed',
+          )
+          with zipfile.ZipFile(wheels[0]) as whl:
+              src_files = [n for n in whl.namelist() if n.startswith('pisama_detectors/') and not n.endswith('/')]
+          unexpected = [f for f in src_files if not any(f.startswith(p) for p in allowed_prefixes)]
+          if unexpected:
+              print('FAIL: unexpected files in wheel (engine leak guard):')
+              for f in unexpected: print(' ', f)
+              sys.exit(1)
+          print(f'OK: wheel contains {len(src_files)} source file(s), no engine leak detected')
+          PY

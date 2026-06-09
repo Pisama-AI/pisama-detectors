@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-yellow.svg)](LICENSE)
 
 **42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
@@ -144,4 +144,6 @@ Want automated fixes on top of detection? See [Pisama](https://pisama.ai) for AI
 
 ## License
 
-Apache 2.0 — see `LICENSE`.
+Business Source License 1.1 — see [`LICENSE`](LICENSE).
+
+Source-available. Free for non-commercial and non-competing production use. Auto-converts to Apache 2.0 on 2030-06-08. Commercial use that competes with Pisama requires a license — contact [team@pisama.ai](mailto:team@pisama.ai).
