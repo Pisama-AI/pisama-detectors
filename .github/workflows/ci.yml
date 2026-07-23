@@ -33,9 +33,7 @@ jobs:
         run: |
           python -c "
           # Verify the public API surface is complete.
-          # Detector functions are wrappers that call the private engine at
-          # runtime; we only check that the symbols exist and the registry is
-          # populated — not that the engine is reachable from CI.
+          # Cloud-only detectors are intentionally excluded from this package.
           import pisama_detectors as pd
 
           expected = [
@@ -45,8 +43,6 @@ jobs:
               'detect_communication', 'detect_specification', 'detect_decomposition',
               'detect_workflow', 'detect_withholding', 'detect_completion',
               'detect_convergence', 'detect_context_pressure', 'calculate_cost',
-              'detect_grounding', 'detect_retrieval_quality', 'detect_quality_gate',
-              'detect_tool_provision',
               'detect_langgraph_recursion', 'detect_langgraph_state_corruption',
               'detect_langgraph_edge_misroute', 'detect_langgraph_checkpoint_corruption',
               'detect_langgraph_parallel_sync', 'detect_langgraph_tool_failure',
