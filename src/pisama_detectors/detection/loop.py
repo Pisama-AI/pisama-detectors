@@ -17,7 +17,6 @@ import json
 import re
 from dataclasses import dataclass
 from typing import List, Optional
-from sklearn.cluster import KMeans
 from pisama_detectors._config import get_settings, get_tenant_thresholds
 from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
 
@@ -570,6 +569,8 @@ class MultiLevelLoopDetector:
             return None
 
         try:
+            from sklearn.cluster import KMeans
+
             embeddings = self.embedder.encode([s.content for s in states])
             n_samples = len(embeddings)
             n_clusters = min(max(2, n_samples // 4), 5)

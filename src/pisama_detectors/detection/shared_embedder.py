@@ -68,6 +68,9 @@ def get_shared_embedder(model_name: str = "all-MiniLM-L6-v2"):
         logger.info(f"Loading local SentenceTransformer: {model_name}")
         _embedder = _MiniLMEmbedder(model_name)
         return _embedder
+    except ModuleNotFoundError:
+        logger.debug("Semantic detection is unavailable; install pisama-detectors[semantic]")
+        return None
     except Exception as e:
         logger.warning(f"Local SentenceTransformer failed: {e}")
         return None
