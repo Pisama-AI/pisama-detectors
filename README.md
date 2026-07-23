@@ -16,6 +16,11 @@ Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Mul
 pip install pisama-detectors
 ```
 
+The default install keeps structural, lexical, and pattern-based detection
+lightweight. Install `pisama-detectors[semantic]` to enable local embedding and
+clustering paths. `pisama-detectors[full]` also adds the optional Anthropic
+integration.
+
 ```python
 from pisama_detectors import detect_loop, detect_injection, detect_corruption
 
@@ -144,6 +149,8 @@ Want automated fixes on top of detection? See [Pisama](https://pisama.ai) for AI
 
 ## License
 
-Business Source License 1.1 — see [`LICENSE`](LICENSE).
+Business Source License 1.1. See [`LICENSE`](LICENSE).
 
-Source-available. Free for non-commercial and non-competing production use. Auto-converts to Apache 2.0 on 2030-06-08. Commercial use that competes with Pisama requires a license — contact [team@pisama.ai](mailto:team@pisama.ai).
+Source-available. Free for non-commercial and non-competing production use.
+Auto-converts to Apache 2.0 on 2030-06-08. Commercial use that competes with
+Pisama requires a license. Contact [team@pisama.ai](mailto:team@pisama.ai).

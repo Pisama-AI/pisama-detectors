@@ -24,6 +24,8 @@ Usage:
     print(result.detected, result.attack_type)
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from ._api import (
     # Core detectors (17)
     detect_loop,
@@ -78,4 +80,7 @@ from ._api import (
     DETECTOR_REGISTRY,
 )
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("pisama-detectors")
+except PackageNotFoundError:
+    __version__ = "0.3.0"

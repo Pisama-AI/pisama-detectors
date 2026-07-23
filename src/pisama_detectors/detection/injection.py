@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Tuple
 import re
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from pisama_detectors._config import get_settings
 
 settings = get_settings()
@@ -337,8 +336,12 @@ class InjectionDetector:
     def _semantic_injection_check(self, text: str) -> float:
         if len(text) < 20:
             return 0.0
-        
-        text_embedding = self.embedder.encode(text)
+
+        embedder = self.embedder
+        if embedder is None:
+            return 0.0
+
+        text_embedding = embedder.encode(text)
         
         max_similarity = 0.0
         for jb_emb in self.jailbreak_embeddings:
