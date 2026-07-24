@@ -16,13 +16,13 @@ Based on MAST taxonomy for orchestration failures.
 
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,10 +47,23 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
 
     # Indicators of task complexity requiring decomposition
     COMPLEX_TASK_INDICATORS = [
-        "system", "platform", "application", "service", "architecture",
-        "authentication", "authorization", "database", "migration",
-        "refactor", "integration", "infrastructure", "deployment",
-        "pipeline", "workflow", "multi-step", "end-to-end",
+        "system",
+        "platform",
+        "application",
+        "service",
+        "architecture",
+        "authentication",
+        "authorization",
+        "database",
+        "migration",
+        "refactor",
+        "integration",
+        "infrastructure",
+        "deployment",
+        "pipeline",
+        "workflow",
+        "multi-step",
+        "end-to-end",
     ]
 
     # Indicators that decomposition is happening
@@ -64,22 +77,64 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
 
     # Indicators of vague/non-actionable steps
     VAGUE_INDICATORS = [
-        "etc", "various", "miscellaneous", "general", "overall",
-        "appropriate", "as needed", "if necessary", "possibly",
-        "might", "maybe", "could potentially", "consider",
-        "high-level", "broadly", "generally speaking",
-        "explore options", "look into", "think about",
+        "etc",
+        "various",
+        "miscellaneous",
+        "general",
+        "overall",
+        "appropriate",
+        "as needed",
+        "if necessary",
+        "possibly",
+        "might",
+        "maybe",
+        "could potentially",
+        "consider",
+        "high-level",
+        "broadly",
+        "generally speaking",
+        "explore options",
+        "look into",
+        "think about",
     ]
 
     # Action verbs that make steps actionable
     ACTION_VERBS = [
-        "create", "build", "implement", "write", "configure",
-        "set up", "install", "deploy", "test", "validate",
-        "define", "design", "develop", "add", "remove",
-        "update", "modify", "fix", "integrate", "connect",
-        "display", "show", "render", "format", "parse",
-        "fetch", "load", "save", "store", "delete",
-        "call", "invoke", "execute", "run", "process",
+        "create",
+        "build",
+        "implement",
+        "write",
+        "configure",
+        "set up",
+        "install",
+        "deploy",
+        "test",
+        "validate",
+        "define",
+        "design",
+        "develop",
+        "add",
+        "remove",
+        "update",
+        "modify",
+        "fix",
+        "integrate",
+        "connect",
+        "display",
+        "show",
+        "render",
+        "format",
+        "parse",
+        "fetch",
+        "load",
+        "save",
+        "store",
+        "delete",
+        "call",
+        "invoke",
+        "execute",
+        "run",
+        "process",
     ]
 
     def __init__(
@@ -124,13 +179,11 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
 
         # Check if task is complex
         task_content = " ".join([t.content.lower() for t in task_turns])
-        is_complex_task = any(
-            ind in task_content for ind in self.COMPLEX_TASK_INDICATORS
-        )
+        is_complex_task = any(ind in task_content for ind in self.COMPLEX_TASK_INDICATORS)
 
         # Analyze agent responses for decomposition
         agent_content = " ".join([t.content for t in agent_turns])
-        agent_content_lower = agent_content.lower()
+        agent_content.lower()
 
         # Check for decomposition patterns
         has_decomposition = any(
@@ -143,10 +196,12 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
 
         # Issue 1: Complex task without decomposition
         if is_complex_task and not has_decomposition:
-            issues.append({
-                "type": "missing_decomposition",
-                "description": "Complex task handled without proper step breakdown",
-            })
+            issues.append(
+                {
+                    "type": "missing_decomposition",
+                    "description": "Complex task handled without proper step breakdown",
+                }
+            )
             for t in task_turns:
                 affected_turns.append(t.turn_number)
 
@@ -156,35 +211,40 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
             vague_ratio = len(vague_steps) / len(steps) if steps else 0
 
             if vague_ratio > self.max_vague_ratio:
-                issues.append({
-                    "type": "vague_subtasks",
-                    "vague_count": len(vague_steps),
-                    "total_steps": len(steps),
-                    "vague_ratio": vague_ratio,
-                    "description": f"{len(vague_steps)}/{len(steps)} steps are vague or non-actionable",
-                })
+                issues.append(
+                    {
+                        "type": "vague_subtasks",
+                        "vague_count": len(vague_steps),
+                        "total_steps": len(steps),
+                        "vague_ratio": vague_ratio,
+                        "description": f"{len(vague_steps)}/{len(steps)} steps are vague or non-actionable",
+                    }
+                )
 
         # Issue 3: Check for missing action verbs
         if steps:
             non_actionable = [
-                s for s in steps
-                if not any(verb in s.lower() for verb in self.ACTION_VERBS)
+                s for s in steps if not any(verb in s.lower() for verb in self.ACTION_VERBS)
             ]
             if len(non_actionable) > len(steps) // 2:
-                issues.append({
-                    "type": "non_actionable_steps",
-                    "count": len(non_actionable),
-                    "description": f"{len(non_actionable)}/{len(steps)} steps lack clear action verbs",
-                })
+                issues.append(
+                    {
+                        "type": "non_actionable_steps",
+                        "count": len(non_actionable),
+                        "description": f"{len(non_actionable)}/{len(steps)} steps lack clear action verbs",
+                    }
+                )
 
         # Issue 4: Complex task with too few steps
         if is_complex_task and has_decomposition and len(steps) < self.min_steps_for_complex:
-            issues.append({
-                "type": "insufficient_decomposition",
-                "steps_found": len(steps),
-                "min_required": self.min_steps_for_complex,
-                "description": f"Complex task has only {len(steps)} steps (minimum {self.min_steps_for_complex} recommended)",
-            })
+            issues.append(
+                {
+                    "type": "insufficient_decomposition",
+                    "steps_found": len(steps),
+                    "min_required": self.min_steps_for_complex,
+                    "description": f"Complex task has only {len(steps)} steps (minimum {self.min_steps_for_complex} recommended)",
+                }
+            )
 
         if not issues:
             return TurnAwareDetectionResult(
@@ -231,20 +291,18 @@ class TurnAwareTaskDecompositionDetector(TurnAwareDetector):
         steps = []
 
         # Try numbered list first
-        numbered = re.findall(r'\d+[.)]\s*([^\n]+)', content)
+        numbered = re.findall(r"\d+[.)]\s*([^\n]+)", content)
         if numbered:
             return numbered
 
         # Try bullet points
-        bullets = re.findall(r'[-•*]\s+([^\n]+)', content)
+        bullets = re.findall(r"[-•*]\s+([^\n]+)", content)
         if bullets:
             return bullets
 
         # Try step/phase patterns
         step_matches = re.findall(
-            r'(?:step|phase|stage)\s*\d*[:.]\s*([^\n]+)',
-            content,
-            re.IGNORECASE
+            r"(?:step|phase|stage)\s*\d*[:.]\s*([^\n]+)", content, re.IGNORECASE
         )
         if step_matches:
             return step_matches

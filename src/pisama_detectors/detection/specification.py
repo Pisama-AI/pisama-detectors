@@ -44,10 +44,10 @@ DETECTOR_VERSION = "2.9"
 DETECTOR_NAME = "SpecificationMismatchDetector"
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -90,68 +90,83 @@ class SpecificationMismatchDetector:
 
     # v1.1: Programming language patterns for language mismatch detection
     LANGUAGE_PATTERNS = {
-        'python': (r'\bpython\b', [r'\bdef\s+\w+\s*\(', r'\bimport\s+\w+', r':\s*$', r'\bprint\s*\(']),
-        'javascript': (r'\b(?:javascript|js)\b', [r'\bfunction\s+\w+', r'\bconst\s+\w+', r'\blet\s+\w+', r'=>']),
-        'typescript': (r'\btypescript\b', [r':\s*\w+(?:\[\])?(?:\s*[,\)])', r'\binterface\s+\w+', r'<\w+>']),
-        'java': (r'\bjava\b(?!script)', [r'\bpublic\s+class', r'\bprivate\s+\w+', r'\bvoid\s+\w+']),
-        'sql': (r'\bsql\b', [r'\bSELECT\b', r'\bFROM\b', r'\bWHERE\b', r'\bINSERT\b']),
+        "python": (
+            r"\bpython\b",
+            [r"\bdef\s+\w+\s*\(", r"\bimport\s+\w+", r":\s*$", r"\bprint\s*\("],
+        ),
+        "javascript": (
+            r"\b(?:javascript|js)\b",
+            [r"\bfunction\s+\w+", r"\bconst\s+\w+", r"\blet\s+\w+", r"=>"],
+        ),
+        "typescript": (
+            r"\btypescript\b",
+            [r":\s*\w+(?:\[\])?(?:\s*[,\)])", r"\binterface\s+\w+", r"<\w+>"],
+        ),
+        "java": (r"\bjava\b(?!script)", [r"\bpublic\s+class", r"\bprivate\s+\w+", r"\bvoid\s+\w+"]),
+        "sql": (r"\bsql\b", [r"\bSELECT\b", r"\bFROM\b", r"\bWHERE\b", r"\bINSERT\b"]),
     }
 
     # v1.1: Code quality issues that indicate specification mismatch
     CODE_QUALITY_PATTERNS = [
         # Method reference without () - specifically common Python methods
-        (r'\.(?:sort|append|extend|pop|remove|clear|reverse)\s*(?:\n|$|[^(])', "method_without_call"),
-        (r'\bpass\s*$', "empty_implementation"),  # Python pass statement (placeholder)
-        (r'//\s*TODO', "todo_marker"),
-        (r'#\s*TODO', "todo_marker"),
-        (r'raise\s+NotImplementedError', "not_implemented"),
+        (
+            r"\.(?:sort|append|extend|pop|remove|clear|reverse)\s*(?:\n|$|[^(])",
+            "method_without_call",
+        ),
+        (r"\bpass\s*$", "empty_implementation"),  # Python pass statement (placeholder)
+        (r"//\s*TODO", "todo_marker"),
+        (r"#\s*TODO", "todo_marker"),
+        (r"raise\s+NotImplementedError", "not_implemented"),
         (r'throw\s+new\s+Error\(["\']not implemented', "not_implemented"),
-        (r'\.\.\.\s*$', "ellipsis_placeholder"),  # ... as placeholder
+        (r"\.\.\.\s*$", "ellipsis_placeholder"),  # ... as placeholder
     ]
 
     # v1.2: Deprecated syntax patterns by language
     DEPRECATED_SYNTAX_PATTERNS = {
-        'python': [
+        "python": [
             # Python 2 deprecated in Python 3
-            (r'\bcmp\s*=', "deprecated_cmp_parameter"),  # sorted(..., cmp=func)
-            (r'\.has_key\s*\(', "deprecated_has_key"),  # dict.has_key() -> use 'in'
+            (r"\bcmp\s*=", "deprecated_cmp_parameter"),  # sorted(..., cmp=func)
+            (r"\.has_key\s*\(", "deprecated_has_key"),  # dict.has_key() -> use 'in'
             (r'\bprint\s+["\']', "deprecated_print_statement"),  # print "x" without parens
-            (r'\braw_input\s*\(', "deprecated_raw_input"),  # raw_input() -> input()
-            (r'\bexecfile\s*\(', "deprecated_execfile"),  # execfile() removed
-            (r'\bxrange\s*\(', "deprecated_xrange"),  # xrange() -> range()
-            (r'\.iteritems\s*\(', "deprecated_iteritems"),  # dict.iteritems() -> items()
-            (r'\.iterkeys\s*\(', "deprecated_iterkeys"),  # dict.iterkeys() -> keys()
-            (r'\.itervalues\s*\(', "deprecated_itervalues"),  # dict.itervalues() -> values()
-            (r'\breduce\s*\((?![^)]*functools)', "deprecated_reduce"),  # reduce() needs functools
-            (r'\bapply\s*\(', "deprecated_apply"),  # apply() removed
-            (r'\bcoerce\s*\(', "deprecated_coerce"),  # coerce() removed
-            (r'<>\s*', "deprecated_not_equal"),  # <> -> !=
-            (r'\blong\s*\(', "deprecated_long"),  # long() -> int()
-            (r'\bunicode\s*\(', "deprecated_unicode"),  # unicode() -> str()
+            (r"\braw_input\s*\(", "deprecated_raw_input"),  # raw_input() -> input()
+            (r"\bexecfile\s*\(", "deprecated_execfile"),  # execfile() removed
+            (r"\bxrange\s*\(", "deprecated_xrange"),  # xrange() -> range()
+            (r"\.iteritems\s*\(", "deprecated_iteritems"),  # dict.iteritems() -> items()
+            (r"\.iterkeys\s*\(", "deprecated_iterkeys"),  # dict.iterkeys() -> keys()
+            (r"\.itervalues\s*\(", "deprecated_itervalues"),  # dict.itervalues() -> values()
+            (r"\breduce\s*\((?![^)]*functools)", "deprecated_reduce"),  # reduce() needs functools
+            (r"\bapply\s*\(", "deprecated_apply"),  # apply() removed
+            (r"\bcoerce\s*\(", "deprecated_coerce"),  # coerce() removed
+            (r"<>\s*", "deprecated_not_equal"),  # <> -> !=
+            (r"\blong\s*\(", "deprecated_long"),  # long() -> int()
+            (r"\bunicode\s*\(", "deprecated_unicode"),  # unicode() -> str()
         ],
-        'javascript': [
-            (r'\bvar\s+\w+', "deprecated_var"),  # var -> let/const (ES6+)
-            (r'arguments\.callee', "deprecated_callee"),  # arguments.callee deprecated
-            (r'with\s*\([^)]+\)\s*{', "deprecated_with"),  # with statement deprecated
-            (r'\.substr\s*\(', "deprecated_substr"),  # substr -> substring/slice
-            (r'escape\s*\(', "deprecated_escape"),  # escape() -> encodeURIComponent
-            (r'unescape\s*\(', "deprecated_unescape"),  # unescape() -> decodeURIComponent
+        "javascript": [
+            (r"\bvar\s+\w+", "deprecated_var"),  # var -> let/const (ES6+)
+            (r"arguments\.callee", "deprecated_callee"),  # arguments.callee deprecated
+            (r"with\s*\([^)]+\)\s*{", "deprecated_with"),  # with statement deprecated
+            (r"\.substr\s*\(", "deprecated_substr"),  # substr -> substring/slice
+            (r"escape\s*\(", "deprecated_escape"),  # escape() -> encodeURIComponent
+            (r"unescape\s*\(", "deprecated_unescape"),  # unescape() -> decodeURIComponent
         ],
-        'java': [
-            (r'new\s+Date\s*\(\s*\d+\s*,', "deprecated_date_constructor"),  # Date(year,month,day) deprecated
-            (r'\.getYear\s*\(', "deprecated_getYear"),  # getYear() -> getFullYear() - 1900
-            (r'Thread\s*\.\s*stop\s*\(', "deprecated_thread_stop"),  # Thread.stop() deprecated
+        "java": [
+            (
+                r"new\s+Date\s*\(\s*\d+\s*,",
+                "deprecated_date_constructor",
+            ),  # Date(year,month,day) deprecated
+            (r"\.getYear\s*\(", "deprecated_getYear"),  # getYear() -> getFullYear() - 1900
+            (r"Thread\s*\.\s*stop\s*\(", "deprecated_thread_stop"),  # Thread.stop() deprecated
         ],
     }
 
     # v1.1: Numeric constraint patterns with tolerance
     NUMERIC_CONSTRAINT_PATTERNS = [
-        (r'(\d+)[\s-]?word', "word_count"),
-        (r'(\d+)[\s-]?character', "char_count"),
-        (r'(\d+)[\s-]?line', "line_count"),
-        (r'(\d+)[\s-]?item', "item_count"),
-        (r'(\d+)[\s-]?point', "point_count"),
-        (r'(\d+)[\s-]?step', "step_count"),
+        (r"(\d+)[\s-]?word", "word_count"),
+        (r"(\d+)[\s-]?character", "char_count"),
+        (r"(\d+)[\s-]?line", "line_count"),
+        (r"(\d+)[\s-]?item", "item_count"),
+        (r"(\d+)[\s-]?point", "point_count"),
+        (r"(\d+)[\s-]?step", "step_count"),
     ]
 
     # v1.1: Tolerance for approximate numeric constraints (percentage)
@@ -229,14 +244,14 @@ class SpecificationMismatchDetector:
 
     def _extract_requirements(self, text: str) -> list[str]:
         requirements = []
-        
+
         must_patterns = [
-            r'must\s+([^.!?]+)',
-            r'should\s+([^.!?]+)',
-            r'need(?:s)?\s+to\s+([^.!?]+)',
-            r'require(?:s|d)?\s+([^.!?]+)',
-            r'has\s+to\s+([^.!?]+)',
-            r'ensure\s+(?:that\s+)?([^.!?]+)',
+            r"must\s+([^.!?]+)",
+            r"should\s+([^.!?]+)",
+            r"need(?:s)?\s+to\s+([^.!?]+)",
+            r"require(?:s|d)?\s+([^.!?]+)",
+            r"has\s+to\s+([^.!?]+)",
+            r"ensure\s+(?:that\s+)?([^.!?]+)",
         ]
 
         for pattern in must_patterns:
@@ -244,27 +259,27 @@ class SpecificationMismatchDetector:
             requirements.extend(matches)
 
         action_patterns = [
-            r'(?:create|build|make|generate|design)\s+(?:a\s+)?([^.!?,]+)',
-            r'(?:find|search|get|fetch)\s+([^.!?,]+)',
-            r'(?:analyze|evaluate|assess)\s+([^.!?,]+)',
-            r'(?:send|deliver|transmit)\s+([^.!?,]+)',
+            r"(?:create|build|make|generate|design)\s+(?:a\s+)?([^.!?,]+)",
+            r"(?:find|search|get|fetch)\s+([^.!?,]+)",
+            r"(?:analyze|evaluate|assess)\s+([^.!?,]+)",
+            r"(?:send|deliver|transmit)\s+([^.!?,]+)",
             # v1.5: broader action patterns
-            r'(?:implement|set\s+up|configure|deploy|add)\s+(?:a\s+)?([^.!?,]+)',
-            r'(?:monitor|track|log|alert)\s+([^.!?,]+)',
-            r'(?:help\s+me|i\s+want\s+to|i\s+want\s+a)\s+([^.!?,]+)',
-            r'(?:i\s+need)\s+(?:a\s+)?([^.!?,]+)',
-            r'(?:migrate|convert|transform|clean\s+up)\s+([^.!?,]+)',
+            r"(?:implement|set\s+up|configure|deploy|add)\s+(?:a\s+)?([^.!?,]+)",
+            r"(?:monitor|track|log|alert)\s+([^.!?,]+)",
+            r"(?:help\s+me|i\s+want\s+to|i\s+want\s+a)\s+([^.!?,]+)",
+            r"(?:i\s+need)\s+(?:a\s+)?([^.!?,]+)",
+            r"(?:migrate|convert|transform|clean\s+up)\s+([^.!?,]+)",
             # v2.1: additional verbs from error analysis
-            r'(?:write|develop|plan|prepare|draft|outline)\s+(?:a\s+)?([^.!?,]+)',
-            r'(?:process|handle|manage|run|execute)\s+([^.!?,]+)',
-            r'(?:connect|integrate|link|sync(?:hronize)?)\s+([^.!?,]+)',
-            r'(?:automate|schedule|optimize|improve)\s+([^.!?,]+)',
+            r"(?:write|develop|plan|prepare|draft|outline)\s+(?:a\s+)?([^.!?,]+)",
+            r"(?:process|handle|manage|run|execute)\s+([^.!?,]+)",
+            r"(?:connect|integrate|link|sync(?:hronize)?)\s+([^.!?,]+)",
+            r"(?:automate|schedule|optimize|improve)\s+([^.!?,]+)",
         ]
 
         for pattern in action_patterns:
             matches = re.findall(pattern, text.lower())
             requirements.extend(matches)
-        
+
         return [r.strip() for r in requirements if len(r.strip()) > 3]
 
     def _extract_constraints(self, text: str) -> list[str]:
@@ -274,17 +289,17 @@ class SpecificationMismatchDetector:
         # to reduce phantom constraints from casual language.
         constraint_patterns = [
             # "do not/never" + verb (clear prohibition)
-            r'(?:do not|don\'t|never|must not)\s+([^.!?,]+)',
+            r"(?:do not|don\'t|never|must not)\s+([^.!?,]+)",
             # "without X" (clear exclusion)
-            r'without\s+(?:any\s+)?([^.!?,]+)',
+            r"without\s+(?:any\s+)?([^.!?,]+)",
             # "only/exclusively" (restriction)
-            r'(?:only|exclusively)\s+([^.!?,]+)',
+            r"(?:only|exclusively)\s+([^.!?,]+)",
             # Quantitative constraints
-            r'(?:at\s+(?:most|least))\s+([^.!?,]+)',
-            r'(?:within|under|below|above)\s+(\d+[^.!?,]*)',
+            r"(?:at\s+(?:most|least))\s+([^.!?,]+)",
+            r"(?:within|under|below|above)\s+(\d+[^.!?,]*)",
             # Temporal constraints
-            r'(?:before|after|by)\s+([^.!?,]+)',
-            r'(?:limit(?:ed)?\s+to)\s+([^.!?,]+)',
+            r"(?:before|after|by)\s+([^.!?,]+)",
+            r"(?:limit(?:ed)?\s+to)\s+([^.!?,]+)",
         ]
 
         for pattern in constraint_patterns:
@@ -336,23 +351,73 @@ class SpecificationMismatchDetector:
     # functional requirement. Their negation in the task specification means
     # the requirement is explicitly excluded — a severe mismatch regardless
     # of topical similarity.
-    _REQUIREMENT_VERBS = frozenset({
-        "alert", "alerts", "alerting", "notify", "notifies", "notifying",
-        "notification", "signal", "warn", "warning",
-        "check", "checks", "checking", "verify", "verifies", "verifying",
-        "verification", "validate", "validates", "validating", "validation",
-        "confirm", "confirms", "confirming", "confirmation",
-        "review", "reviews", "reviewing", "approve", "approves", "approval",
-        "moderate", "moderates", "moderating", "moderation",
-        "flag", "flags", "flagging",
-        "audit", "auditing",
-        "authenticate", "authentication", "authorize", "authorization",
-        "monitor", "monitoring", "track", "tracking", "log", "logging",
-        "report", "reporting",
-        "human", "manual", "supervised", "supervision",
-        "resolution", "resolve", "resolves", "resolving",
-        "interaction", "interact", "interacts",
-    })
+    _REQUIREMENT_VERBS = frozenset(
+        {
+            "alert",
+            "alerts",
+            "alerting",
+            "notify",
+            "notifies",
+            "notifying",
+            "notification",
+            "signal",
+            "warn",
+            "warning",
+            "check",
+            "checks",
+            "checking",
+            "verify",
+            "verifies",
+            "verifying",
+            "verification",
+            "validate",
+            "validates",
+            "validating",
+            "validation",
+            "confirm",
+            "confirms",
+            "confirming",
+            "confirmation",
+            "review",
+            "reviews",
+            "reviewing",
+            "approve",
+            "approves",
+            "approval",
+            "moderate",
+            "moderates",
+            "moderating",
+            "moderation",
+            "flag",
+            "flags",
+            "flagging",
+            "audit",
+            "auditing",
+            "authenticate",
+            "authentication",
+            "authorize",
+            "authorization",
+            "monitor",
+            "monitoring",
+            "track",
+            "tracking",
+            "log",
+            "logging",
+            "report",
+            "reporting",
+            "human",
+            "manual",
+            "supervised",
+            "supervision",
+            "resolution",
+            "resolve",
+            "resolves",
+            "resolving",
+            "interaction",
+            "interact",
+            "interacts",
+        }
+    )
 
     # Negation patterns that signal the following phrase is excluded.
     _NEGATION_PATTERNS = [
@@ -416,25 +481,115 @@ class SpecificationMismatchDetector:
 
     # v2.1: Words excluded from key phrase extraction — generic/vague terms
     # that don't carry specific meaning
-    _PHRASE_STOP_WORDS = frozenset({
-        # Standard stop words
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-        "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
-        "has", "have", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "can", "that", "this", "it", "its", "my",
-        "our", "your", "their", "all", "each", "every", "any", "some", "no",
-        "not", "so", "as", "if", "when", "than", "then", "also", "just",
-        "about", "up", "out", "into", "over", "after", "before", "between",
-        # Request-style verbs (user phrasing, not domain concepts)
-        "need", "want", "help", "like", "wish", "make", "please",
-        # Generic quality modifiers
-        "simple", "basic", "good", "best", "easy", "quick", "fast",
-        "better", "complete", "full", "proper", "right", "nice",
-        # Generic tech nouns (too common to be specific)
-        "feature", "system", "tool", "service", "application", "platform",
-        "thing", "stuff", "part", "function", "ability", "capability",
-        "supports", "feature", "functionality", "ability",
-    })
+    _PHRASE_STOP_WORDS = frozenset(
+        {
+            # Standard stop words
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "has",
+            "have",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "that",
+            "this",
+            "it",
+            "its",
+            "my",
+            "our",
+            "your",
+            "their",
+            "all",
+            "each",
+            "every",
+            "any",
+            "some",
+            "no",
+            "not",
+            "so",
+            "as",
+            "if",
+            "when",
+            "than",
+            "then",
+            "also",
+            "just",
+            "about",
+            "up",
+            "out",
+            "into",
+            "over",
+            "after",
+            "before",
+            "between",
+            # Request-style verbs (user phrasing, not domain concepts)
+            "need",
+            "want",
+            "help",
+            "like",
+            "wish",
+            "make",
+            "please",
+            # Generic quality modifiers
+            "simple",
+            "basic",
+            "good",
+            "best",
+            "easy",
+            "quick",
+            "fast",
+            "better",
+            "complete",
+            "full",
+            "proper",
+            "right",
+            "nice",
+            # Generic tech nouns (too common to be specific)
+            "feature",
+            "system",
+            "tool",
+            "service",
+            "application",
+            "platform",
+            "thing",
+            "stuff",
+            "part",
+            "function",
+            "ability",
+            "capability",
+            "supports",
+            "feature",
+            "functionality",
+            "ability",
+        }
+    )
 
     def _extract_key_phrases(self, text: str) -> list[str]:
         """
@@ -444,10 +599,9 @@ class SpecificationMismatchDetector:
         form key phrases. These capture specific concepts like "email verification",
         "schema validation", "human agents" that individual word matching misses.
         """
-        words = re.findall(r'[a-z][a-z\'-]+', text.lower())
+        words = re.findall(r"[a-z][a-z\'-]+", text.lower())
         content_words = [
-            (i, w) for i, w in enumerate(words)
-            if len(w) > 3 and w not in self._PHRASE_STOP_WORDS
+            (i, w) for i, w in enumerate(words) if len(w) > 3 and w not in self._PHRASE_STOP_WORDS
         ]
 
         phrases = []
@@ -479,7 +633,7 @@ class SpecificationMismatchDetector:
             return False, [], 0.0
 
         spec_lower = spec_text.lower()
-        spec_words = set(re.findall(r'[a-z]+', spec_lower))
+        spec_words = set(re.findall(r"[a-z]+", spec_lower))
         spec_stems = {self._stem(w) for w in spec_words if len(w) >= 3}
 
         missing = []
@@ -487,14 +641,14 @@ class SpecificationMismatchDetector:
             w1, w2 = phrase.split()
             # v2.1: Both words must be absent for the phrase to be "missing"
             w1_found = (
-                w1 in spec_lower or
-                self._stem(w1) in spec_stems or
-                any(syn in spec_lower for syn in self._expand_with_synonyms(w1))
+                w1 in spec_lower
+                or self._stem(w1) in spec_stems
+                or any(syn in spec_lower for syn in self._expand_with_synonyms(w1))
             )
             w2_found = (
-                w2 in spec_lower or
-                self._stem(w2) in spec_stems or
-                any(syn in spec_lower for syn in self._expand_with_synonyms(w2))
+                w2 in spec_lower
+                or self._stem(w2) in spec_stems
+                or any(syn in spec_lower for syn in self._expand_with_synonyms(w2))
             )
             if not w1_found and not w2_found:
                 missing.append(phrase)
@@ -517,24 +671,85 @@ class SpecificationMismatchDetector:
         they use completely different prose.
         """
         # snake_case identifiers
-        snake_ids = set(re.findall(r'\b[a-z_][a-z0-9_]{4,}\b', text.lower()))
+        snake_ids = set(re.findall(r"\b[a-z_][a-z0-9_]{4,}\b", text.lower()))
         # CamelCase identifiers
-        camel_ids = set(re.findall(r'\b[A-Z][a-zA-Z0-9]{3,}[a-z][A-Z][a-zA-Z0-9]+\b', text))
+        camel_ids = set(re.findall(r"\b[A-Z][a-zA-Z0-9]{3,}[a-z][A-Z][a-zA-Z0-9]+\b", text))
         # Backtick-quoted identifiers (`function_name`)
-        backtick_ids = set(re.findall(r'`([a-zA-Z_][a-zA-Z0-9_]+)`', text))
+        backtick_ids = set(re.findall(r"`([a-zA-Z_][a-zA-Z0-9_]+)`", text))
         # File paths and module references (foo.bar.baz)
-        dotted_ids = set(re.findall(r'\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){1,3}\b', text.lower()))
+        dotted_ids = set(re.findall(r"\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){1,3}\b", text.lower()))
         # Filter common English words from snake_ids
         common = {
-            'should', 'would', 'could', 'about', 'after', 'their', 'there', 'these',
-            'those', 'where', 'which', 'while', 'first', 'other', 'every', 'before',
-            'into', 'each', 'most', 'such', 'than', 'then', 'them', 'they', 'this',
-            'that', 'with', 'when', 'will', 'have', 'been', 'being', 'were', 'from',
-            'because', 'between', 'through', 'under', 'over', 'against', 'during',
-            'without', 'within', 'across', 'around', 'above', 'below', 'beyond',
-            'task', 'tasks', 'user', 'system', 'agent', 'agents', 'action', 'actions',
-            'method', 'methods', 'result', 'results', 'output', 'outputs', 'input',
-            'inputs', 'value', 'values', 'function', 'functions', 'feature', 'features',
+            "should",
+            "would",
+            "could",
+            "about",
+            "after",
+            "their",
+            "there",
+            "these",
+            "those",
+            "where",
+            "which",
+            "while",
+            "first",
+            "other",
+            "every",
+            "before",
+            "into",
+            "each",
+            "most",
+            "such",
+            "than",
+            "then",
+            "them",
+            "they",
+            "this",
+            "that",
+            "with",
+            "when",
+            "will",
+            "have",
+            "been",
+            "being",
+            "were",
+            "from",
+            "because",
+            "between",
+            "through",
+            "under",
+            "over",
+            "against",
+            "during",
+            "without",
+            "within",
+            "across",
+            "around",
+            "above",
+            "below",
+            "beyond",
+            "task",
+            "tasks",
+            "user",
+            "system",
+            "agent",
+            "agents",
+            "action",
+            "actions",
+            "method",
+            "methods",
+            "result",
+            "results",
+            "output",
+            "outputs",
+            "input",
+            "inputs",
+            "value",
+            "values",
+            "function",
+            "functions",
+            "feature",
+            "features",
         }
         return (snake_ids - common) | camel_ids | backtick_ids | dotted_ids
 
@@ -581,7 +796,9 @@ class SpecificationMismatchDetector:
         kw_coverage, kw_missing = self._compute_coverage(requirements, spec_text)
 
         try:
-            from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+            from pisama_detectors.detection.shared_embedder import (
+                get_shared_embedder as get_embedder,
+            )
 
             embedder = get_embedder()
             if not embedder:
@@ -590,15 +807,14 @@ class SpecificationMismatchDetector:
             # v1.9: Split spec into sentences for fine-grained comparison.
             # Comparing a short requirement against a long passage dilutes
             # the embedding and systematically underestimates similarity.
-            spec_sentences = re.split(r'(?<!\d)[.!?]+\s+|\n+|(?:,\s*\(\d+\))', spec_text)
+            spec_sentences = re.split(r"(?<!\d)[.!?]+\s+|\n+|(?:,\s*\(\d+\))", spec_text)
             spec_sentences = [s.strip() for s in spec_sentences if len(s.strip()) > 10]
             if not spec_sentences:
                 spec_sentences = [spec_text[:8000]]
 
             # Embed all spec sentences
             sentence_embeddings = [
-                embedder.encode(sent[:2000], is_query=False)
-                for sent in spec_sentences
+                embedder.encode(sent[:2000], is_query=False) for sent in spec_sentences
             ]
 
             covered = 0
@@ -607,10 +823,7 @@ class SpecificationMismatchDetector:
             for req in requirements:
                 req_embedding = embedder.encode(req, is_query=True)
                 # v1.9: Max similarity across all spec sentences
-                best_sim = max(
-                    embedder.similarity(req_embedding, se)
-                    for se in sentence_embeddings
-                )
+                best_sim = max(embedder.similarity(req_embedding, se) for se in sentence_embeddings)
                 if best_sim >= threshold:
                     covered += 1
                 else:
@@ -648,7 +861,9 @@ class SpecificationMismatchDetector:
         if not user_intent or not task_specification:
             return 0.0
         try:
-            from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+            from pisama_detectors.detection.shared_embedder import (
+                get_shared_embedder as get_embedder,
+            )
 
             embedder = get_embedder()
             if not embedder:
@@ -668,8 +883,8 @@ class SpecificationMismatchDetector:
     # base of 0.45 with 0.35 range keeps flagged confidences in [0.45, 0.80]
     # — above any threshold ≤ 0.40 and below the 0.85 ceiling where the
     # legacy rule path already dominates.
-    _DIVERGENCE_GATE = 0.28       # Only flag when whole-text divergence exceeds this
-    _DIVERGENCE_NORM_LO = 0.25    # Normalisation window for blended confidence
+    _DIVERGENCE_GATE = 0.28  # Only flag when whole-text divergence exceeds this
+    _DIVERGENCE_NORM_LO = 0.25  # Normalisation window for blended confidence
     _DIVERGENCE_NORM_HI = 0.60
 
     def _blend_divergence_confidence(self, divergence: float, coverage: float) -> float:
@@ -762,7 +977,7 @@ class SpecificationMismatchDetector:
             tolerance = int(target * self.NUMERIC_TOLERANCE)
             return abs(words - target) <= tolerance
         elif constraint_type == "line_count":
-            lines = len(output.strip().split('\n'))
+            lines = len(output.strip().split("\n"))
             tolerance = max(1, int(target * self.NUMERIC_TOLERANCE))
             return abs(lines - target) <= tolerance
         # For other types, be lenient
@@ -771,38 +986,51 @@ class SpecificationMismatchDetector:
     def _is_code_task(self, intent: str) -> bool:
         """v1.1: Check if the task is code-related."""
         code_keywords = [
-            r'\bcode\b', r'\bfunction\b', r'\bprogram\b', r'\bscript\b',
-            r'\bimplement\b', r'\bwrite\s+(?:a\s+)?(?:python|javascript|java|sql)',
-            r'\bcreate\s+(?:a\s+)?(?:function|class|method)',
+            r"\bcode\b",
+            r"\bfunction\b",
+            r"\bprogram\b",
+            r"\bscript\b",
+            r"\bimplement\b",
+            r"\bwrite\s+(?:a\s+)?(?:python|javascript|java|sql)",
+            r"\bcreate\s+(?:a\s+)?(?:function|class|method)",
         ]
         intent_lower = intent.lower()
         return any(re.search(kw, intent_lower) for kw in code_keywords)
 
     def _detect_ambiguities(self, text: str) -> list[str]:
         ambiguities = []
-        
+
         vague_patterns = [
-            (r'\b(some|several|many|few|various)\s+\w+', "vague quantity"),
-            (r'\b(soon|later|eventually|sometime)\b', "vague timing"),
-            (r'\b(good|better|best|nice|appropriate)\b', "subjective quality"),
-            (r'\b(etc|and so on|and more|among others)\b', "incomplete list"),
-            (r'\b(it|this|that)\b(?!\s+(?:is|are|was|will))', "ambiguous reference"),
-            (r'\b(usually|typically|generally|normally)\b', "uncertain qualifier"),
-            (r'\b(might|may|could|possibly|perhaps)\b', "uncertain action"),
-            (r'\b(simple|easy|quick|basic)\b', "undefined complexity"),
+            (r"\b(some|several|many|few|various)\s+\w+", "vague quantity"),
+            (r"\b(soon|later|eventually|sometime)\b", "vague timing"),
+            (r"\b(good|better|best|nice|appropriate)\b", "subjective quality"),
+            (r"\b(etc|and so on|and more|among others)\b", "incomplete list"),
+            (r"\b(it|this|that)\b(?!\s+(?:is|are|was|will))", "ambiguous reference"),
+            (r"\b(usually|typically|generally|normally)\b", "uncertain qualifier"),
+            (r"\b(might|may|could|possibly|perhaps)\b", "uncertain action"),
+            (r"\b(simple|easy|quick|basic)\b", "undefined complexity"),
         ]
-        
+
         for pattern, issue_type in vague_patterns:
             if re.search(pattern, text.lower()):
                 ambiguities.append(issue_type)
-        
+
         return ambiguities
 
     # v2.2: Expansion phrases that indicate scope was explicitly expanded
     EXPANSION_PHRASES = [
-        "also added", "additionally", "in addition to", "as a bonus",
-        "plus", "on top of", "beyond what was asked", "extra feature",
-        "i also", "we also", "also included", "also implemented",
+        "also added",
+        "additionally",
+        "in addition to",
+        "as a bonus",
+        "plus",
+        "on top of",
+        "beyond what was asked",
+        "extra feature",
+        "i also",
+        "we also",
+        "also included",
+        "also implemented",
     ]
 
     def _count_distinct_requirements(self, text: str) -> int:
@@ -810,25 +1038,29 @@ class SpecificationMismatchDetector:
         and 'and' conjunctions as delimiters."""
         count = 0
         # Count bullet points and numbered items
-        bullet_count = len(re.findall(r'(?:^|\n)\s*(?:\d+[\.\/\)]\s|[-*\u2022]\s)', text))
+        bullet_count = len(re.findall(r"(?:^|\n)\s*(?:\d+[\.\/\)]\s|[-*\u2022]\s)", text))
         if bullet_count > 0:
             count = bullet_count
         else:
             # Count sentences that look like requirements (imperative or "must/should")
-            sentences = re.split(r'[.!?]\s+|\n+', text)
+            sentences = re.split(r"[.!?]\s+|\n+", text)
             req_sentences = [
-                s for s in sentences
-                if len(s.strip()) > 10 and re.search(
-                    r'\b(?:must|should|need|create|build|implement|add|set up|configure|ensure|include)\b',
-                    s, re.IGNORECASE,
+                s
+                for s in sentences
+                if len(s.strip()) > 10
+                and re.search(
+                    r"\b(?:must|should|need|create|build|implement|add|set up|configure|ensure|include)\b",
+                    s,
+                    re.IGNORECASE,
                 )
             ]
             count = len(req_sentences)
 
         # Count "and" conjunctions joining distinct actions
         and_actions = re.findall(
-            r'\b(?:and|,)\s+(?:also\s+)?(?:create|build|implement|add|set up|configure|ensure|include)\b',
-            text, re.IGNORECASE,
+            r"\b(?:and|,)\s+(?:also\s+)?(?:create|build|implement|add|set up|configure|ensure|include)\b",
+            text,
+            re.IGNORECASE,
         )
         count += len(and_actions)
 
@@ -843,10 +1075,7 @@ class SpecificationMismatchDetector:
         """
         # Check for explicit expansion phrases
         spec_lower = task_specification.lower()
-        expansion_found = [
-            phrase for phrase in self.EXPANSION_PHRASES
-            if phrase in spec_lower
-        ]
+        expansion_found = [phrase for phrase in self.EXPANSION_PHRASES if phrase in spec_lower]
 
         # Count requirements in both
         intent_reqs = self._count_distinct_requirements(user_intent)
@@ -859,7 +1088,7 @@ class SpecificationMismatchDetector:
         if spec_reqs >= intent_reqs * 2 and spec_reqs >= 4:
             return (
                 f"scope_expansion: spec has {spec_reqs} requirements vs "
-                f"{intent_reqs} in intent ({spec_reqs/intent_reqs:.1f}x expansion)"
+                f"{intent_reqs} in intent ({spec_reqs / intent_reqs:.1f}x expansion)"
             )
 
         # If explicit expansion phrases found AND spec has more requirements
@@ -941,11 +1170,27 @@ class SpecificationMismatchDetector:
         # v2.1: Lowered guard from <=4 to <=3 so 4-char words like "runs"→"run"
         if len(word) <= 3:
             return word
-        for suffix in ("ation", "ting", "ing", "ies", "ment", "ness",
-                        "able", "ible", "ive", "ous", "ful",
-                        "ed", "er", "es", "ly", "al", "s"):
+        for suffix in (
+            "ation",
+            "ting",
+            "ing",
+            "ies",
+            "ment",
+            "ness",
+            "able",
+            "ible",
+            "ive",
+            "ous",
+            "ful",
+            "ed",
+            "er",
+            "es",
+            "ly",
+            "al",
+            "s",
+        ):
             if word.endswith(suffix) and len(word) - len(suffix) >= 3:
-                return word[:-len(suffix)]
+                return word[: -len(suffix)]
         return word
 
     def _expand_with_synonyms(self, word: str) -> set[str]:
@@ -973,7 +1218,7 @@ class SpecificationMismatchDetector:
         spec_lower = spec_text.lower()
         # v1.3/v2.1: Pre-compute stemmed spec words for stem-based matching.
         # v2.1: Include 3-char words (was >3) so stems like "run"→"run" match
-        spec_words = set(re.findall(r'[a-z]+', spec_lower))
+        spec_words = set(re.findall(r"[a-z]+", spec_lower))
         spec_stems = {self._stem(w) for w in spec_words if len(w) >= 3}
         covered = 0
         missing = []
@@ -1009,19 +1254,19 @@ class SpecificationMismatchDetector:
     # v2.4: Expanded for ChatDev framework outputs — section headers, timestamps,
     #   file paths, and log-level prefixes cause false requirement mismatches.
     METADATA_PATTERNS = [
-        r'\[Preprocessing\].*?\n',
-        r'##\s+(?:Summary|Modified Files|Thinking|Code)\b.*?\n',  # ChatDev section headers
-        r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}.*?\n',  # ISO timestamps (T or space separator)
-        r'(?:config|src|lib)/\S+\.(?:py|js|ts|json)\b.*?\n',  # Source file paths
-        r'\.py:\d+.*?\n',  # Python file references
-        r'(?:INFO|DEBUG|WARNING|ERROR)\s+\S+.*?\n',  # Log level prefixes with logger name
+        r"\[Preprocessing\].*?\n",
+        r"##\s+(?:Summary|Modified Files|Thinking|Code)\b.*?\n",  # ChatDev section headers
+        r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}.*?\n",  # ISO timestamps (T or space separator)
+        r"(?:config|src|lib)/\S+\.(?:py|js|ts|json)\b.*?\n",  # Source file paths
+        r"\.py:\d+.*?\n",  # Python file references
+        r"(?:INFO|DEBUG|WARNING|ERROR)\s+\S+.*?\n",  # Log level prefixes with logger name
     ]
 
     @staticmethod
     def _strip_metadata(text: str) -> str:
         """v2.3: Strip framework metadata that inflates ambiguity scores."""
         for pattern in SpecificationMismatchDetector.METADATA_PATTERNS:
-            text = re.sub(pattern, '', text)
+            text = re.sub(pattern, "", text)
         return text.strip()
 
     def detect(
@@ -1120,10 +1365,12 @@ class SpecificationMismatchDetector:
             # TypeScript is superset of JavaScript - don't flag
             # Other language mismatches should be flagged
             if output_lang and output_lang != requested_lang:
-                if not (requested_lang == 'javascript' and output_lang == 'typescript'):
+                if not (requested_lang == "javascript" and output_lang == "typescript"):
                     detected = True
                     mismatch_type = MismatchType.MISSING_REQUIREMENT
-                    missing.append(f"language mismatch: requested {requested_lang}, got {output_lang}")
+                    missing.append(
+                        f"language mismatch: requested {requested_lang}, got {output_lang}"
+                    )
 
         # v1.1: If numeric constraint is met, don't flag based on coverage/ambiguity
         # (the primary requirement was satisfied)
@@ -1142,11 +1389,15 @@ class SpecificationMismatchDetector:
         identifier_overlap = self._identifier_overlap(user_intent, task_specification)
 
         skip_coverage_check = skip_coverage_check_qa or (
-            numeric_constraint_met or
-            (is_reformulation and coverage >= 0.4) or  # v1.5: reformulation must still show some coverage
-            (has_bonus and coverage >= 0.65) or  # Tightened: extras only skip at high coverage
-            (has_benign_expansion and coverage >= 0.65) or  # Tightened: expansion only skip at high coverage
-            (identifier_overlap >= 0.30)  # v2.6: 30%+ shared code identifiers = same task
+            numeric_constraint_met
+            or (
+                is_reformulation and coverage >= 0.4
+            )  # v1.5: reformulation must still show some coverage
+            or (has_bonus and coverage >= 0.65)  # Tightened: extras only skip at high coverage
+            or (
+                has_benign_expansion and coverage >= 0.65
+            )  # Tightened: expansion only skip at high coverage
+            or (identifier_overlap >= 0.30)  # v2.6: 30%+ shared code identifiers = same task
         )
         if not skip_coverage_check:
             if coverage < self.coverage_threshold and not detected:
@@ -1298,11 +1549,11 @@ class SpecificationMismatchDetector:
         trace: dict,
     ) -> list[SpecificationMismatchResult]:
         results = []
-        
+
         root_input = trace.get("input", {}).get("user_request", "")
         if not root_input:
             return results
-        
+
         spans = trace.get("spans", [])
         for span in spans:
             task_spec = span.get("input", {}).get("task", "")
@@ -1313,5 +1564,5 @@ class SpecificationMismatchDetector:
                 )
                 if result.detected:
                     results.append(result)
-        
+
         return results

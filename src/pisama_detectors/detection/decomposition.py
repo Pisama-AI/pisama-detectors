@@ -23,10 +23,10 @@ Version History:
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -36,48 +36,105 @@ DETECTOR_NAME = "TaskDecompositionDetector"
 
 # v1.1: Words that indicate vague/non-actionable steps
 VAGUE_INDICATORS = [
-    "etc", "various", "miscellaneous", "general", "overall",
-    "appropriate", "as needed", "if necessary", "possibly",
-    "might", "maybe", "could potentially", "consider",
-    "high-level", "broadly", "generally speaking",
-    "explore options", "look into", "think about",
-    "strategy", "approach", "framework",  # too abstract without specifics
+    "etc",
+    "various",
+    "miscellaneous",
+    "general",
+    "overall",
+    "appropriate",
+    "as needed",
+    "if necessary",
+    "possibly",
+    "might",
+    "maybe",
+    "could potentially",
+    "consider",
+    "high-level",
+    "broadly",
+    "generally speaking",
+    "explore options",
+    "look into",
+    "think about",
+    "strategy",
+    "approach",
+    "framework",  # too abstract without specifics
 ]
 
 # v1.1: Words that indicate a step is too complex/broad
 COMPLEXITY_INDICATORS = [
-    "entire", "complete", "full", "all", "whole",
-    "comprehensive", "end-to-end", "everything",
-    "system", "platform", "infrastructure", "architecture",
-    "refactor", "redesign", "rebuild", "rewrite",
-    "migrate", "transform", "overhaul",
+    "entire",
+    "complete",
+    "full",
+    "all",
+    "whole",
+    "comprehensive",
+    "end-to-end",
+    "everything",
+    "system",
+    "platform",
+    "infrastructure",
+    "architecture",
+    "refactor",
+    "redesign",
+    "rebuild",
+    "rewrite",
+    "migrate",
+    "transform",
+    "overhaul",
 ]
 
 # v1.1: Words that indicate a complex task requiring more decomposition
 COMPLEX_TASK_INDICATORS = [
-    "system", "platform", "application", "service",
-    "authentication", "authorization", "database",
-    "migration", "refactor", "integration",
-    "infrastructure", "deployment", "pipeline",
+    "system",
+    "platform",
+    "application",
+    "service",
+    "authentication",
+    "authorization",
+    "database",
+    "migration",
+    "refactor",
+    "integration",
+    "infrastructure",
+    "deployment",
+    "pipeline",
 ]
 
 # v1.2: Words that indicate a simple task that doesn't require decomposition
 SIMPLE_TASK_INDICATORS = [
-    "simple", "basic", "quick", "small", "minor",
-    "single", "one", "just", "only",
-    "add", "fix", "update", "change", "tweak",
-    "button", "field", "input", "label", "text",
-    "feature", "function", "method", "endpoint",
+    "simple",
+    "basic",
+    "quick",
+    "small",
+    "minor",
+    "single",
+    "one",
+    "just",
+    "only",
+    "add",
+    "fix",
+    "update",
+    "change",
+    "tweak",
+    "button",
+    "field",
+    "input",
+    "label",
+    "text",
+    "feature",
+    "function",
+    "method",
+    "endpoint",
 ]
 
 # v1.2: Patterns indicating direct implementation (not decomposition)
 DIRECT_IMPLEMENTATION_PATTERNS = [
-    r'\b(?:dive\s+right\s+in|straightforward|directly|right\s+away)\b',
-    r'\b(?:simple|easy|quick)\s+(?:approach|implementation|solution)\b',
-    r'\b(?:here\'s|here\s+is)\s+(?:the|my|a)\s+(?:code|implementation|solution)\b',
-    r'\b(?:i\'ll|let\s+me)\s+(?:just|simply|directly)\b',
-    r'\b(?:no\s+need\s+(?:to|for)|without\s+(?:the\s+)?need)\b',
-    r'\bstraightforward\s+approach\b',
+    r"\b(?:dive\s+right\s+in|straightforward|directly|right\s+away)\b",
+    r"\b(?:simple|easy|quick)\s+(?:approach|implementation|solution)\b",
+    r"\b(?:here\'s|here\s+is)\s+(?:the|my|a)\s+(?:code|implementation|solution)\b",
+    r"\b(?:i\'ll|let\s+me)\s+(?:just|simply|directly)\b",
+    r"\b(?:no\s+need\s+(?:to|for)|without\s+(?:the\s+)?need)\b",
+    r"\bstraightforward\s+approach\b",
 ]
 
 
@@ -129,11 +186,11 @@ class DecompositionResult:
 class TaskDecompositionDetector:
     """
     Detects F2: Poor Task Decomposition - subtasks ill-defined or impossible.
-    
+
     Analyzes task breakdown for logical issues, dependency problems,
     and coverage gaps.
     """
-    
+
     def __init__(
         self,
         min_subtasks: int = 2,
@@ -153,32 +210,39 @@ class TaskDecompositionDetector:
         # greedy [^\n]+ which swallows the entire line.
         patterns = [
             # Standard numbered lists: "1. xxx" or "1) xxx"
-            (r'\d+[.)]\s*', r'\d+[.)]'),
+            (r"\d+[.)]\s*", r"\d+[.)]"),
             # Bullet points: "- xxx" or "* xxx" or "• xxx"
-            (r'[-•*]\s+', r'[-•*]\s'),
+            (r"[-•*]\s+", r"[-•*]\s"),
             # Explicit step/task labels: "Step 1: xxx" or "Task: xxx"
-            (r'(?:step|task|subtask)\s*\d*[:.]\s*', r'(?:step|task|subtask)\s*\d*[:.]'),
+            (r"(?:step|task|subtask)\s*\d*[:.]\s*", r"(?:step|task|subtask)\s*\d*[:.]"),
             # Phase labels: "Phase 1: xxx" or "Phase A: xxx"
-            (r'(?:phase|part|stage)\s*[\dA-Za-z]*[:.]\s*', r'(?:phase|part|stage)\s*[\dA-Za-z]*[:.]'),
+            (
+                r"(?:phase|part|stage)\s*[\dA-Za-z]*[:.]\s*",
+                r"(?:phase|part|stage)\s*[\dA-Za-z]*[:.]",
+            ),
             # Prose phases: "first, xxx" or "then, xxx" or "finally, xxx"
-            (r'(?:first|second|third|then|next|finally|lastly)[,:]?\s+',
-             r'(?:first|second|third|then|next|finally|lastly)[,:]?\s'),
+            (
+                r"(?:first|second|third|then|next|finally|lastly)[,:]?\s+",
+                r"(?:first|second|third|then|next|finally|lastly)[,:]?\s",
+            ),
         ]
 
         items = []
         for prefix_pat, lookahead_pat in patterns:
             # Try newline-separated first (most common)
             nl_matches = re.findall(
-                r'(?:^|\n)\s*' + prefix_pat + r'([^\n]+)',
-                decomposition, re.IGNORECASE,
+                r"(?:^|\n)\s*" + prefix_pat + r"([^\n]+)",
+                decomposition,
+                re.IGNORECASE,
             )
             if len(nl_matches) >= 2:
                 items = nl_matches
                 break
             # Fallback: single-line with lookahead splitting
             sl_matches = re.findall(
-                prefix_pat + r'(.*?)(?=\s*' + lookahead_pat + r'|$)',
-                decomposition, re.IGNORECASE,
+                prefix_pat + r"(.*?)(?=\s*" + lookahead_pat + r"|$)",
+                decomposition,
+                re.IGNORECASE,
             )
             sl_matches = [m.strip() for m in sl_matches if m.strip()]
             if len(sl_matches) >= 2:
@@ -188,36 +252,47 @@ class TaskDecompositionDetector:
         # v1.1: Fallback - try to find colon-separated phrases that look like phases
         if not items:
             # Look for "xxx: yyy" patterns that might be phase descriptions
-            colon_pattern = r'(?:^|\n)\s*([A-Z][^:]+):\s*([^\n]+)'
+            colon_pattern = r"(?:^|\n)\s*([A-Z][^:]+):\s*([^\n]+)"
             colon_matches = re.findall(colon_pattern, decomposition)
             if colon_matches:
                 items = [f"{label}: {desc}" for label, desc in colon_matches]
-        
+
         for i, item in enumerate(items):
             deps = []
             dep_patterns = [
-                r'(?:after|following|requires?|depends?\s+on)\s+(?:step|task)?\s*(\d+)',
-                r'(?:once|when)\s+(?:step|task)?\s*(\d+)\s+(?:is\s+)?(?:complete|done)',
+                r"(?:after|following|requires?|depends?\s+on)\s+(?:step|task)?\s*(\d+)",
+                r"(?:once|when)\s+(?:step|task)?\s*(\d+)\s+(?:is\s+)?(?:complete|done)",
             ]
             for pattern in dep_patterns:
                 dep_matches = re.findall(pattern, item.lower())
                 deps.extend([f"task_{int(d) - 1}" for d in dep_matches if int(d) <= i])
-            
-            subtasks.append(Subtask(
-                id=f"task_{i}",
-                description=item.strip(),
-                dependencies=deps,
-            ))
-        
+
+            subtasks.append(
+                Subtask(
+                    id=f"task_{i}",
+                    description=item.strip(),
+                    dependencies=deps,
+                )
+            )
+
         return subtasks
 
     def _detect_impossible_subtasks(self, subtasks: list[Subtask]) -> list[str]:
         impossible_indicators = [
-            "impossible", "cannot", "unable", "no way", "infeasible",
-            "undefined", "unknown", "unclear", "ambiguous",
-            "without access", "no information", "missing",
+            "impossible",
+            "cannot",
+            "unable",
+            "no way",
+            "infeasible",
+            "undefined",
+            "unknown",
+            "unclear",
+            "ambiguous",
+            "without access",
+            "no information",
+            "missing",
         ]
-        
+
         problematic = []
         for subtask in subtasks:
             desc_lower = subtask.description.lower()
@@ -225,46 +300,59 @@ class TaskDecompositionDetector:
                 if indicator in desc_lower:
                     problematic.append(subtask.id)
                     break
-        
+
         return problematic
 
     def _detect_circular_dependencies(self, subtasks: list[Subtask]) -> list[tuple[str, str]]:
         circular = []
-        
+
         dep_map = {st.id: set(st.dependencies) for st in subtasks}
-        
+
         for task_id, deps in dep_map.items():
             for dep in deps:
                 if dep in dep_map and task_id in dep_map[dep]:
                     if (dep, task_id) not in circular:
                         circular.append((task_id, dep))
-        
+
         return circular
 
     def _detect_duplicate_work(self, subtasks: list[Subtask]) -> list[tuple[str, str]]:
         duplicates = []
-        
+
         for i, st1 in enumerate(subtasks):
             words1 = set(st1.description.lower().split())
-            for j, st2 in enumerate(subtasks[i+1:], i+1):
+            for j, st2 in enumerate(subtasks[i + 1 :], i + 1):
                 words2 = set(st2.description.lower().split())
                 if not words1 or not words2:
                     continue
                 overlap = len(words1 & words2) / min(len(words1), len(words2))
                 if overlap > 0.7:
                     duplicates.append((st1.id, st2.id))
-        
+
         return duplicates
 
     # v1.9: Common articles/prepositions that shouldn't be treated as nouns
-    _DEP_STOP_WORDS = frozenset({"a", "an", "the", "it", "its", "to", "in", "on", "at", "by", "of", "for"})
+    _DEP_STOP_WORDS = frozenset(
+        {"a", "an", "the", "it", "its", "to", "in", "on", "at", "by", "of", "for"}
+    )
 
     # v2.2 (Sprint 8 LL): Porter-lite suffixes for dep-noun stemming — shares
     # the `strip_suffix` helper in `text_utils.py`. Longer suffixes first so
     # "tion" is tried before "ion".
     _DEP_STEM_SUFFIXES = (
-        "ation", "ication", "ization", "tion", "sion", "ment", "ness",
-        "ing", "ed", "es", "er", "ly", "al",
+        "ation",
+        "ication",
+        "ization",
+        "tion",
+        "sion",
+        "ment",
+        "ness",
+        "ing",
+        "ed",
+        "es",
+        "er",
+        "ly",
+        "al",
     )
 
     @classmethod
@@ -274,7 +362,12 @@ class TaskDecompositionDetector:
         Collapses "authentication"/"authenticate" → "authentic", "storage"/"stored" → "stor",
         so "create X" output dep is satisfied by "implement X authentication" input.
         """
-        from pisama_detectors.detection.text_utils import strip_ses_plural, strip_plural_s, strip_suffix
+        from pisama_detectors.detection.text_utils import (
+            strip_plural_s,
+            strip_ses_plural,
+            strip_suffix,
+        )
+
         word = strip_ses_plural(word, min_length=6)
         word = strip_plural_s(word, min_length=5)
         return strip_suffix(word, cls._DEP_STEM_SUFFIXES, min_remainder=4)
@@ -307,7 +400,8 @@ class TaskDecompositionDetector:
                         noun = words[idx + 1].strip(".,;:()[]{}\"'")
                         if noun not in self._DEP_STOP_WORDS and len(noun) > 1:
                             outputs[self._dep_stem(noun)] = (
-                                st.id, id_to_idx.get(st.id, -1),
+                                st.id,
+                                id_to_idx.get(st.id, -1),
                             )
 
         for st in subtasks:
@@ -344,20 +438,73 @@ class TaskDecompositionDetector:
 
             # Check for lack of specific action verbs
             action_verbs = [
-                "create", "build", "implement", "write", "configure",
-                "set up", "install", "deploy", "test", "validate",
-                "define", "design", "develop", "add", "remove",
-                "update", "modify", "fix", "integrate", "connect",
-                "display", "show", "render", "format", "parse",  # v1.1: UI/data actions
-                "fetch", "load", "save", "store", "delete",  # v1.1: data operations
-                "call", "invoke", "execute", "run", "process",  # v1.1: execution actions
-                "handle", "index", "containerize", "evaluate",  # v1.3: from error analysis
-                "filter", "send", "register", "check", "apply",
-                "generate", "schedule", "compress", "upload",
-                "scan", "trigger", "track", "calculate", "archive",
-                "stream", "provide", "return", "verify", "migrate",
-                "optimize", "monitor", "extract", "transform",
-                "publish", "subscribe", "query", "export", "import",
+                "create",
+                "build",
+                "implement",
+                "write",
+                "configure",
+                "set up",
+                "install",
+                "deploy",
+                "test",
+                "validate",
+                "define",
+                "design",
+                "develop",
+                "add",
+                "remove",
+                "update",
+                "modify",
+                "fix",
+                "integrate",
+                "connect",
+                "display",
+                "show",
+                "render",
+                "format",
+                "parse",  # v1.1: UI/data actions
+                "fetch",
+                "load",
+                "save",
+                "store",
+                "delete",  # v1.1: data operations
+                "call",
+                "invoke",
+                "execute",
+                "run",
+                "process",  # v1.1: execution actions
+                "handle",
+                "index",
+                "containerize",
+                "evaluate",  # v1.3: from error analysis
+                "filter",
+                "send",
+                "register",
+                "check",
+                "apply",
+                "generate",
+                "schedule",
+                "compress",
+                "upload",
+                "scan",
+                "trigger",
+                "track",
+                "calculate",
+                "archive",
+                "stream",
+                "provide",
+                "return",
+                "verify",
+                "migrate",
+                "optimize",
+                "monitor",
+                "extract",
+                "transform",
+                "publish",
+                "subscribe",
+                "query",
+                "export",
+                "import",
             ]
             has_action = any(verb in desc_lower for verb in action_verbs)
 
@@ -426,37 +573,106 @@ class TaskDecompositionDetector:
     # v1.9: Removed overly broad pairs (create→process, load→transform) that caused FPs
     # on legitimate orderings like "process payment" before "create order record".
     _ORDERING_DEPS = [
-        ({"build", "compile", "package"},
-         {"deploy", "release", "ship", "publish"}),
-        ({"validate", "verify", "check", "lint", "test"},
-         {"deploy", "release", "ship", "publish", "merge"}),
-        ({"create account", "register", "sign up", "create user"},
-         {"send email", "send verification", "verification email", "welcome email"}),
-        ({"test", "run tests", "unit test", "integration test"},
-         {"deploy", "release", "ship", "publish"}),
-        ({"design", "plan", "architect", "define schema"},
-         {"implement", "build", "code", "develop"}),
+        ({"build", "compile", "package"}, {"deploy", "release", "ship", "publish"}),
+        (
+            {"validate", "verify", "check", "lint", "test"},
+            {"deploy", "release", "ship", "publish", "merge"},
+        ),
+        (
+            {"create account", "register", "sign up", "create user"},
+            {"send email", "send verification", "verification email", "welcome email"},
+        ),
+        (
+            {"test", "run tests", "unit test", "integration test"},
+            {"deploy", "release", "ship", "publish"},
+        ),
+        (
+            {"design", "plan", "architect", "define schema"},
+            {"implement", "build", "code", "develop"},
+        ),
     ]
 
     # v1.7: Words/phrases universally relevant to any software task
     _GENERIC_DEV_WORDS = {
         # Verbs
-        "create", "setup", "configure", "deploy", "test", "build", "implement",
-        "update", "migrate", "integrate", "monitor", "validate", "write", "design",
-        "plan", "review", "define", "handle", "process", "refactor", "optimize",
-        "document", "install", "check", "verify", "authenticate", "authorize",
-        "debug", "fix", "add", "remove", "parse", "send", "receive", "fetch",
-        "store", "query", "run", "execute", "package", "lint", "compile",
+        "create",
+        "setup",
+        "configure",
+        "deploy",
+        "test",
+        "build",
+        "implement",
+        "update",
+        "migrate",
+        "integrate",
+        "monitor",
+        "validate",
+        "write",
+        "design",
+        "plan",
+        "review",
+        "define",
+        "handle",
+        "process",
+        "refactor",
+        "optimize",
+        "document",
+        "install",
+        "check",
+        "verify",
+        "authenticate",
+        "authorize",
+        "debug",
+        "fix",
+        "add",
+        "remove",
+        "parse",
+        "send",
+        "receive",
+        "fetch",
+        "store",
+        "query",
+        "run",
+        "execute",
+        "package",
+        "lint",
+        "compile",
         # Nouns (common across software tasks)
-        "tests", "testing", "schema", "database", "endpoint", "endpoints",
-        "form", "input", "validation", "security", "logging", "error",
-        "documentation", "middleware", "server", "client", "model", "models",
-        "controller", "service", "module", "config", "configuration",
-        "pipeline", "workflow", "api", "data", "table", "tables",
+        "tests",
+        "testing",
+        "schema",
+        "database",
+        "endpoint",
+        "endpoints",
+        "form",
+        "input",
+        "validation",
+        "security",
+        "logging",
+        "error",
+        "documentation",
+        "middleware",
+        "server",
+        "client",
+        "model",
+        "models",
+        "controller",
+        "service",
+        "module",
+        "config",
+        "configuration",
+        "pipeline",
+        "workflow",
+        "api",
+        "data",
+        "table",
+        "tables",
     }
 
     def _detect_irrelevant_steps(
-        self, subtasks: list[Subtask], task_description: str,
+        self,
+        subtasks: list[Subtask],
+        task_description: str,
     ) -> list[str]:
         """v1.7: Detect steps whose content is unrelated to the task description.
 
@@ -464,9 +680,7 @@ class TaskDecompositionDetector:
         for a JWT migration task). Requires >=2 irrelevant steps making up >=40% of
         all steps to avoid flagging legitimate auxiliary steps.
         """
-        task_words = set(
-            w for w in re.findall(r'[a-z]+', task_description.lower()) if len(w) > 3
-        )
+        task_words = set(w for w in re.findall(r"[a-z]+", task_description.lower()) if len(w) > 3)
         if not task_words:
             return []
 
@@ -475,14 +689,12 @@ class TaskDecompositionDetector:
         task_bigrams = set()
         twords = task_lower.split()
         for i in range(len(twords) - 1):
-            task_bigrams.add(f"{twords[i]} {twords[i+1]}")
+            task_bigrams.add(f"{twords[i]} {twords[i + 1]}")
 
         candidates = []
         for subtask in subtasks:
             desc_lower = subtask.description.lower()
-            step_words = set(
-                w for w in re.findall(r'[a-z]+', desc_lower) if len(w) > 3
-            )
+            step_words = set(w for w in re.findall(r"[a-z]+", desc_lower) if len(w) > 3)
             if not step_words:
                 continue
             # Word overlap between step and task
@@ -508,7 +720,7 @@ class TaskDecompositionDetector:
         """v1.9: Word-boundary aware keyword matching (prevents 'use' matching 'users')."""
         if " " in keyword:
             return keyword in text
-        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
+        return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text))
 
     def _detect_ordering_issues(self, subtasks: list[Subtask]) -> list[str]:
         """v1.7/v1.9: Detect steps in wrong logical order based on common dependency pairs.
@@ -546,30 +758,82 @@ class TaskDecompositionDetector:
 
     # v1.8: Stop words for missing requirement detection — generic task verbs
     # and nouns that don't represent domain-specific requirements.
-    _REQ_STOP_WORDS = frozenset({
-        "build", "create", "implement", "setup", "develop", "design",
-        "write", "deploy", "configure", "install", "update", "upgrade",
-        "using", "existing", "based", "between", "across", "current",
-        "system", "application", "feature", "service", "module", "component",
-        "project", "platform", "solution", "architecture", "infrastructure",
-        "should", "would", "could", "about", "their", "which", "where",
-    })
+    _REQ_STOP_WORDS = frozenset(
+        {
+            "build",
+            "create",
+            "implement",
+            "setup",
+            "develop",
+            "design",
+            "write",
+            "deploy",
+            "configure",
+            "install",
+            "update",
+            "upgrade",
+            "using",
+            "existing",
+            "based",
+            "between",
+            "across",
+            "current",
+            "system",
+            "application",
+            "feature",
+            "service",
+            "module",
+            "component",
+            "project",
+            "platform",
+            "solution",
+            "architecture",
+            "infrastructure",
+            "should",
+            "would",
+            "could",
+            "about",
+            "their",
+            "which",
+            "where",
+        }
+    )
 
     _REQ_STEM_SUFFIXES = (
-        "tion", "sion", "ment", "ness", "ity", "ing", "ed", "er",
-        "es", "ly", "al", "ous", "ive", "able", "ible",
+        "tion",
+        "sion",
+        "ment",
+        "ness",
+        "ity",
+        "ing",
+        "ed",
+        "er",
+        "es",
+        "ly",
+        "al",
+        "ous",
+        "ive",
+        "able",
+        "ible",
     )
 
     @staticmethod
     def _req_stem(word: str) -> str:
         # v1.9: Handle "ses" plurals (processes→process) and skip double-s words
-        from pisama_detectors.detection.text_utils import strip_ses_plural, strip_plural_s, strip_suffix
+        from pisama_detectors.detection.text_utils import (
+            strip_plural_s,
+            strip_ses_plural,
+            strip_suffix,
+        )
+
         word = strip_ses_plural(word, min_length=6)
         word = strip_plural_s(word, min_length=5)
         return strip_suffix(word, TaskDecompositionDetector._REQ_STEM_SUFFIXES)
 
     def _detect_visual_only_decomposition(
-        self, subtasks: list[Subtask], task_description: str,
+        self,
+        subtasks: list[Subtask],
+        task_description: str,
     ) -> bool:
         """v1.10: Detect when a functional task gets only visual/styling steps.
 
@@ -584,27 +848,69 @@ class TaskDecompositionDetector:
         task_lower = task_description.lower()
         # Is this a functional task?
         functional_indicators = [
-            'feature', 'functionality', 'system', 'service', 'application',
-            'implement', 'build', 'create', 'develop', 'integrate',
+            "feature",
+            "functionality",
+            "system",
+            "service",
+            "application",
+            "implement",
+            "build",
+            "create",
+            "develop",
+            "integrate",
         ]
         if not any(ind in task_lower for ind in functional_indicators):
             return False
 
         # Check if subtasks are all visual/styling
         visual_keywords = {
-            'icon', 'css', 'style', 'hover', 'color', 'font', 'layout',
-            'responsive', 'animation', 'transition', 'theme', 'design',
-            'visual', 'ui', 'frontend', 'button', 'modal', 'banner',
+            "icon",
+            "css",
+            "style",
+            "hover",
+            "color",
+            "font",
+            "layout",
+            "responsive",
+            "animation",
+            "transition",
+            "theme",
+            "design",
+            "visual",
+            "ui",
+            "frontend",
+            "button",
+            "modal",
+            "banner",
         }
         functional_keywords = {
-            'add', 'remove', 'delete', 'update', 'store', 'save', 'fetch',
-            'retrieve', 'process', 'validate', 'authenticate', 'authorize',
-            'send', 'receive', 'parse', 'compute', 'calculate', 'database',
-            'api', 'endpoint', 'persist', 'cache', 'queue',
+            "add",
+            "remove",
+            "delete",
+            "update",
+            "store",
+            "save",
+            "fetch",
+            "retrieve",
+            "process",
+            "validate",
+            "authenticate",
+            "authorize",
+            "send",
+            "receive",
+            "parse",
+            "compute",
+            "calculate",
+            "database",
+            "api",
+            "endpoint",
+            "persist",
+            "cache",
+            "queue",
         }
 
         all_step_text = " ".join(st.description.lower() for st in subtasks)
-        step_words = set(re.findall(r'[a-z]+', all_step_text))
+        step_words = set(re.findall(r"[a-z]+", all_step_text))
 
         visual_hits = len(step_words & visual_keywords)
         functional_hits = len(step_words & functional_keywords)
@@ -615,7 +921,9 @@ class TaskDecompositionDetector:
         return False
 
     def _detect_missing_requirements(
-        self, subtasks: list[Subtask], task_description: str,
+        self,
+        subtasks: list[Subtask],
+        task_description: str,
     ) -> list[str]:
         """v1.7/v1.8: Detect key task requirements that no step addresses.
 
@@ -623,11 +931,11 @@ class TaskDecompositionDetector:
         and stem matching for better word coverage.
         """
         task_lower = task_description.lower()
-        requirement_chunks = re.split(r'\b(?:with|and|,)\b', task_lower)
+        requirement_chunks = re.split(r"\b(?:with|and|,)\b", task_lower)
 
         all_step_text = " ".join(st.description.lower() for st in subtasks)
         # Pre-compute step word stems for matching
-        step_words = set(re.findall(r'[a-z]{3,}', all_step_text))
+        step_words = set(re.findall(r"[a-z]{3,}", all_step_text))
         step_stems = {self._req_stem(w) for w in step_words}
 
         missing = []
@@ -637,7 +945,8 @@ class TaskDecompositionDetector:
                 continue
             # Extract significant words, filtering stop words
             chunk_words = set(
-                w for w in re.findall(r'[a-z]+', chunk)
+                w
+                for w in re.findall(r"[a-z]+", chunk)
                 if len(w) > 4 and w not in self._REQ_STOP_WORDS
             )
             if not chunk_words:
@@ -673,26 +982,20 @@ class TaskDecompositionDetector:
             raw_strs = []
             for item in decomposition:
                 if isinstance(item, dict):
-                    raw_strs.append(
-                        str(item.get("subtask") or item.get("description") or item)
-                    )
+                    raw_strs.append(str(item.get("subtask") or item.get("description") or item))
                 else:
                     raw_strs.append(str(item))
             joined = "\n".join(raw_strs)
             # Only synthesize Step-prefixes for thin single-item traces that
             # otherwise defeat parsing. Multi-item lists with intrinsic
             # markers (goal N, step N, numbered bullets) are left alone.
-            needs_synth = (
-                len(raw_strs) <= 1
-                and not re.search(
-                    r'(?:^|\n)\s*(?:\d+[.)]|[-•*]\s|step\s*\d*[:.]|phase\s|goal\s*\d)',
-                    joined, re.IGNORECASE,
-                )
+            needs_synth = len(raw_strs) <= 1 and not re.search(
+                r"(?:^|\n)\s*(?:\d+[.)]|[-•*]\s|step\s*\d*[:.]|phase\s|goal\s*\d)",
+                joined,
+                re.IGNORECASE,
             )
             if needs_synth:
-                decomposition = "\n".join(
-                    f"Step {i+1}: {s}" for i, s in enumerate(raw_strs)
-                )
+                decomposition = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(raw_strs))
             else:
                 decomposition = joined
 
@@ -700,8 +1003,12 @@ class TaskDecompositionDetector:
         #   "Repository: X\n Fix: ... \n Tests to pass: [...]"
         # These are valid structured plans, not vague decompositions.
         decomp_lower = decomposition.lower()
-        has_fix_ref = any(kw in decomp_lower for kw in ["fix:", "patch:", "apply patch", "apply fix"])
-        has_test_ref = any(kw in decomp_lower for kw in ["tests to pass", "test_", "tests/test_", "::test_"])
+        has_fix_ref = any(
+            kw in decomp_lower for kw in ["fix:", "patch:", "apply patch", "apply fix"]
+        )
+        has_test_ref = any(
+            kw in decomp_lower for kw in ["tests to pass", "test_", "tests/test_", "::test_"]
+        )
         if has_fix_ref and has_test_ref:
             return DecompositionResult(
                 detected=False,
@@ -793,24 +1100,24 @@ class TaskDecompositionDetector:
         elif len(subtasks) > self.max_subtasks:
             issues.append(DecompositionIssue.WRONG_GRANULARITY)
             problematic.append("too_many_subtasks")
-        
+
         impossible = self._detect_impossible_subtasks(subtasks)
         if impossible:
             issues.append(DecompositionIssue.IMPOSSIBLE_SUBTASK)
             problematic.extend(impossible)
-        
+
         circular = self._detect_circular_dependencies(subtasks)
         if circular:
             issues.append(DecompositionIssue.CIRCULAR_DEPENDENCY)
             for c1, c2 in circular:
                 problematic.extend([c1, c2])
-        
+
         duplicates = self._detect_duplicate_work(subtasks)
         if duplicates:
             issues.append(DecompositionIssue.DUPLICATE_WORK)
             for d1, d2 in duplicates:
                 problematic.extend([d1, d2])
-        
+
         if self.check_dependencies:
             missing_deps = self._detect_missing_dependencies(subtasks)
             if missing_deps:
@@ -867,7 +1174,10 @@ class TaskDecompositionDetector:
                 complex_count=0,
             )
 
-        if DecompositionIssue.CIRCULAR_DEPENDENCY in issues or DecompositionIssue.IMPOSSIBLE_SUBTASK in issues:
+        if (
+            DecompositionIssue.CIRCULAR_DEPENDENCY in issues
+            or DecompositionIssue.IMPOSSIBLE_SUBTASK in issues
+        ):
             severity = DecompositionSeverity.SEVERE
         elif len(issues) >= 2:
             severity = DecompositionSeverity.MODERATE
@@ -943,13 +1253,13 @@ class TaskDecompositionDetector:
         trace: dict,
     ) -> list[DecompositionResult]:
         results = []
-        
+
         spans = trace.get("spans", [])
         for span in spans:
             if span.get("type") == "planning" or "plan" in span.get("name", "").lower():
                 task = span.get("input", {}).get("task", "")
                 output = span.get("output", {}).get("content", "")
-                
+
                 if task and output:
                     result = self.detect(
                         task_description=task,
@@ -957,5 +1267,5 @@ class TaskDecompositionDetector:
                     )
                     if result.detected:
                         results.append(result)
-        
+
         return results

@@ -28,7 +28,7 @@ import re
 import statistics
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,10 @@ WRAPUP_PATTERNS = [
     (r"\bI'?ll (?:just )?note that\b.*\binstead of\b", "shortcut_acknowledgment"),
     (r"\bdue to (?:space|length|context) (?:constraints|limitations)\b", "explicit_constraint"),
     (r"\bI'?ve covered the (?:key|main|essential) (?:points|parts)\b", "selective_coverage"),
-    (r"\bthe remaining (?:items|tasks|points) (?:are|can be) (?:similar|straightforward)\b", "assumed_trivial"),
+    (
+        r"\bthe remaining (?:items|tasks|points) (?:are|can be) (?:similar|straightforward)\b",
+        "assumed_trivial",
+    ),
 ]
 
 # Compile patterns once
@@ -133,8 +136,11 @@ class ContextPressureDetector:
         """
         if len(states) < self.min_states:
             return ContextPressureResult(
-                detected=False, confidence=0.0, severity=PressureSeverity.NONE,
-                context_utilization=0.0, output_decline_ratio=1.0,
+                detected=False,
+                confidence=0.0,
+                severity=PressureSeverity.NONE,
+                context_utilization=0.0,
+                output_decline_ratio=1.0,
             )
 
         signals: List[PressureSignal] = []
@@ -164,11 +170,13 @@ class ContextPressureDetector:
         util_score = 0.0
         if utilization > 0.85:
             util_score = min((utilization - 0.70) / 0.30, 1.0)
-            signals.append(PressureSignal(
-                signal_type="high_utilization",
-                description=f"Context {utilization:.0%} utilized ({cumulative_tokens:,}/{context_limit:,} tokens)",
-                strength=util_score,
-            ))
+            signals.append(
+                PressureSignal(
+                    signal_type="high_utilization",
+                    description=f"Context {utilization:.0%} utilized ({cumulative_tokens:,}/{context_limit:,} tokens)",
+                    strength=util_score,
+                )
+            )
 
         # --- Signal 2: Output length decline ---
         n = len(output_lengths)
@@ -179,11 +187,13 @@ class ContextPressureDetector:
         decline_score = 0.0
         if decline_ratio < self.decline_threshold:
             decline_score = min((1.0 - decline_ratio) / 0.50, 1.0)
-            signals.append(PressureSignal(
-                signal_type="output_decline",
-                description=f"Output length declined {1 - decline_ratio:.0%} (early avg {early_avg:.0f} → late avg {late_avg:.0f} chars)",
-                strength=decline_score,
-            ))
+            signals.append(
+                PressureSignal(
+                    signal_type="output_decline",
+                    description=f"Output length declined {1 - decline_ratio:.0%} (early avg {early_avg:.0f} → late avg {late_avg:.0f} chars)",
+                    strength=decline_score,
+                )
+            )
 
         # --- Signal 3: Premature wrap-up language ---
         wrapup_matches = []
@@ -196,12 +206,14 @@ class ContextPressureDetector:
                     wrapup_matches.append(label)
         wrapup_score = min(len(set(wrapup_matches)) / 3.0, 1.0)
         if wrapup_matches:
-            signals.append(PressureSignal(
-                signal_type="premature_wrapup",
-                description=f"Found {len(set(wrapup_matches))} wrap-up language patterns in final states",
-                strength=wrapup_score,
-                evidence=", ".join(sorted(set(wrapup_matches))[:5]),
-            ))
+            signals.append(
+                PressureSignal(
+                    signal_type="premature_wrapup",
+                    description=f"Found {len(set(wrapup_matches))} wrap-up language patterns in final states",
+                    strength=wrapup_score,
+                    evidence=", ".join(sorted(set(wrapup_matches))[:5]),
+                )
+            )
 
         # --- Signal 4: Quality cliff ---
         cliff_detected = False
@@ -217,11 +229,13 @@ class ContextPressureDetector:
                     break
             if cliff_detected:
                 cliff_score = 0.8
-                signals.append(PressureSignal(
-                    signal_type="quality_cliff",
-                    description=f"Abrupt output length drop (>{self.cliff_sigma}σ) in final 20% of states",
-                    strength=cliff_score,
-                ))
+                signals.append(
+                    PressureSignal(
+                        signal_type="quality_cliff",
+                        description=f"Abrupt output length drop (>{self.cliff_sigma}σ) in final 20% of states",
+                        strength=cliff_score,
+                    )
+                )
 
         # --- Aggregate confidence ---
         confidence = (

@@ -27,10 +27,9 @@ Version History:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Any
-import numpy as np
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +40,42 @@ DETECTOR_NAME = "TaskDerailmentDetector"
 # v1.3: Semantic clusters for related task concepts
 # Each cluster maps a concept to related terms that indicate focus on that concept
 TASK_CLUSTERS = {
-    "authentication": ["authenticate", "login", "password", "credential", "identity", "sign in", "sign-in", "logged in"],
-    "authorization": ["authorize", "permission", "access control", "role", "rbac", "acl", "privilege", "allowed"],
+    "authentication": [
+        "authenticate",
+        "login",
+        "password",
+        "credential",
+        "identity",
+        "sign in",
+        "sign-in",
+        "logged in",
+    ],
+    "authorization": [
+        "authorize",
+        "permission",
+        "access control",
+        "role",
+        "rbac",
+        "acl",
+        "privilege",
+        "allowed",
+    ],
     "encrypt": ["encrypt", "encryption", "cipher", "encode"],
     "decrypt": ["decrypt", "decryption", "decipher", "decode"],
     "upload": ["upload", "uploading", "send file", "put file"],
     "download": ["download", "downloading", "get file", "fetch file"],
     "create": ["create", "creating", "add new", "insert", "generate"],
     "delete": ["delete", "deleting", "remove", "drop", "destroy"],
-    "frontend": ["frontend", "front-end", "ui", "user interface", "client-side", "react", "vue", "angular"],
+    "frontend": [
+        "frontend",
+        "front-end",
+        "ui",
+        "user interface",
+        "client-side",
+        "react",
+        "vue",
+        "angular",
+    ],
     "backend": ["backend", "back-end", "server-side", "api", "database", "server"],
     "unit test": ["unit test", "unit testing", "isolated test", "mock"],
     "integration test": ["integration test", "integration testing", "e2e", "end-to-end"],
@@ -73,19 +99,83 @@ SUBSTITUTION_PAIRS = [
 
 # v1.4: Research/analysis focus terms - what the task asks for vs what might be delivered
 RESEARCH_FOCUS_CLUSTERS = {
-    "pricing": ["price", "pricing", "cost", "rate", "fee", "subscription", "tier", "plan", "dollar", "$", "budget", "expense"],
-    "features": ["feature", "functionality", "capability", "function", "tool", "option", "integration"],
+    "pricing": [
+        "price",
+        "pricing",
+        "cost",
+        "rate",
+        "fee",
+        "subscription",
+        "tier",
+        "plan",
+        "dollar",
+        "$",
+        "budget",
+        "expense",
+    ],
+    "features": [
+        "feature",
+        "functionality",
+        "capability",
+        "function",
+        "tool",
+        "option",
+        "integration",
+    ],
     "market": ["market", "positioning", "segment", "target", "audience", "demographic"],
-    "technical": ["technical", "architecture", "stack", "technology", "infrastructure", "performance"],
+    "technical": [
+        "technical",
+        "architecture",
+        "stack",
+        "technology",
+        "infrastructure",
+        "performance",
+    ],
     "competitor": ["competitor", "competition", "rival", "alternative", "versus", "vs"],
     "strategy": ["strategy", "strategic", "approach", "roadmap", "vision", "plan"],
 }
 
 # v1.4: Content-type patterns for writing tasks
 CONTENT_TYPE_PATTERNS = {
-    "documentation": ["#", "##", "###", "overview", "guide", "reference", "api", "endpoint", "parameter", "return", "example", "usage", "method", "function"],
-    "report": ["summary", "findings", "analysis", "conclusion", "recommendation", "result", "data", "metric"],
-    "code": ["def ", "function ", "class ", "import ", "const ", "let ", "var ", "return ", "if ", "for ", "while "],
+    "documentation": [
+        "#",
+        "##",
+        "###",
+        "overview",
+        "guide",
+        "reference",
+        "api",
+        "endpoint",
+        "parameter",
+        "return",
+        "example",
+        "usage",
+        "method",
+        "function",
+    ],
+    "report": [
+        "summary",
+        "findings",
+        "analysis",
+        "conclusion",
+        "recommendation",
+        "result",
+        "data",
+        "metric",
+    ],
+    "code": [
+        "def ",
+        "function ",
+        "class ",
+        "import ",
+        "const ",
+        "let ",
+        "var ",
+        "return ",
+        "if ",
+        "for ",
+        "while ",
+    ],
 }
 
 # v1.5: Framework-specific benign patterns
@@ -160,11 +250,11 @@ class DerailmentResult:
 class TaskDerailmentDetector:
     """
     Detects F6: Task Derailment - when an agent goes off-topic.
-    
+
     Uses semantic similarity and topic modeling to detect drift
     between the assigned task and the agent's output.
     """
-    
+
     def __init__(
         self,
         similarity_threshold: float = 0.3,
@@ -181,7 +271,7 @@ class TaskDerailmentDetector:
         self.task_coverage_threshold = task_coverage_threshold
         self.framework = framework
         self._embedder = None
-    
+
     def _calibrate_confidence(
         self,
         similarity: float,
@@ -196,19 +286,22 @@ class TaskDerailmentDetector:
             DerailmentSeverity.MODERATE: 0.75,
             DerailmentSeverity.SEVERE: 0.9,
         }.get(severity, 0.5)
-        
+
         length_factor = min(1.0, output_length / 200)
         signal_strength = (drift_score + (1 - similarity)) / 2
-        
+
         base_confidence = severity_weight * 0.4 + signal_strength * 0.4 + length_factor * 0.2
         calibrated = min(0.99, base_confidence * self.confidence_scaling)
-        
+
         return round(calibrated, 4)
 
     def _get_embedder(self):
         if self._embedder is None:
             try:
-                from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+                from pisama_detectors.detection.shared_embedder import (
+                    get_shared_embedder as get_embedder,
+                )
+
                 self._embedder = get_embedder()
             except ImportError:
                 logger.warning("EmbeddingService not available, using fallback")
@@ -239,7 +332,7 @@ class TaskDerailmentDetector:
 
     def _compute_similarity(self, text1: str, text2: str) -> float:
         embedder = self._get_embedder()
-        
+
         if embedder == "fallback":
             words1 = set(text1.lower().split())
             words2 = set(text2.lower().split())
@@ -248,7 +341,7 @@ class TaskDerailmentDetector:
             intersection = words1 & words2
             union = words1 | words2
             return len(intersection) / len(union)
-        
+
         try:
             embeddings = embedder.encode([text1, text2])
             return embedder.similarity(embeddings[0], embeddings[1])
@@ -265,12 +358,37 @@ class TaskDerailmentDetector:
     # Porter is overkill for the few surface-form mismatches that
     # generate the bulk of derailment FPs.
     _SUFFIXES = (
-        "iveness", "ization", "ational", "fulness", "ousness",
-        "tional", "ations", "ation", "eries", "ities",
-        "ingly", "ingly", "iness", "ments",
-        "ies", "ing", "ers", "ies", "ize", "ise", "ize",
-        "ment", "ness", "ship",
-        "ed", "er", "es", "ly", "al", "ic", "y",
+        "iveness",
+        "ization",
+        "ational",
+        "fulness",
+        "ousness",
+        "tional",
+        "ations",
+        "ation",
+        "eries",
+        "ities",
+        "ingly",
+        "ingly",
+        "iness",
+        "ments",
+        "ies",
+        "ing",
+        "ers",
+        "ies",
+        "ize",
+        "ise",
+        "ize",
+        "ment",
+        "ness",
+        "ship",
+        "ed",
+        "er",
+        "es",
+        "ly",
+        "al",
+        "ic",
+        "y",
         "s",
     )
 
@@ -280,6 +398,7 @@ class TaskDerailmentDetector:
         if len(word) <= 4:
             return word
         from pisama_detectors.detection.text_utils import strip_suffix
+
         stem = strip_suffix(word, cls._SUFFIXES, min_remainder=4)
         if stem == word:
             return word
@@ -291,15 +410,77 @@ class TaskDerailmentDetector:
     def _extract_key_terms(self, text: str) -> set[str]:
         words = text.lower().split()
         stopwords = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "as", "into", "through", "during", "before", "after", "above",
-            "below", "between", "under", "again", "further", "then", "once",
-            "and", "but", "or", "nor", "so", "yet", "both", "either",
-            "neither", "not", "only", "own", "same", "than", "too", "very",
-            "just", "can", "don", "now", "it", "its", "this", "that",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "between",
+            "under",
+            "again",
+            "further",
+            "then",
+            "once",
+            "and",
+            "but",
+            "or",
+            "nor",
+            "so",
+            "yet",
+            "both",
+            "either",
+            "neither",
+            "not",
+            "only",
+            "own",
+            "same",
+            "than",
+            "too",
+            "very",
+            "just",
+            "can",
+            "don",
+            "now",
+            "it",
+            "its",
+            "this",
+            "that",
         }
         return {w for w in words if len(w) > 2 and w not in stopwords}
 
@@ -374,7 +555,15 @@ class TaskDerailmentDetector:
         output_lower = output.lower()
 
         # Check for research/analysis tasks
-        research_indicators = ["research", "analyze", "analysis", "study", "investigate", "examine", "evaluate"]
+        research_indicators = [
+            "research",
+            "analyze",
+            "analysis",
+            "study",
+            "investigate",
+            "examine",
+            "evaluate",
+        ]
         is_research_task = any(ind in task_lower for ind in research_indicators)
 
         if not is_research_task:
@@ -399,7 +588,11 @@ class TaskDerailmentDetector:
 
         # Find if another focus dominates
         for other_focus, other_count in focus_counts.items():
-            if other_focus != requested_focus and other_count >= 2 and other_count > requested_count * 1.5:  # Lowered from 3/2x to 2/1.5x
+            if (
+                other_focus != requested_focus
+                and other_count >= 2
+                and other_count > requested_count * 1.5
+            ):  # Lowered from 3/2x to 2/1.5x
                 return True, (
                     f"Task asks for '{requested_focus}' research but output focuses on "
                     f"'{other_focus}' ({other_count} matches vs {requested_count} for {requested_focus})"
@@ -426,7 +619,13 @@ class TaskDerailmentDetector:
         task_lower = task.lower()
 
         writing_indicators = {
-            "documentation": ["write documentation", "create documentation", "document", "api documentation", "write docs"],
+            "documentation": [
+                "write documentation",
+                "create documentation",
+                "document",
+                "api documentation",
+                "write docs",
+            ],
             "report": ["write report", "create report", "prepare report", "generate report"],
             "code": ["write code", "create code", "implement", "develop", "build"],
         }
@@ -502,8 +701,8 @@ class TaskDerailmentDetector:
         # (common in Q&A agents like GAIA), the agent clearly understood the task
         task_lower = task.lower()
         output_lower = output.lower()
-        task_prefix = task_lower[:min(80, len(task_lower))].strip()
-        if task_prefix and task_prefix in output_lower[:len(task_prefix) + 50]:
+        task_prefix = task_lower[: min(80, len(task_lower))].strip()
+        if task_prefix and task_prefix in output_lower[: len(task_prefix) + 50]:
             return True
 
         # v1.7: Patch/diff output — if output contains a unified diff, the agent
@@ -514,8 +713,9 @@ class TaskDerailmentDetector:
         # v1.7: Answer output — if output starts with "answer:" or "to answer",
         # the agent is directly addressing the task
         output_start = output_lower[:40].strip()
-        if output_start.startswith(("answer:", "to answer", "the answer",
-                                      "i followed these steps")):
+        if output_start.startswith(
+            ("answer:", "to answer", "the answer", "i followed these steps")
+        ):
             return True
 
         # Check for task action verbs being addressed
@@ -527,8 +727,23 @@ class TaskDerailmentDetector:
             ("debug", ["fixed", "bug", "issue", "resolved", "debugging", "error", "problem"]),
             ("fix", ["fixed", "resolved", "corrected", "patched", "repaired"]),
             # v1.2: Review can include bugs, issues, style, quality, improvements
-            ("review", ["review", "reviewed", "reviewing", "found", "identified", "issue",
-                       "bug", "problem", "style", "suggestion", "improvement", "code"]),
+            (
+                "review",
+                [
+                    "review",
+                    "reviewed",
+                    "reviewing",
+                    "found",
+                    "identified",
+                    "issue",
+                    "bug",
+                    "problem",
+                    "style",
+                    "suggestion",
+                    "improvement",
+                    "code",
+                ],
+            ),
             ("write", ["here", "following", "created", "written", "wrote"]),
             ("create", ["created", "here", "following", "built", "made"]),
             ("test", ["tested", "testing", "test", "passed", "failed", "verified", "checked"]),
@@ -703,7 +918,7 @@ class TaskDerailmentDetector:
         task_terms = self._extract_key_terms(task)
         if len(output) > 200 and task_terms:
             quarter = len(output) // 4
-            quarters = [output[i*quarter:(i+1)*quarter] for i in range(4)]
+            quarters = [output[i * quarter : (i + 1) * quarter] for i in range(4)]
             quarter_coverage = []
             for q in quarters:
                 q_terms = self._extract_key_terms(q)
@@ -711,7 +926,9 @@ class TaskDerailmentDetector:
                 quarter_coverage.append(q_cov)
             # If task is addressed in only 1 quarter and rest is tangent
             max_q = max(quarter_coverage)
-            non_max_avg = sum(q for q in quarter_coverage if q < max_q) / max(sum(1 for q in quarter_coverage if q < max_q), 1)
+            non_max_avg = sum(q for q in quarter_coverage if q < max_q) / max(
+                sum(1 for q in quarter_coverage if q < max_q), 1
+            )
             content_concentrated = max_q > 0.4 and non_max_avg < 0.15
         else:
             content_concentrated = False
@@ -720,11 +937,20 @@ class TaskDerailmentDetector:
         # 1. Simple task with very long output AND creep indicators
         # 2. Task content concentrated in small portion AND lots of creep indicators
         if is_simple_task and length_ratio > 15 and creep_count >= 2:
-            return True, f"Simple task ({task_words} words) but output is {output_words} words with {creep_count} scope creep indicators"
+            return (
+                True,
+                f"Simple task ({task_words} words) but output is {output_words} words with {creep_count} scope creep indicators",
+            )
         if content_concentrated and creep_count >= 3:
-            return True, f"Task content concentrated in one section, {creep_count} unrequested expansion indicators"
+            return (
+                True,
+                f"Task content concentrated in one section, {creep_count} unrequested expansion indicators",
+            )
         if creep_count >= 4 and length_ratio > 10:
-            return True, f"Excessive scope creep: {creep_count} expansion indicators, output {length_ratio:.0f}x longer than task"
+            return (
+                True,
+                f"Excessive scope creep: {creep_count} expansion indicators, output {length_ratio:.0f}x longer than task",
+            )
 
         return False, None
 
@@ -749,25 +975,19 @@ class TaskDerailmentDetector:
         import re as _re
 
         # Extract first 2 sentences
-        sentences = _re.split(r'(?<=[.!?\n])\s+', output.strip(), maxsplit=2)
-        opening = ' '.join(sentences[:2]) if sentences else output[:200]
+        sentences = _re.split(r"(?<=[.!?\n])\s+", output.strip(), maxsplit=2)
+        opening = " ".join(sentences[:2]) if sentences else output[:200]
         opening_lower = opening.lower()
 
         # Check for resolution language
-        has_resolution = any(
-            _re.search(p, opening_lower) for p in self.RESOLUTION_PATTERNS
-        )
+        has_resolution = any(_re.search(p, opening_lower) for p in self.RESOLUTION_PATTERNS)
         if not has_resolution:
             return False
 
         # v2.1: Stem entities so "webhook"/"webhooks" and
         # "deliver"/"delivered"/"delivery" match.
-        task_entities = {
-            self._stem(w.lower()) for w in _re.findall(r'[A-Za-z]{4,}', task)
-        }
-        opening_entities = {
-            self._stem(w.lower()) for w in _re.findall(r'[A-Za-z]{4,}', opening)
-        }
+        task_entities = {self._stem(w.lower()) for w in _re.findall(r"[A-Za-z]{4,}", task)}
+        opening_entities = {self._stem(w.lower()) for w in _re.findall(r"[A-Za-z]{4,}", opening)}
         entity_overlap = len(task_entities & opening_entities)
 
         return entity_overlap >= 2
@@ -794,8 +1014,9 @@ class TaskDerailmentDetector:
         # (e.g., "print('Hello, World!')" for "write a hello world program")
         if len(output) < 100:
             import re as _re
-            task_words = set(w.lower() for w in _re.findall(r'[a-zA-Z]{3,}', task))
-            output_words = set(w.lower() for w in _re.findall(r'[a-zA-Z]{3,}', output))
+
+            task_words = set(w.lower() for w in _re.findall(r"[a-zA-Z]{3,}", task))
+            output_words = set(w.lower() for w in _re.findall(r"[a-zA-Z]{3,}", output))
             if task_words and output_words:
                 overlap = len(task_words & output_words) / len(task_words)
                 if overlap >= 0.25:
@@ -814,7 +1035,7 @@ class TaskDerailmentDetector:
         # Agents that return `{"success": true, ...}` or `diff --git ...` are
         # showing task results, not derailing.
         output_stripped = output.lstrip()
-        if output_stripped.startswith(('{', '[', 'diff --git', '<?xml', '<!DOCTYPE')):
+        if output_stripped.startswith(("{", "[", "diff --git", "<?xml", "<!DOCTYPE")):
             return DerailmentResult(
                 detected=False,
                 severity=DerailmentSeverity.NONE,
@@ -853,8 +1074,12 @@ class TaskDerailmentDetector:
                 topic_drift_score=drift_score,
                 explanation="Semantically related to task (similarity > 0.5, drift < 0.5)",
                 task_coverage=task_coverage,
-                evidence={"similarity": round(similarity, 4), "drift_score": round(drift_score, 4),
-                          "output_length": len(output), "semantic_gate": True},
+                evidence={
+                    "similarity": round(similarity, 4),
+                    "drift_score": round(drift_score, 4),
+                    "output_length": len(output),
+                    "semantic_gate": True,
+                },
             )
 
         # v1.4: Check for writing tasks with matching content type
@@ -894,9 +1119,9 @@ class TaskDerailmentDetector:
         # Short answers have less keyword overlap by nature.
         output_words = len(output.split())
         if output_words < 200 and opening_resolves:
-            effective_coverage_threshold = 0.3
+            pass
         else:
-            effective_coverage_threshold = self.task_coverage_threshold
+            pass
 
         # v1.5: Check for framework-specific benign patterns
         has_framework_benign = self._has_framework_benign_pattern(output)
@@ -938,9 +1163,12 @@ class TaskDerailmentDetector:
             # This catches outputs that start on a tangent and never return.
             if not detected and len(output) > 100:
                 import re as _re
-                first_sentence = _re.split(r'[.!?\n]', output)[0]
-                task_entities = set(w.lower() for w in _re.findall(r'[A-Za-z]{4,}', task))
-                first_entities = set(w.lower() for w in _re.findall(r'[A-Za-z]{4,}', first_sentence))
+
+                first_sentence = _re.split(r"[.!?\n]", output)[0]
+                task_entities = set(w.lower() for w in _re.findall(r"[A-Za-z]{4,}", task))
+                first_entities = set(
+                    w.lower() for w in _re.findall(r"[A-Za-z]{4,}", first_sentence)
+                )
                 entity_overlap = len(task_entities & first_entities) / max(len(task_entities), 1)
                 if entity_overlap < 0.1 and drift_score > 0.35:
                     detected = True
@@ -1011,7 +1239,7 @@ class TaskDerailmentDetector:
         # v1.6: Exploration tolerance — if output ends with task-relevant
         # content, allow earlier drift (agent explored then converged)
         if task and output:
-            last_portion = output[int(len(output) * 0.7):]
+            last_portion = output[int(len(output) * 0.7) :]
             task_words = task.lower().split()[:10]
             if task_words:
                 final_coverage = sum(
@@ -1065,14 +1293,14 @@ class TaskDerailmentDetector:
         trace: dict,
     ) -> list[DerailmentResult]:
         results = []
-        
+
         spans = trace.get("spans", [])
         for span in spans:
             task = span.get("input", {}).get("task", "")
             output = span.get("output", {}).get("content", "")
             context = span.get("input", {}).get("context", "")
             agent_name = span.get("name", "")
-            
+
             if task and output:
                 result = self.detect(
                     task=task,
@@ -1082,5 +1310,5 @@ class TaskDerailmentDetector:
                 )
                 if result.detected:
                     results.append(result)
-        
+
         return results

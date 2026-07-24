@@ -12,12 +12,11 @@ parent_node_id / iteration_index child structure.
 
 import json
 import logging
-from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -66,10 +65,7 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             return self._no_detection("No nodes in workflow run")
 
         # Find iteration/loop parent nodes
-        iter_nodes = [
-            n for n in nodes
-            if n.get("node_type") in ("iteration", "loop")
-        ]
+        iter_nodes = [n for n in nodes if n.get("node_type") in ("iteration", "loop")]
 
         if not iter_nodes:
             return self._no_detection("No iteration/loop nodes found")
@@ -83,17 +79,12 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             iter_status = iter_node.get("status", "")
 
             # Count child nodes belonging to this iteration
-            children = [
-                n for n in nodes
-                if n.get("parent_node_id") == iter_id
-            ]
+            children = [n for n in nodes if n.get("parent_node_id") == iter_id]
             child_count = len(children)
 
             # Count distinct iteration indices
             indices = [
-                n.get("iteration_index")
-                for n in children
-                if n.get("iteration_index") is not None
+                n.get("iteration_index") for n in children if n.get("iteration_index") is not None
             ]
             max_index = max(indices) if indices else 0
             iteration_count = max_index + 1 if indices else child_count
@@ -101,24 +92,28 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             # Check 1: Excessive iteration count
             if iteration_count > MAX_SAFE_ITERATIONS:
                 affected_node_ids.append(iter_id)
-                issues.append({
-                    "type": "excessive_iterations",
-                    "node_id": iter_id,
-                    "title": iter_title,
-                    "iteration_count": iteration_count,
-                    "threshold": MAX_SAFE_ITERATIONS,
-                })
+                issues.append(
+                    {
+                        "type": "excessive_iterations",
+                        "node_id": iter_id,
+                        "title": iter_title,
+                        "iteration_count": iteration_count,
+                        "threshold": MAX_SAFE_ITERATIONS,
+                    }
+                )
 
             # Check 2: Failed/stopped iteration (any count > 1)
             if iter_status in ("failed", "stopped") and iteration_count > 1:
                 affected_node_ids.append(iter_id)
-                issues.append({
-                    "type": "iteration_failure",
-                    "node_id": iter_id,
-                    "title": iter_title,
-                    "status": iter_status,
-                    "iteration_count": iteration_count,
-                })
+                issues.append(
+                    {
+                        "type": "iteration_failure",
+                        "node_id": iter_id,
+                        "title": iter_title,
+                        "status": iter_status,
+                        "iteration_count": iteration_count,
+                    }
+                )
 
             # Check 3: No visible break/exit condition in outputs
             iter_outputs = iter_node.get("outputs", {})
@@ -129,23 +124,27 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             )
             if not has_break and iteration_count > WARN_ITERATIONS:
                 affected_node_ids.append(iter_id)
-                issues.append({
-                    "type": "no_break_condition",
-                    "node_id": iter_id,
-                    "title": iter_title,
-                    "iteration_count": iteration_count,
-                })
+                issues.append(
+                    {
+                        "type": "no_break_condition",
+                        "node_id": iter_id,
+                        "title": iter_title,
+                        "iteration_count": iteration_count,
+                    }
+                )
 
             # Check 4: Child nodes referencing parent-level variables
             parent_ref_children = self._find_parent_references(children)
             if parent_ref_children:
                 affected_node_ids.append(iter_id)
-                issues.append({
-                    "type": "parent_scope_modification",
-                    "node_id": iter_id,
-                    "title": iter_title,
-                    "children_with_parent_refs": parent_ref_children,
-                })
+                issues.append(
+                    {
+                        "type": "parent_scope_modification",
+                        "node_id": iter_id,
+                        "title": iter_title,
+                        "children_with_parent_refs": parent_ref_children,
+                    }
+                )
 
             # Check 5: Non-contiguous iteration indices (index gaps)
             if indices:
@@ -154,57 +153,61 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
                 if sorted_indices != expected_indices:
                     missing = sorted(set(expected_indices) - set(sorted_indices))
                     affected_node_ids.append(iter_id)
-                    issues.append({
-                        "type": "index_corruption",
-                        "node_id": iter_id,
-                        "title": iter_title,
-                        "actual_indices": sorted_indices,
-                        "missing_indices": missing,
-                        "iteration_count": iteration_count,
-                    })
+                    issues.append(
+                        {
+                            "type": "index_corruption",
+                            "node_id": iter_id,
+                            "title": iter_title,
+                            "actual_indices": sorted_indices,
+                            "missing_indices": missing,
+                            "iteration_count": iteration_count,
+                        }
+                    )
 
             # Check 6: Duplicate outputs across iterations (scope leak)
             if len(children) > 1:
                 child_output_strs = [
-                    json.dumps(c.get("outputs", {}), sort_keys=True, default=str)
-                    for c in children
+                    json.dumps(c.get("outputs", {}), sort_keys=True, default=str) for c in children
                 ]
                 if len(set(child_output_strs)) == 1:
                     affected_node_ids.append(iter_id)
-                    issues.append({
-                        "type": "scope_leak_duplicate_outputs",
-                        "node_id": iter_id,
-                        "title": iter_title,
-                        "iteration_count": iteration_count,
-                        "child_count": len(children),
-                    })
+                    issues.append(
+                        {
+                            "type": "scope_leak_duplicate_outputs",
+                            "node_id": iter_id,
+                            "title": iter_title,
+                            "iteration_count": iteration_count,
+                            "child_count": len(children),
+                        }
+                    )
 
             # Check 7: Iteration overrun (more iterations than input items)
             iter_inputs = iter_node.get("inputs", {})
             input_items = iter_inputs.get("items", [])
-            max_configured = (
-                iter_inputs.get("max_iterations")
-                or iter_inputs.get("max_attempts")
-            )
+            max_configured = iter_inputs.get("max_iterations") or iter_inputs.get("max_attempts")
             if isinstance(input_items, list) and len(input_items) > 0:
                 if iteration_count > len(input_items):
                     affected_node_ids.append(iter_id)
-                    issues.append({
-                        "type": "iteration_overrun",
-                        "node_id": iter_id,
-                        "title": iter_title,
-                        "input_count": len(input_items),
-                        "iteration_count": iteration_count,
-                    })
+                    issues.append(
+                        {
+                            "type": "iteration_overrun",
+                            "node_id": iter_id,
+                            "title": iter_title,
+                            "input_count": len(input_items),
+                            "iteration_count": iteration_count,
+                        }
+                    )
             elif max_configured is not None and iteration_count > max_configured:
                 affected_node_ids.append(iter_id)
-                issues.append({
-                    "type": "loop_overrun",
-                    "node_id": iter_id,
-                    "title": iter_title,
-                    "max_configured": max_configured,
-                    "iteration_count": iteration_count,
-                })
+                issues.append(
+                    {
+                        "type": "loop_overrun",
+                        "node_id": iter_id,
+                        "title": iter_title,
+                        "max_configured": max_configured,
+                        "iteration_count": iteration_count,
+                    }
+                )
 
         if not issues:
             return self._no_detection("No iteration escape issues found")
@@ -215,8 +218,13 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             default=0,
         )
         has_structural = any(
-            i["type"] in ("index_corruption", "scope_leak_duplicate_outputs",
-                          "iteration_overrun", "loop_overrun")
+            i["type"]
+            in (
+                "index_corruption",
+                "scope_leak_duplicate_outputs",
+                "iteration_overrun",
+                "loop_overrun",
+            )
             for i in issues
         )
         if max_iter > MAX_SAFE_ITERATIONS:
@@ -224,7 +232,9 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
         elif has_structural:
             confidence = min(0.90, 0.6 + len(issues) * 0.1)
         elif max_iter > WARN_ITERATIONS:
-            confidence = 0.6 + (max_iter - WARN_ITERATIONS) / (MAX_SAFE_ITERATIONS - WARN_ITERATIONS) * 0.15
+            confidence = (
+                0.6 + (max_iter - WARN_ITERATIONS) / (MAX_SAFE_ITERATIONS - WARN_ITERATIONS) * 0.15
+            )
         else:
             confidence = 0.5
 
@@ -264,9 +274,7 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def _find_parent_references(
-        self, children: List[Dict[str, Any]]
-    ) -> List[Dict[str, str]]:
+    def _find_parent_references(self, children: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         """Find child nodes whose outputs reference parent-level variables."""
         refs = []
         parent_keywords = ("parent", "global", "workflow_var", "sys.")
@@ -276,11 +284,13 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
             combined = outputs_str + inputs_str
             for kw in parent_keywords:
                 if kw in combined:
-                    refs.append({
-                        "child_node_id": child.get("node_id", ""),
-                        "child_title": child.get("title", ""),
-                        "keyword": kw,
-                    })
+                    refs.append(
+                        {
+                            "child_node_id": child.get("node_id", ""),
+                            "child_title": child.get("title", ""),
+                            "keyword": kw,
+                        }
+                    )
                     break
         return refs
 

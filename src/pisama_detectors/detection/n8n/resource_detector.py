@@ -17,13 +17,13 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from pisama_detectors.detection._n8n_utils import build_connection_map, is_ai_node_type
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
-from pisama_detectors.detection._n8n_utils import is_ai_node_type, build_connection_map
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,9 @@ class N8NResourceDetector(TurnAwareDetector):
             )
 
         # Determine failure mode and severity
-        has_explosion = any(i.get("type") in ("content_explosion", "data_amplification") for i in issues)
+        has_explosion = any(
+            i.get("type") in ("content_explosion", "data_amplification") for i in issues
+        )
         has_api_abuse = any(i.get("type") == "api_abuse" for i in issues)
 
         # F6 for explosion, F3 for resource misallocation
@@ -234,7 +236,7 @@ class N8NResourceDetector(TurnAwareDetector):
                         "growth_rate": amplification,
                         "amplifying_node": turns[i].participant_id,
                         "turns": [turns[i - 1].turn_number, turns[i].turn_number],
-                        "description": f"Data amplification: {item_counts[i-1]} -> {item_counts[i]} items ({amplification:.1f}x)",
+                        "description": f"Data amplification: {item_counts[i - 1]} -> {item_counts[i]} items ({amplification:.1f}x)",
                     }
 
         return {"detected": False}
@@ -244,7 +246,7 @@ class N8NResourceDetector(TurnAwareDetector):
         content = content.strip()
 
         # Try to parse as JSON array
-        if content.startswith('['):
+        if content.startswith("["):
             try:
                 data = json.loads(content)
                 if isinstance(data, list):
@@ -253,7 +255,7 @@ class N8NResourceDetector(TurnAwareDetector):
                 pass
 
         # Count array elements in JSON object
-        if content.startswith('{'):
+        if content.startswith("{"):
             try:
                 data = json.loads(content)
                 if isinstance(data, dict):
@@ -265,7 +267,7 @@ class N8NResourceDetector(TurnAwareDetector):
                 pass
 
         # Count key: value lines as single item
-        lines = [l for l in content.split('\n') if l.strip()]
+        lines = [line for line in content.split("\n") if line.strip()]
         if lines:
             return 1
 
@@ -277,7 +279,7 @@ class N8NResourceDetector(TurnAwareDetector):
         Look for HTTP/API nodes executing many times.
         """
         api_nodes = []
-        api_patterns = ['http', 'api', 'request', 'fetch', 'webhook', 'graphql', 'rest']
+        api_patterns = ["http", "api", "request", "fetch", "webhook", "graphql", "rest"]
 
         for turn in turns:
             node_lower = turn.participant_id.lower()
@@ -289,6 +291,7 @@ class N8NResourceDetector(TurnAwareDetector):
 
         # Count calls per unique API node
         from collections import Counter
+
         call_counts = Counter(t.participant_id for t in api_nodes)
 
         for node, count in call_counts.items():
@@ -334,8 +337,12 @@ class N8NResourceDetector(TurnAwareDetector):
                 "growth_rate": total_growth,
                 "growth_steps": growth_count,
                 "total_steps": len(sizes) - 1,
-                "turns": [turns[i].turn_number for i in range(len(turns)) if i == 0 or sizes[i] > sizes[i - 1] * 1.1],
-                "description": f"Runaway accumulation: {growth_count}/{len(sizes)-1} steps showed growth ({total_growth:.1f}x total)",
+                "turns": [
+                    turns[i].turn_number
+                    for i in range(len(turns))
+                    if i == 0 or sizes[i] > sizes[i - 1] * 1.1
+                ],
+                "description": f"Runaway accumulation: {growth_count}/{len(sizes) - 1} steps showed growth ({total_growth:.1f}x total)",
             }
 
         return {"detected": False}
@@ -363,7 +370,7 @@ class N8NResourceDetector(TurnAwareDetector):
         Uses simple heuristic: ~4 characters per token for English text.
         """
         # Remove JSON structure noise for better estimation
-        cleaned = re.sub(r'[{}\[\]":,]', ' ', content)
+        cleaned = re.sub(r'[{}\[\]":,]', " ", content)
         words = cleaned.split()
         return len(words) + len(content) // 4
 
@@ -385,9 +392,7 @@ class N8NResourceDetector(TurnAwareDetector):
 
     # _is_ai_node_type and _build_connection_map moved to app.core.n8n_utils
 
-    def detect_workflow(
-        self, workflow_json: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_workflow(self, workflow_json: Dict[str, Any]) -> TurnAwareDetectionResult:
         """Analyze raw n8n workflow JSON for resource / token-explosion risks.
 
         Checks performed:
@@ -410,9 +415,7 @@ class N8NResourceDetector(TurnAwareDetector):
             )
 
         connection_map = build_connection_map(workflow_json)
-        node_by_name: Dict[str, Dict[str, Any]] = {
-            n.get("name", ""): n for n in nodes
-        }
+        node_by_name: Dict[str, Dict[str, Any]] = {n.get("name", ""): n for n in nodes}
 
         issues: List[Dict[str, Any]] = []
 
@@ -432,21 +435,25 @@ class N8NResourceDetector(TurnAwareDetector):
                 or (params.get("additionalOptions", {}) or {}).get("maxTokens") is not None
             )
             if not has_max_tokens:
-                unbounded_ai.append({
-                    "node_name": node.get("name", "unknown"),
-                    "node_type": node_type,
-                })
+                unbounded_ai.append(
+                    {
+                        "node_name": node.get("name", "unknown"),
+                        "node_type": node_type,
+                    }
+                )
 
         if unbounded_ai:
-            issues.append({
-                "detected": True,
-                "type": "unbounded_ai_tokens",
-                "nodes": unbounded_ai,
-                "explanation": (
-                    f"{len(unbounded_ai)} AI node(s) have no maxTokens limit -- "
-                    "each call could consume the model's full context window"
-                ),
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "unbounded_ai_tokens",
+                    "nodes": unbounded_ai,
+                    "explanation": (
+                        f"{len(unbounded_ai)} AI node(s) have no maxTokens limit -- "
+                        "each call could consume the model's full context window"
+                    ),
+                }
+            )
 
         # --- 2: Loop patterns without limits ---
         unbounded_loops: List[Dict[str, Any]] = []
@@ -465,21 +472,25 @@ class N8NResourceDetector(TurnAwareDetector):
             has_batch_size = params.get("batchSize") is not None
 
             if not has_iteration_limit and not has_batch_size:
-                unbounded_loops.append({
-                    "node_name": node.get("name", "unknown"),
-                    "node_type": node_type,
-                })
+                unbounded_loops.append(
+                    {
+                        "node_name": node.get("name", "unknown"),
+                        "node_type": node_type,
+                    }
+                )
 
         if unbounded_loops:
-            issues.append({
-                "detected": True,
-                "type": "unbounded_loops",
-                "nodes": unbounded_loops,
-                "explanation": (
-                    f"{len(unbounded_loops)} loop/batch node(s) have no maxIterations or "
-                    "batchSize limit -- could process unlimited items"
-                ),
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "unbounded_loops",
+                    "nodes": unbounded_loops,
+                    "explanation": (
+                        f"{len(unbounded_loops)} loop/batch node(s) have no maxIterations or "
+                        "batchSize limit -- could process unlimited items"
+                    ),
+                }
+            )
 
         # --- 3: HTTP nodes without timeout ---
         http_no_timeout: List[Dict[str, Any]] = []
@@ -496,33 +507,32 @@ class N8NResourceDetector(TurnAwareDetector):
 
             params = node.get("parameters", {}) or {}
             options = params.get("options", {}) or {}
-            has_timeout = (
-                params.get("timeout") is not None
-                or options.get("timeout") is not None
-            )
+            has_timeout = params.get("timeout") is not None or options.get("timeout") is not None
             if not has_timeout:
-                http_no_timeout.append({
-                    "node_name": node.get("name", "unknown"),
-                    "node_type": node_type,
-                })
+                http_no_timeout.append(
+                    {
+                        "node_name": node.get("name", "unknown"),
+                        "node_type": node_type,
+                    }
+                )
 
         if http_no_timeout:
-            issues.append({
-                "detected": True,
-                "type": "http_no_timeout",
-                "nodes": http_no_timeout,
-                "explanation": (
-                    f"{len(http_no_timeout)} HTTP request node(s) have no timeout setting -- "
-                    "could hang indefinitely on slow/unresponsive endpoints"
-                ),
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "http_no_timeout",
+                    "nodes": http_no_timeout,
+                    "explanation": (
+                        f"{len(http_no_timeout)} HTTP request node(s) have no timeout setting -- "
+                        "could hang indefinitely on slow/unresponsive endpoints"
+                    ),
+                }
+            )
 
         # --- 4: Sequential AI nodes without data reduction ---
         sequential_ai_chains: List[Dict[str, Any]] = []
 
-        def _walk_ai_chain(
-            start_name: str, visited: set
-        ) -> List[str]:
+        def _walk_ai_chain(start_name: str, visited: set) -> List[str]:
             """Walk forward from *start_name* collecting consecutive AI nodes."""
             chain: List[str] = [start_name]
             visited.add(start_name)
@@ -545,23 +555,27 @@ class N8NResourceDetector(TurnAwareDetector):
                 continue
             chain = _walk_ai_chain(node_name, visited_global)
             if len(chain) >= 2:
-                sequential_ai_chains.append({
-                    "chain": chain,
-                    "length": len(chain),
-                })
+                sequential_ai_chains.append(
+                    {
+                        "chain": chain,
+                        "length": len(chain),
+                    }
+                )
 
         if sequential_ai_chains:
             total_chained = sum(c["length"] for c in sequential_ai_chains)
-            issues.append({
-                "detected": True,
-                "type": "sequential_ai_no_reduction",
-                "chains": sequential_ai_chains,
-                "explanation": (
-                    f"{len(sequential_ai_chains)} chain(s) of sequential AI nodes found "
-                    f"({total_chained} nodes total) without intermediate data reduction -- "
-                    "each stage may amplify token count, leading to cost explosion"
-                ),
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "sequential_ai_no_reduction",
+                    "chains": sequential_ai_chains,
+                    "explanation": (
+                        f"{len(sequential_ai_chains)} chain(s) of sequential AI nodes found "
+                        f"({total_chained} nodes total) without intermediate data reduction -- "
+                        "each stage may amplify token count, leading to cost explosion"
+                    ),
+                }
+            )
 
         # --- Build result ---
         if not issues:
@@ -576,8 +590,7 @@ class N8NResourceDetector(TurnAwareDetector):
 
         # Determine severity
         has_token_risk = any(
-            i["type"] in ("unbounded_ai_tokens", "sequential_ai_no_reduction")
-            for i in issues
+            i["type"] in ("unbounded_ai_tokens", "sequential_ai_no_reduction") for i in issues
         )
         has_loop_risk = any(i["type"] == "unbounded_loops" for i in issues)
 
@@ -598,17 +611,13 @@ class N8NResourceDetector(TurnAwareDetector):
 
         fixes: List[str] = []
         if unbounded_ai:
-            fixes.append(
-                "Set maxTokens on all AI nodes to cap per-call token usage"
-            )
+            fixes.append("Set maxTokens on all AI nodes to cap per-call token usage")
         if unbounded_loops:
             fixes.append(
                 "Set maxIterations and/or batchSize on loop/batch nodes to prevent runaway processing"
             )
         if http_no_timeout:
-            fixes.append(
-                "Add explicit timeout settings to HTTP request nodes (e.g. 30000 ms)"
-            )
+            fixes.append("Add explicit timeout settings to HTTP request nodes (e.g. 30000 ms)")
         if sequential_ai_chains:
             fixes.append(
                 "Insert data-reduction nodes (Summarize, Limit, Function) between sequential AI nodes "

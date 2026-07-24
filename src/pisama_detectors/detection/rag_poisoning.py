@@ -18,12 +18,13 @@ documents out of ``workflow_run.nodes`` and delegates.
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 @dataclass
 class RagPoisoningResult:
     """Result of a RAG poisoning scan."""
+
     detected: bool
     confidence: float
     pattern_count: int = 0
@@ -197,11 +198,13 @@ def scan_for_injections(content: str) -> List[Dict[str, Any]]:
         for pattern in patterns:
             match = pattern.search(content)
             if match:
-                found.append({
-                    "category": category,
-                    "matched": match.group(),
-                    "position": match.start(),
-                })
+                found.append(
+                    {
+                        "category": category,
+                        "matched": match.group(),
+                        "position": match.start(),
+                    }
+                )
     return found
 
 
@@ -263,12 +266,14 @@ def detect(
         if found:
             pattern_count += len(found)
             affected.append(idx)
-            issues.append({
-                "type": "rag_injection",
-                "document_index": idx,
-                "patterns_found": found,
-                "content_preview": doc[:200],
-            })
+            issues.append(
+                {
+                    "type": "rag_injection",
+                    "document_index": idx,
+                    "patterns_found": found,
+                    "content_preview": doc[:200],
+                }
+            )
             for f in found:
                 all_matched.append(f["matched"])
 

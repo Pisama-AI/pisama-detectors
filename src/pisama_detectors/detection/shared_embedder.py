@@ -28,6 +28,7 @@ class _MiniLMEmbedder:
 
     def __init__(self, model_name: str):
         from sentence_transformers import SentenceTransformer
+
         self._model = SentenceTransformer(model_name)
 
     def encode(

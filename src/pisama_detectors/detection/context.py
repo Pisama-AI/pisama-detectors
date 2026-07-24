@@ -27,10 +27,10 @@ Version History:
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,18 @@ STUB_OUTPUT_MARKERS = (
 # ("past observations", "step N:") without executing a new action, the agent
 # is reviewing history instead of addressing context.
 IMPERATIVE_TASK_VERBS = (
-    "put", "find", "examine", "cool", "heat", "slice",
-    "clean", "look", "place", "get", "take", "move",
+    "put",
+    "find",
+    "examine",
+    "cool",
+    "heat",
+    "slice",
+    "clean",
+    "look",
+    "place",
+    "get",
+    "take",
+    "move",
 )
 REFLECTION_MARKERS = (
     "past observations",
@@ -64,37 +74,84 @@ REFLECTION_MARKERS = (
 # v1.2: Markers indicating critical context that should not be ignored
 # v1.2.1: Made more strict - only explicit critical/important markers, not soft markers
 CRITICAL_CONTEXT_MARKERS = [
-    "critical:", "important:", "critical -", "important -",
-    "must handle", "must address", "must review", "must consider",
-    "required:", "mandatory:",
-    "do not ignore", "don't ignore",
+    "critical:",
+    "important:",
+    "critical -",
+    "important -",
+    "must handle",
+    "must address",
+    "must review",
+    "must consider",
+    "required:",
+    "mandatory:",
+    "do not ignore",
+    "don't ignore",
 ]
 
 # Phrases that indicate the output is building on/referencing prior context
 CONTEXT_REFERENCE_PHRASES = [
-    "based on", "building on", "as discussed", "as mentioned",
-    "from the previous", "from earlier", "continuing from",
-    "following up on", "as per", "according to",
-    "incorporating", "using the", "reviewing the",
-    "analyzed the", "examined the", "looked at the",
-    "the existing", "the current", "the original",
+    "based on",
+    "building on",
+    "as discussed",
+    "as mentioned",
+    "from the previous",
+    "from earlier",
+    "continuing from",
+    "following up on",
+    "as per",
+    "according to",
+    "incorporating",
+    "using the",
+    "reviewing the",
+    "analyzed the",
+    "examined the",
+    "looked at the",
+    "the existing",
+    "the current",
+    "the original",
     # v1.1: Additional patterns
-    "our previous", "the previous", "previous analysis",
-    "previous research", "previous work", "prior work",
-    "reflecting on", "building upon", "extending",
-    "referenced", "referring to", "as noted",
+    "our previous",
+    "the previous",
+    "previous analysis",
+    "previous research",
+    "previous work",
+    "prior work",
+    "reflecting on",
+    "building upon",
+    "extending",
+    "referenced",
+    "referring to",
+    "as noted",
 ]
 
 # Phrases that indicate legitimate adaptation of context
 ADAPTATION_PHRASES = [
-    "reformatted", "restructured", "reorganized", "updated format",
-    "different approach", "alternative method", "new methodology",
-    "refactored", "rewritten", "rewrote", "reimplemented",
-    "improved", "enhanced", "optimized", "streamlined",
-    "modernized", "simplified", "clarified",
+    "reformatted",
+    "restructured",
+    "reorganized",
+    "updated format",
+    "different approach",
+    "alternative method",
+    "new methodology",
+    "refactored",
+    "rewritten",
+    "rewrote",
+    "reimplemented",
+    "improved",
+    "enhanced",
+    "optimized",
+    "streamlined",
+    "modernized",
+    "simplified",
+    "clarified",
     # v1.1: Additional patterns
-    "pivot", "pivoting", "adjusted", "modified approach",
-    "adapted", "evolved", "iterated",
+    "pivot",
+    "pivoting",
+    "adjusted",
+    "modified approach",
+    "adapted",
+    "evolved",
+    "iterated",
 ]
 
 
@@ -122,11 +179,11 @@ class ContextNeglectResult:
 class ContextNeglectDetector:
     """
     Detects F7: Context Neglect - when an agent ignores upstream context.
-    
+
     Analyzes whether key information from the provided context
     is reflected in the agent's output.
     """
-    
+
     def __init__(
         self,
         utilization_threshold: float = 0.65,  # v1.3: Raised from 0.3 — keyword overlap alone insufficient
@@ -146,37 +203,74 @@ class ContextNeglectDetector:
             "emails": set(),
             "keywords": set(),
         }
-        
-        numbers = re.findall(r'\b\d+(?:\.\d+)?(?:%|k|m|b)?\b', text.lower())
+
+        numbers = re.findall(r"\b\d+(?:\.\d+)?(?:%|k|m|b)?\b", text.lower())
         elements["numbers"] = set(numbers)
-        
+
         dates = re.findall(
-            r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|'
-            r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,?\s+\d{4})?)\b',
-            text.lower()
+            r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|"
+            r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,?\s+\d{4})?)\b",
+            text.lower(),
         )
         elements["dates"] = set(dates)
-        
-        capitalized = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+
+        capitalized = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
         elements["names"] = set(capitalized)
-        
+
         urls = re.findall(r'https?://[^\s<>"{}|\\^`\[\]]+', text)
         elements["urls"] = set(urls)
-        
-        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
+
+        emails = re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text)
         elements["emails"] = set(emails)
-        
+
         words = text.lower().split()
         stopwords = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "as", "and", "but", "or", "nor", "so", "yet", "not", "it",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "and",
+            "but",
+            "or",
+            "nor",
+            "so",
+            "yet",
+            "not",
+            "it",
         }
         keywords = {w for w in words if len(w) > 4 and w not in stopwords}
         elements["keywords"] = keywords
-        
+
         return elements
 
     def _compute_utilization(
@@ -187,7 +281,7 @@ class ContextNeglectDetector:
         total_weight = 0
         utilized_weight = 0
         missing = []
-        
+
         weights = {
             "numbers": 3.0,
             "dates": 3.0,
@@ -196,20 +290,19 @@ class ContextNeglectDetector:
             "emails": 2.0,
             "keywords": 1.0,
         }
-        
+
         for element_type, weight in weights.items():
             context_set = context_elements.get(element_type, set())
             output_set = output_elements.get(element_type, set())
-            
+
             for item in context_set:
                 total_weight += weight
-                if any(item.lower() in o.lower() or o.lower() in item.lower() 
-                       for o in output_set):
+                if any(item.lower() in o.lower() or o.lower() in item.lower() for o in output_set):
                     utilized_weight += weight
                 else:
                     if element_type in ["numbers", "dates", "names"]:
                         missing.append(f"{element_type}: {item}")
-        
+
         if total_weight == 0:
             return 1.0, []
 
@@ -261,8 +354,13 @@ class ContextNeglectDetector:
         # Reflection is fine if it culminates in a concrete new action — look
         # for "I will", "next, I", imperative commands at the end, etc.
         action_intent = (
-            "i will ", "i'll ", "next, i", "i should ",
-            "let me now", "now i will", "therefore i",
+            "i will ",
+            "i'll ",
+            "next, i",
+            "i should ",
+            "let me now",
+            "now i will",
+            "therefore i",
         )
         return not any(phrase in out_lower for phrase in action_intent)
 
@@ -293,7 +391,9 @@ class ContextNeglectDetector:
         if not context or not output:
             return 0.0
         try:
-            from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+            from pisama_detectors.detection.shared_embedder import (
+                get_shared_embedder as get_embedder,
+            )
 
             embedder = get_embedder()
             if not embedder:
@@ -328,7 +428,7 @@ class ContextNeglectDetector:
         critical_topics = set()
 
         # Split into sentences/sections
-        sections = re.split(r'[.!?]', context_lower)
+        sections = re.split(r"[.!?]", context_lower)
 
         for section in sections:
             # Check if section has critical markers
@@ -336,17 +436,22 @@ class ContextNeglectDetector:
             if has_marker:
                 # Extract significant words from this section (domain-specific terms)
                 # Look for hyphenated terms (like "token-expiration-cleanup")
-                hyphenated = re.findall(r'\b[a-z]+-[a-z]+(?:-[a-z]+)*\b', section)
+                hyphenated = re.findall(r"\b[a-z]+-[a-z]+(?:-[a-z]+)*\b", section)
                 critical_topics.update(hyphenated)
 
                 # Look for capitalized terms that were lowercased (like "SessionManager")
                 # These would appear as camelCase or compound words
-                compounds = re.findall(r'\b[a-z]+(?:manager|handler|controller|service|config|policy|hook|store)\b', section)
+                compounds = re.findall(
+                    r"\b[a-z]+(?:manager|handler|controller|service|config|policy|hook|store)\b",
+                    section,
+                )
                 critical_topics.update(compounds)
 
         return critical_topics
 
-    def _check_critical_topics_addressed(self, critical_topics: set[str], output: str) -> tuple[bool, set[str]]:
+    def _check_critical_topics_addressed(
+        self, critical_topics: set[str], output: str
+    ) -> tuple[bool, set[str]]:
         """v1.2: Check if critical topics from context are addressed in output.
 
         Returns (addressed, missing) where addressed is True if enough critical
@@ -369,7 +474,7 @@ class ContextNeglectDetector:
                 continue
 
             # For hyphenated topics, require at least 2 significant parts to match
-            topic_parts = [p for p in topic.split('-') if len(p) > 4]
+            topic_parts = [p for p in topic.split("-") if len(p) > 4]
             if len(topic_parts) >= 2:
                 # Count how many parts appear in output
                 parts_matched = sum(1 for part in topic_parts if part in output_lower)
@@ -490,8 +595,7 @@ class ContextNeglectDetector:
                             f"semantic divergence from short task (divergence={divergence:.2f})"
                         ],
                         explanation=(
-                            "Output is semantically unrelated to the short "
-                            "imperative task context."
+                            "Output is semantically unrelated to the short imperative task context."
                         ),
                         suggested_fix=(
                             "Ensure the agent acts on the current task rather "
@@ -510,9 +614,7 @@ class ContextNeglectDetector:
         context_elements = self._extract_key_elements(context)
         output_elements = self._extract_key_elements(output)
 
-        utilization, missing = self._compute_utilization(
-            context_elements, output_elements
-        )
+        utilization, missing = self._compute_utilization(context_elements, output_elements)
 
         # v1.5: Compute whole-text semantic divergence once; reuse below to
         # both flip borderline FNs and floor the final confidence.
@@ -532,13 +634,15 @@ class ContextNeglectDetector:
         critical_topics_missing = set()
         if has_critical_context:
             critical_topics = self._extract_critical_topics(context)
-            critical_topics_addressed, critical_topics_missing = self._check_critical_topics_addressed(
-                critical_topics, output
+            critical_topics_addressed, critical_topics_missing = (
+                self._check_critical_topics_addressed(critical_topics, output)
             )
 
         # v1.3: Set thresholds based on context importance
         # Critical context requires higher utilization to pass
-        task_utilization_threshold = 0.50 if has_critical_context else 0.35  # v1.3: Raised to match higher base threshold
+        task_utilization_threshold = (
+            0.50 if has_critical_context else 0.35
+        )  # v1.3: Raised to match higher base threshold
 
         # v1.3: Improved detection logic with tighter skip conditions.
         # Key insight: explicit context reference shows awareness, but
@@ -685,13 +789,13 @@ class ContextNeglectDetector:
             output=receiver_output,
             agent_name=receiver_name,
         )
-        
+
         if result.detected and sender_name:
             result.explanation = (
                 f"Agent '{receiver_name or 'downstream'}' ignored context from "
                 f"'{sender_name}'. " + result.explanation
             )
-        
+
         return result
 
     def detect_from_trace(
@@ -699,17 +803,17 @@ class ContextNeglectDetector:
         trace: dict,
     ) -> list[ContextNeglectResult]:
         results = []
-        
+
         spans = trace.get("spans", [])
         for i, span in enumerate(spans):
             context = span.get("input", {}).get("context", "")
             output = span.get("output", {}).get("content", "")
             agent_name = span.get("name", "")
-            
-            if i > 0 and spans[i-1].get("output", {}).get("content"):
-                prev_output = spans[i-1]["output"]["content"]
+
+            if i > 0 and spans[i - 1].get("output", {}).get("content"):
+                prev_output = spans[i - 1]["output"]["content"]
                 context = f"{context}\n{prev_output}" if context else prev_output
-            
+
             if context and output:
                 result = self.detect(
                     context=context,

@@ -17,10 +17,10 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,13 +153,15 @@ class N8NSchemaDetector(TurnAwareDetector):
             # Check for error indicators in content
             error_indicators = self._detect_schema_errors(consumer.content)
             if error_indicators:
-                issues.append({
-                    "type": "schema_error",
-                    "producer": producer.participant_id,
-                    "consumer": consumer.participant_id,
-                    "errors": error_indicators,
-                    "description": f"Schema-related errors detected in {consumer.participant_id}",
-                })
+                issues.append(
+                    {
+                        "type": "schema_error",
+                        "producer": producer.participant_id,
+                        "consumer": consumer.participant_id,
+                        "errors": error_indicators,
+                        "description": f"Schema-related errors detected in {consumer.participant_id}",
+                    }
+                )
                 affected_turns.extend([producer.turn_number, consumer.turn_number])
 
         # Check for progressive schema drift (only if we have error indicators)
@@ -183,7 +185,9 @@ class N8NSchemaDetector(TurnAwareDetector):
 
         # Determine severity
         error_count = sum(1 for i in issues if i.get("type") == "schema_error")
-        mismatch_count = sum(1 for i in issues if i.get("type") in ("field_mismatch", "type_mismatch"))
+        mismatch_count = sum(
+            1 for i in issues if i.get("type") in ("field_mismatch", "type_mismatch")
+        )
 
         if error_count >= 2 or mismatch_count >= 3:
             severity = TurnAwareSeverity.SEVERE
@@ -291,53 +295,56 @@ class N8NSchemaDetector(TurnAwareDetector):
                             # Check benign whitelist — commonly valid in n8n
                             if compat_key in BENIGN_TYPE_PAIRS:
                                 # Benign mismatch — skip or set very low confidence
-                                issues.append({
-                                    "type": "benign_type_mismatch",
-                                    "severity": "info",
-                                    "confidence": 0.2,
-                                    "source_node": source_name,
-                                    "dest_node": dest_name,
-                                    "description": (
-                                        f"Benign type pair: {source_name} outputs "
-                                        f"'{source_output_type}' -> {dest_name} "
-                                        f"expects '{dest_input_type}' (auto-coerced)"
-                                    ),
-                                })
+                                issues.append(
+                                    {
+                                        "type": "benign_type_mismatch",
+                                        "severity": "info",
+                                        "confidence": 0.2,
+                                        "source_node": source_name,
+                                        "dest_node": dest_name,
+                                        "description": (
+                                            f"Benign type pair: {source_name} outputs "
+                                            f"'{source_output_type}' -> {dest_name} "
+                                            f"expects '{dest_input_type}' (auto-coerced)"
+                                        ),
+                                    }
+                                )
                             else:
                                 is_compatible = TYPE_COMPATIBILITY.get(compat_key, True)
                                 if not is_compatible:
-                                    issues.append({
-                                        "type": "type_mismatch",
-                                        "source_node": source_name,
-                                        "source_node_type": source_type,
-                                        "source_output_type": source_output_type,
-                                        "dest_node": dest_name,
-                                        "dest_node_type": dest_type,
-                                        "dest_input_type": dest_input_type,
-                                        "description": (
-                                            f"Type mismatch: {source_name} ({source_type}) outputs "
-                                            f"'{source_output_type}' but {dest_name} ({dest_type}) "
-                                            f"expects '{dest_input_type}'"
-                                        ),
-                                    })
+                                    issues.append(
+                                        {
+                                            "type": "type_mismatch",
+                                            "source_node": source_name,
+                                            "source_node_type": source_type,
+                                            "source_output_type": source_output_type,
+                                            "dest_node": dest_name,
+                                            "dest_node_type": dest_type,
+                                            "dest_input_type": dest_input_type,
+                                            "description": (
+                                                f"Type mismatch: {source_name} ({source_type}) outputs "
+                                                f"'{source_output_type}' but {dest_name} ({dest_type}) "
+                                                f"expects '{dest_input_type}'"
+                                            ),
+                                        }
+                                    )
                                     affected_node_names.extend([source_name, dest_name])
 
         # Check for $json.fieldName expression references in node parameters
         # that reference fields not produced by known upstream nodes
-        expression_issues = self._check_expression_references(
-            node_lookup, connections
-        )
+        expression_issues = self._check_expression_references(node_lookup, connections)
         issues.extend(expression_issues)
         for issue in expression_issues:
-            affected_node_names.extend([
-                issue.get("node", ""),
-                issue.get("upstream_node", ""),
-            ])
+            affected_node_names.extend(
+                [
+                    issue.get("node", ""),
+                    issue.get("upstream_node", ""),
+                ]
+            )
 
         # Filter: only count real issues (not benign mismatches) for detection
         real_issues = [
-            i for i in issues
-            if i.get("type") not in ("benign_type_mismatch", "unknown_node_type")
+            i for i in issues if i.get("type") not in ("benign_type_mismatch", "unknown_node_type")
         ]
 
         if not real_issues:
@@ -365,11 +372,9 @@ class N8NSchemaDetector(TurnAwareDetector):
 
         # Map affected node names to turn indices (use node list order)
         node_index_map = {node.get("name", ""): idx for idx, node in enumerate(nodes)}
-        affected_turns = sorted({
-            node_index_map[name]
-            for name in set(affected_node_names)
-            if name in node_index_map
-        })
+        affected_turns = sorted(
+            {node_index_map[name] for name in set(affected_node_names) if name in node_index_map}
+        )
 
         return TurnAwareDetectionResult(
             detected=True,
@@ -437,7 +442,7 @@ class N8NSchemaDetector(TurnAwareDetector):
                             upstream_map[dest_name].append(source_name)
 
         # For each node, find $json references in parameters
-        json_field_pattern = re.compile(r'\$json\.([a-zA-Z_][a-zA-Z0-9_]*)')
+        json_field_pattern = re.compile(r"\$json\.([a-zA-Z_][a-zA-Z0-9_]*)")
 
         for node_name, node_data in node_lookup.items():
             parameters = node_data.get("parameters", {})
@@ -452,16 +457,18 @@ class N8NSchemaDetector(TurnAwareDetector):
             if not upstream_sources:
                 # Node has $json references but no upstream connection
                 for field_name in referenced_fields:
-                    issues.append({
-                        "type": "expression_reference",
-                        "node": node_name,
-                        "upstream_node": "",
-                        "field": field_name,
-                        "description": (
-                            f"Node '{node_name}' references $json.{field_name} "
-                            f"but has no upstream connections"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "expression_reference",
+                            "node": node_name,
+                            "upstream_node": "",
+                            "field": field_name,
+                            "description": (
+                                f"Node '{node_name}' references $json.{field_name} "
+                                f"but has no upstream connections"
+                            ),
+                        }
+                    )
                 continue
 
             # Check if upstream nodes are of types that produce specific known output types
@@ -476,17 +483,19 @@ class N8NSchemaDetector(TurnAwareDetector):
                 if source_output == "text":
                     # Text nodes produce plain text, not structured JSON fields
                     for field_name in referenced_fields:
-                        issues.append({
-                            "type": "expression_reference",
-                            "node": node_name,
-                            "upstream_node": source_name,
-                            "field": field_name,
-                            "description": (
-                                f"Node '{node_name}' references $json.{field_name} "
-                                f"but upstream '{source_name}' ({source_type}) "
-                                f"outputs plain text, not structured JSON"
-                            ),
-                        })
+                        issues.append(
+                            {
+                                "type": "expression_reference",
+                                "node": node_name,
+                                "upstream_node": source_name,
+                                "field": field_name,
+                                "description": (
+                                    f"Node '{node_name}' references $json.{field_name} "
+                                    f"but upstream '{source_name}' ({source_type}) "
+                                    f"outputs plain text, not structured JSON"
+                                ),
+                            }
+                        )
 
         return issues
 
@@ -498,7 +507,7 @@ class N8NSchemaDetector(TurnAwareDetector):
         content = content.strip()
 
         # Try to parse as JSON
-        if content.startswith('{') or content.startswith('['):
+        if content.startswith("{") or content.startswith("["):
             try:
                 data = json.loads(content)
                 return self._schema_from_data(data)
@@ -507,9 +516,9 @@ class N8NSchemaDetector(TurnAwareDetector):
 
         # Try to extract from key: value format (from _clean_n8n_content)
         schema = {}
-        for line in content.split('\n'):
-            if ':' in line:
-                parts = line.split(':', 1)
+        for line in content.split("\n"):
+            if ":" in line:
+                parts = line.split(":", 1)
                 if len(parts) == 2:
                     key = parts[0].strip()
                     value = parts[1].strip()
@@ -563,13 +572,13 @@ class N8NSchemaDetector(TurnAwareDetector):
         """Infer type from string representation."""
         value_str = value_str.strip()
 
-        if value_str.lower() in ('null', 'none', ''):
+        if value_str.lower() in ("null", "none", ""):
             return "null"
-        elif value_str.lower() in ('true', 'false'):
+        elif value_str.lower() in ("true", "false"):
             return "boolean"
-        elif value_str.startswith('{'):
+        elif value_str.startswith("{"):
             return "object"
-        elif value_str.startswith('['):
+        elif value_str.startswith("["):
             return "array"
         else:
             try:
@@ -593,19 +602,20 @@ class N8NSchemaDetector(TurnAwareDetector):
         content = consumer.content.lower()
 
         # Common node types and their expected inputs
-        if any(x in node_name for x in ['email', 'mail', 'send']):
+        if any(x in node_name for x in ["email", "mail", "send"]):
             return {"to": "string", "subject": "string", "body": "string"}
-        elif any(x in node_name for x in ['http', 'request', 'api']):
+        elif any(x in node_name for x in ["http", "request", "api"]):
             return {"url": "string"}
-        elif any(x in node_name for x in ['slack', 'discord', 'teams']):
+        elif any(x in node_name for x in ["slack", "discord", "teams"]):
             return {"channel": "string", "message": "string"}
-        elif any(x in node_name for x in ['database', 'db', 'postgres', 'mysql']):
+        elif any(x in node_name for x in ["database", "db", "postgres", "mysql"]):
             return {"query": "string"}
 
         # Check content for field access patterns like $json.fieldName
         accessed_fields = set()
         import re
-        for match in re.finditer(r'\$json\.([a-zA-Z_][a-zA-Z0-9_]*)', content):
+
+        for match in re.finditer(r"\$json\.([a-zA-Z_][a-zA-Z0-9_]*)", content):
             accessed_fields.add(match.group(1))
 
         if accessed_fields:
@@ -628,11 +638,13 @@ class N8NSchemaDetector(TurnAwareDetector):
             if field not in producer_schema:
                 missing_fields.append(field)
             elif expected_type != "any" and producer_schema[field] != expected_type:
-                type_mismatches.append({
-                    "field": field,
-                    "expected": expected_type,
-                    "actual": producer_schema[field],
-                })
+                type_mismatches.append(
+                    {
+                        "field": field,
+                        "expected": expected_type,
+                        "actual": producer_schema[field],
+                    }
+                )
 
         # Calculate compatibility score
         total_expected = len(expected_schema)

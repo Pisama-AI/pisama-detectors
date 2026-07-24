@@ -10,13 +10,13 @@ Analyzes whether agent outputs match the user's requirements:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -45,17 +45,42 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Requirement indicators in user messages
     REQUIREMENT_KEYWORDS = [
-        "must", "should", "need", "require", "want", "please",
-        "make sure", "ensure", "implement", "create", "build",
-        "add", "include", "support", "feature", "functionality",
+        "must",
+        "should",
+        "need",
+        "require",
+        "want",
+        "please",
+        "make sure",
+        "ensure",
+        "implement",
+        "create",
+        "build",
+        "add",
+        "include",
+        "support",
+        "feature",
+        "functionality",
     ]
 
     # Mismatch indicators - signs of spec violation
     MISMATCH_INDICATORS = [
-        "instead of", "rather than", "different from", "not what",
-        "missing", "forgot", "didn't include", "left out",
-        "extra", "unnecessary", "not requested", "not needed",
-        "incomplete", "partial", "only part", "some of",
+        "instead of",
+        "rather than",
+        "different from",
+        "not what",
+        "missing",
+        "forgot",
+        "didn't include",
+        "left out",
+        "extra",
+        "unnecessary",
+        "not requested",
+        "not needed",
+        "incomplete",
+        "partial",
+        "only part",
+        "some of",
     ]
 
     def __init__(
@@ -123,12 +148,14 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
         # 1. Check requirement coverage - only flag if below threshold
         coverage_result = self._check_coverage(requirements, agent_content)
         if coverage_result["coverage"] < self.coverage_threshold:
-            issues.append({
-                "type": "missing_requirements",
-                "uncovered": coverage_result["uncovered"][:5],
-                "coverage_ratio": coverage_result["coverage"],
-                "description": f"Missing requirements: {', '.join(coverage_result['uncovered'][:3])} ({coverage_result['coverage']:.0%} coverage < {self.coverage_threshold:.0%} threshold)",
-            })
+            issues.append(
+                {
+                    "type": "missing_requirements",
+                    "uncovered": coverage_result["uncovered"][:5],
+                    "coverage_ratio": coverage_result["coverage"],
+                    "description": f"Missing requirements: {', '.join(coverage_result['uncovered'][:3])} ({coverage_result['coverage']:.0%} coverage < {self.coverage_threshold:.0%} threshold)",
+                }
+            )
             for ut in synthetic_user_turns:
                 affected_turns.append(ut.turn_number)
 
@@ -155,7 +182,9 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
             )
 
         # Determine severity
-        if any(i["type"] == "missing_requirements" and i.get("coverage_ratio", 1) < 0.5 for i in issues):
+        if any(
+            i["type"] == "missing_requirements" and i.get("coverage_ratio", 1) < 0.5 for i in issues
+        ):
             severity = TurnAwareSeverity.SEVERE
         elif len(issues) >= 2:
             severity = TurnAwareSeverity.MODERATE
@@ -219,7 +248,7 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
             List of text chunks
         """
         # Split on paragraphs first (double newlines or sentences)
-        paragraphs = [p.strip() for p in agent_content.split('\n\n') if p.strip()]
+        paragraphs = [p.strip() for p in agent_content.split("\n\n") if p.strip()]
 
         chunks = []
         current_chunk = ""
@@ -241,7 +270,7 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
         self,
         requirements: set,
         agent_content: str,
-        similarity_threshold: float = 0.82  # Raised from 0.75 to reduce FPs
+        similarity_threshold: float = 0.82,  # Raised from 0.75 to reduce FPs
     ) -> dict:
         """Use embeddings to check if requirements are semantically met.
 
@@ -355,12 +384,14 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.MISMATCH_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "explicit_mismatch",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Mismatch indicator found: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "explicit_mismatch",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Mismatch indicator found: '{indicator}'",
+                        }
+                    )
                     break  # One per turn
 
         return issues[:3]
@@ -373,21 +404,28 @@ class TurnAwareSpecificationMismatchDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Look for phrases indicating unrequested additions
         scope_indicators = [
-            "i also added", "i've included extra", "bonus feature",
-            "additionally", "as a bonus", "extra functionality",
-            "i went ahead and", "while i was at it",
+            "i also added",
+            "i've included extra",
+            "bonus feature",
+            "additionally",
+            "as a bonus",
+            "extra functionality",
+            "i went ahead and",
+            "while i was at it",
         ]
 
         for turn in agent_turns:
             content_lower = turn.content.lower()
             for indicator in scope_indicators:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "scope_creep",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Potential scope creep: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "scope_creep",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Potential scope creep: '{indicator}'",
+                        }
+                    )
                     break
 
         return issues[:2]

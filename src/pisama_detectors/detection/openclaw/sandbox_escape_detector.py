@@ -17,8 +17,8 @@ import logging
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -82,12 +82,14 @@ class OpenClawSandboxEscapeDetector(TurnAwareDetector):
                 "unknown",
             )
             categories_hit.add(category)
-            violations.append({
-                "event_index": i,
-                "tool_name": evt.get("tool_name"),
-                "category": category,
-                "tool_input": evt.get("tool_input"),
-            })
+            violations.append(
+                {
+                    "event_index": i,
+                    "tool_name": evt.get("tool_name"),
+                    "category": category,
+                    "tool_input": evt.get("tool_input"),
+                }
+            )
             affected_turns.append(i)
 
         if not violations:

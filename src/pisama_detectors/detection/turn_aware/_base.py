@@ -14,7 +14,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ EMBEDDING_SIMILARITY_THRESHOLD = 0.7  # Below this = significant drift
 
 class TurnAwareSeverity(str, Enum):
     """Severity levels for turn-aware detections."""
+
     NONE = "none"
     MINOR = "minor"
     MODERATE = "moderate"
@@ -44,6 +45,7 @@ class TurnSnapshot:
     Similar to StateSnapshot but designed for conversation analysis,
     capturing the context flow between participants.
     """
+
     turn_number: int
     participant_type: str  # user, agent, system, tool
     participant_id: str
@@ -55,14 +57,13 @@ class TurnSnapshot:
 
     def __post_init__(self):
         if self.content_hash is None:
-            self.content_hash = hashlib.sha256(
-                self.content.encode()
-            ).hexdigest()[:16]
+            self.content_hash = hashlib.sha256(self.content.encode()).hexdigest()[:16]
 
 
 @dataclass
 class TurnAwareDetectionResult:
     """Result from a turn-aware detector."""
+
     detected: bool
     severity: TurnAwareSeverity
     confidence: float

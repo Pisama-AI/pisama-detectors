@@ -17,13 +17,13 @@ Reference: https://arxiv.org/abs/2503.13657
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -56,26 +56,52 @@ class TurnAwareTerminationAwarenessDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Explicit termination signals
     TERMINATION_SIGNALS = [
-        "terminate", "done", "complete", "finished",
-        "task complete", "goal achieved", "mission accomplished",
-        "all done", "nothing more", "that's all",
-        "successfully completed", "work is done", "task finished",
-        "end of task", "completed successfully", "job done",
+        "terminate",
+        "done",
+        "complete",
+        "finished",
+        "task complete",
+        "goal achieved",
+        "mission accomplished",
+        "all done",
+        "nothing more",
+        "that's all",
+        "successfully completed",
+        "work is done",
+        "task finished",
+        "end of task",
+        "completed successfully",
+        "job done",
     ]
 
     # Signals that conversation continues after termination
     CONTINUATION_AFTER_TERMINATION = [
-        "but wait", "actually", "one more thing",
-        "let me also", "additionally", "furthermore",
-        "however", "also need to", "i should also",
-        "before we finish", "wait", "hold on",
+        "but wait",
+        "actually",
+        "one more thing",
+        "let me also",
+        "additionally",
+        "furthermore",
+        "however",
+        "also need to",
+        "i should also",
+        "before we finish",
+        "wait",
+        "hold on",
     ]
 
     # Progress indicators that show work is happening
     PROGRESS_INDICATORS = [
-        "step", "progress", "moving on", "next",
-        "continuing", "proceeding", "working on",
-        "now i'll", "let me", "i will",
+        "step",
+        "progress",
+        "moving on",
+        "next",
+        "continuing",
+        "proceeding",
+        "working on",
+        "now i'll",
+        "let me",
+        "i will",
     ]
 
     def __init__(
@@ -175,11 +201,13 @@ class TurnAwareTerminationAwarenessDetector(EmbeddingMixin, TurnAwareDetector):
             )
 
             if not has_termination:
-                issues.append({
-                    "type": "missing_termination",
-                    "turns": [len(turns)],
-                    "description": f"Long conversation ({len(turns)} turns) without termination signal",
-                })
+                issues.append(
+                    {
+                        "type": "missing_termination",
+                        "turns": [len(turns)],
+                        "description": f"Long conversation ({len(turns)} turns) without termination signal",
+                    }
+                )
 
         return issues
 
@@ -206,11 +234,13 @@ class TurnAwareTerminationAwarenessDetector(EmbeddingMixin, TurnAwareDetector):
                 substantial_content = len(next_turn.content) > 100
 
                 if continues or (same_participant and substantial_content):
-                    issues.append({
-                        "type": "ignored_termination",
-                        "turns": [turn.turn_number, next_turn.turn_number],
-                        "description": "Conversation continues after termination signal",
-                    })
+                    issues.append(
+                        {
+                            "type": "ignored_termination",
+                            "turns": [turn.turn_number, next_turn.turn_number],
+                            "description": "Conversation continues after termination signal",
+                        }
+                    )
 
         return issues[:2]
 
@@ -222,19 +252,20 @@ class TurnAwareTerminationAwarenessDetector(EmbeddingMixin, TurnAwareDetector):
             return issues
 
         # Check recent turns for progress indicators
-        recent = turns[-self.max_turns_without_progress:]
+        recent = turns[-self.max_turns_without_progress :]
         progress_count = sum(
-            1 for t in recent
-            if any(prog in t.content.lower() for prog in self.PROGRESS_INDICATORS)
+            1 for t in recent if any(prog in t.content.lower() for prog in self.PROGRESS_INDICATORS)
         )
 
         # If very few progress indicators in many turns
         if progress_count < 2:
-            issues.append({
-                "type": "stalled_progress",
-                "turns": [t.turn_number for t in recent],
-                "description": f"No progress indicators in last {self.max_turns_without_progress} turns",
-            })
+            issues.append(
+                {
+                    "type": "stalled_progress",
+                    "turns": [t.turn_number for t in recent],
+                    "description": f"No progress indicators in last {self.max_turns_without_progress} turns",
+                }
+            )
 
         return issues
 
@@ -250,10 +281,12 @@ class TurnAwareTerminationAwarenessDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Multiple completion claims suggests issues
         if len(completion_turns) >= 3:
-            issues.append({
-                "type": "repeated_completion_claims",
-                "turns": completion_turns,
-                "description": f"Multiple completion claims ({len(completion_turns)}) without actual termination",
-            })
+            issues.append(
+                {
+                    "type": "repeated_completion_claims",
+                    "turns": completion_turns,
+                    "description": f"Multiple completion claims ({len(completion_turns)}) without actual termination",
+                }
+            )
 
         return issues

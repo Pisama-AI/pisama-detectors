@@ -18,8 +18,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -69,18 +69,20 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
         for i, evt in enumerate(events):
             evt_channel = (evt.get("channel") or "").lower()
             if evt_channel and evt_channel != session_channel:
-                violations.append({
-                    "type": "cross_channel_routing",
-                    "event_index": i,
-                    "event_type": evt.get("type", ""),
-                    "session_channel": session_channel,
-                    "event_channel": evt_channel,
-                    "issue": (
-                        f"Event routed to '{evt_channel}' but session channel "
-                        f"is '{session_channel}'"
-                    ),
-                    "severity": "moderate",
-                })
+                violations.append(
+                    {
+                        "type": "cross_channel_routing",
+                        "event_index": i,
+                        "event_type": evt.get("type", ""),
+                        "session_channel": session_channel,
+                        "event_channel": evt_channel,
+                        "issue": (
+                            f"Event routed to '{evt_channel}' but session channel "
+                            f"is '{session_channel}'"
+                        ),
+                        "severity": "moderate",
+                    }
+                )
                 affected_turns.append(i)
 
         # --- Check 2: Message content formatting ---
@@ -97,18 +99,14 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
                 affected_turns.append(i)
 
         if not violations:
-            return self._no_detection(
-                f"All events consistent with {session_channel} channel"
-            )
+            return self._no_detection(f"All events consistent with {session_channel} channel")
 
         # Confidence scales with violation count
         confidence = min(1.0, 0.5 + len(violations) * 0.15)
 
         # Severity based on violation types
         has_pii = any(v.get("type") == "pii_exposure" for v in violations)
-        has_cross_channel = any(
-            v.get("type") == "cross_channel_routing" for v in violations
-        )
+        has_cross_channel = any(v.get("type") == "cross_channel_routing" for v in violations)
 
         if has_pii:
             severity = TurnAwareSeverity.SEVERE
@@ -166,9 +164,7 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
     # Channel-specific checks
     # ------------------------------------------------------------------
 
-    def _check_channel(
-        self, channel: str, content: str, event_index: int
-    ) -> List[Dict[str, Any]]:
+    def _check_channel(self, channel: str, content: str, event_index: int) -> List[Dict[str, Any]]:
         violations: List[Dict[str, Any]] = []
 
         if channel == "whatsapp":
@@ -186,28 +182,34 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
         results: List[Dict[str, Any]] = []
 
         if CODE_BLOCK_PATTERN.search(content):
-            results.append({
-                "type": "formatting",
-                "event_index": idx,
-                "issue": "Code blocks not rendered on WhatsApp",
-                "severity": "minor",
-            })
+            results.append(
+                {
+                    "type": "formatting",
+                    "event_index": idx,
+                    "issue": "Code blocks not rendered on WhatsApp",
+                    "severity": "minor",
+                }
+            )
 
         if MARKDOWN_TABLE_PATTERN.search(content):
-            results.append({
-                "type": "formatting",
-                "event_index": idx,
-                "issue": "Markdown tables not rendered on WhatsApp",
-                "severity": "minor",
-            })
+            results.append(
+                {
+                    "type": "formatting",
+                    "event_index": idx,
+                    "issue": "Markdown tables not rendered on WhatsApp",
+                    "severity": "minor",
+                }
+            )
 
         if len(content) > 1000:
-            results.append({
-                "type": "length",
-                "event_index": idx,
-                "issue": f"Message too long for WhatsApp ({len(content)} chars, max 1000)",
-                "severity": "moderate",
-            })
+            results.append(
+                {
+                    "type": "length",
+                    "event_index": idx,
+                    "issue": f"Message too long for WhatsApp ({len(content)} chars, max 1000)",
+                    "severity": "moderate",
+                }
+            )
 
         return results
 
@@ -215,12 +217,14 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
         results: List[Dict[str, Any]] = []
 
         if len(content) > 4096:
-            results.append({
-                "type": "length",
-                "event_index": idx,
-                "issue": f"Exceeds Telegram limit ({len(content)} chars, max 4096)",
-                "severity": "moderate",
-            })
+            results.append(
+                {
+                    "type": "length",
+                    "event_index": idx,
+                    "issue": f"Exceeds Telegram limit ({len(content)} chars, max 4096)",
+                    "severity": "moderate",
+                }
+            )
 
         return results
 
@@ -228,20 +232,24 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
         results: List[Dict[str, Any]] = []
 
         if SSN_PATTERN.search(content):
-            results.append({
-                "type": "pii_exposure",
-                "event_index": idx,
-                "issue": "Potential SSN detected in Slack message",
-                "severity": "severe",
-            })
+            results.append(
+                {
+                    "type": "pii_exposure",
+                    "event_index": idx,
+                    "issue": "Potential SSN detected in Slack message",
+                    "severity": "severe",
+                }
+            )
 
         if CREDIT_CARD_PATTERN.search(content):
-            results.append({
-                "type": "pii_exposure",
-                "event_index": idx,
-                "issue": "Potential credit card number in Slack message",
-                "severity": "severe",
-            })
+            results.append(
+                {
+                    "type": "pii_exposure",
+                    "event_index": idx,
+                    "issue": "Potential credit card number in Slack message",
+                    "severity": "severe",
+                }
+            )
 
         return results
 
@@ -249,12 +257,14 @@ class OpenClawChannelMismatchDetector(TurnAwareDetector):
         results: List[Dict[str, Any]] = []
 
         if len(content) > 2000:
-            results.append({
-                "type": "length",
-                "event_index": idx,
-                "issue": f"Exceeds Discord limit ({len(content)} chars, max 2000)",
-                "severity": "moderate",
-            })
+            results.append(
+                {
+                    "type": "length",
+                    "event_index": idx,
+                    "issue": f"Exceeds Discord limit ({len(content)} chars, max 2000)",
+                    "severity": "moderate",
+                }
+            )
 
         return results
 

@@ -10,13 +10,13 @@ Based on MAST research (NeurIPS 2025): FM-3.3 Incorrect Verification (28%)
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
+    MODULE_VERSION,
     TurnAwareDetectionResult,
     TurnAwareSeverity,
-    MODULE_VERSION,
+    TurnSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -63,6 +63,7 @@ class LLMOutputValidationDetector:
         """Lazy-load the LLM judge."""
         if self._judge is None:
             from ..llm_judge import MASTLLMJudge
+
             self._judge = MASTLLMJudge(api_key=self.api_key)
         return self._judge
 
@@ -75,12 +76,14 @@ class LLMOutputValidationDetector:
 
         turns = []
         for snapshot in snapshots:
-            turns.append(ConversationTurn(
-                role=snapshot.participant_type,
-                content=snapshot.content,
-                participant_id=snapshot.participant_id,
-                metadata=snapshot.turn_metadata or {},
-            ))
+            turns.append(
+                ConversationTurn(
+                    role=snapshot.participant_type,
+                    content=snapshot.content,
+                    participant_id=snapshot.participant_id,
+                    metadata=snapshot.turn_metadata or {},
+                )
+            )
         return turns
 
     def _extract_validation_context(self, turns: List[TurnSnapshot]) -> str:
@@ -146,6 +149,7 @@ class LLMOutputValidationDetector:
 
         try:
             from ..task_extractors import extract_task
+
             extraction = extract_task(conv_turns, metadata)
         except Exception as e:
             logger.warning(f"Task extraction failed: {e}")
@@ -168,7 +172,9 @@ class LLMOutputValidationDetector:
             pid = t.participant_id or t.participant_type
             agent_actions.append(f"[{pid}]: {t.content[:250]}")
 
-        trace_summary = f"{validation_context}\n\n## Full Trace:\n" + "\n---\n".join(agent_actions[:10])
+        trace_summary = f"{validation_context}\n\n## Full Trace:\n" + "\n---\n".join(
+            agent_actions[:10]
+        )
 
         # Call LLM judge for F12
         try:
@@ -214,8 +220,12 @@ class LLMOutputValidationDetector:
             severity=severity,
             confidence=result.confidence,
             failure_mode="F12" if detected else None,
-            explanation=result.reasoning if result.reasoning else (
-                "LLM detected output validation failure" if detected else "LLM found no output validation failure"
+            explanation=result.reasoning
+            if result.reasoning
+            else (
+                "LLM detected output validation failure"
+                if detected
+                else "LLM found no output validation failure"
             ),
             evidence={
                 "llm_verdict": result.verdict,
@@ -274,6 +284,7 @@ class HybridOutputValidationDetector:
         """Lazy-load pattern detector."""
         if self._pattern_detector is None:
             from .output_validation import TurnAwareOutputValidationDetector
+
             self._pattern_detector = TurnAwareOutputValidationDetector(
                 min_turns=2,
                 min_issues_to_flag=2,  # Balanced for precision
@@ -324,9 +335,8 @@ class HybridOutputValidationDetector:
         pattern_result = self.pattern_detector.detect(turns, conversation_metadata)
 
         # Step 2: Decide if we need LLM escalation
-        should_escalate = (
-            pattern_result.confidence < self.escalation_threshold
-            or (pattern_result.detected and pattern_result.confidence < 0.8)
+        should_escalate = pattern_result.confidence < self.escalation_threshold or (
+            pattern_result.detected and pattern_result.confidence < 0.8
         )
 
         if not should_escalate:

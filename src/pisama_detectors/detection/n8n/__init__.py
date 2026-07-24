@@ -15,12 +15,12 @@ These detectors are framework-specific for n8n workflows and don't apply
 to conversational multi-agent systems.
 """
 
-from .schema_detector import N8NSchemaDetector
-from .cycle_detector import N8NCycleDetector
-from .resource_detector import N8NResourceDetector
-from .timeout_detector import N8NTimeoutDetector
-from .error_detector import N8NErrorDetector
 from .complexity_detector import N8NComplexityDetector
+from .cycle_detector import N8NCycleDetector
+from .error_detector import N8NErrorDetector
+from .resource_detector import N8NResourceDetector
+from .schema_detector import N8NSchemaDetector
+from .timeout_detector import N8NTimeoutDetector
 
 __all__ = [
     "N8NSchemaDetector",

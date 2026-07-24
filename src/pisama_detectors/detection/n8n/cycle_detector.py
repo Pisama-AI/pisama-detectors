@@ -20,23 +20,53 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
 
 # Benign patterns that indicate normal retry/pagination behavior (not a bug)
 BENIGN_LOOP_PATTERNS: Set[str] = {
-    "retry", "retrying", "attempt", "page", "pagination", "offset",
-    "cursor", "next", "previous", "batch", "chunk", "poll", "polling",
-    "heartbeat", "ping", "healthcheck", "status", "progress",
-    "paginate", "iterate", "load items", "next page", "fetch page",
-    "scroll", "enumerate", "for each", "foreach", "loop over",
-    "split in batches", "splitinbatches", "wait", "delay", "schedule",
-    "cron", "interval", "webhook response", "respond to webhook",
+    "retry",
+    "retrying",
+    "attempt",
+    "page",
+    "pagination",
+    "offset",
+    "cursor",
+    "next",
+    "previous",
+    "batch",
+    "chunk",
+    "poll",
+    "polling",
+    "heartbeat",
+    "ping",
+    "healthcheck",
+    "status",
+    "progress",
+    "paginate",
+    "iterate",
+    "load items",
+    "next page",
+    "fetch page",
+    "scroll",
+    "enumerate",
+    "for each",
+    "foreach",
+    "loop over",
+    "split in batches",
+    "splitinbatches",
+    "wait",
+    "delay",
+    "schedule",
+    "cron",
+    "interval",
+    "webhook response",
+    "respond to webhook",
 }
 
 
@@ -64,26 +94,44 @@ def normalize_node_name(name: str) -> str:
     normalized = name.strip()
 
     # Remove "Round X" suffix
-    normalized = re.sub(r'\s+Round\s+\d+$', '', normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\s+Round\s+\d+$", "", normalized, flags=re.IGNORECASE)
 
     # Remove trailing numbers with optional separator
-    normalized = re.sub(r'[\s_\-]*\(?[0-9]+\)?$', '', normalized)
+    normalized = re.sub(r"[\s_\-]*\(?[0-9]+\)?$", "", normalized)
 
     # Remove trailing version indicators
-    normalized = re.sub(r'[\s_\-]*v[0-9]+$', '', normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"[\s_\-]*v[0-9]+$", "", normalized, flags=re.IGNORECASE)
 
     # Remove common action suffixes (order matters - longer patterns first)
     action_patterns = [
-        r'\s+Returns\s+to\s+\w+$',  # "Returns to React"
-        r'\s+Wavers$', r'\s+Proposes$', r'\s+Reconsiders$', r'\s+Agrees$',
-        r'\s+Confirms$', r'\s+Finalizes$', r'\s+Decides$', r'\s+Concludes$',
-        r'\s+Offer$', r'\s+Counter$', r'\s+Response$', r'\s+Answer$',
-        r'\s+Reply$', r'\s+Repeat$', r'\s+Escalates$',
-        r'\s+Round$', r'\s+Turn$', r'\s+Step$', r'\s+Phase$', r'\s+Iteration$',
-        r'\s+Initial$', r'\s+Contaminated$', r'\s+Updated$', r'\s+Modified$',
+        r"\s+Returns\s+to\s+\w+$",  # "Returns to React"
+        r"\s+Wavers$",
+        r"\s+Proposes$",
+        r"\s+Reconsiders$",
+        r"\s+Agrees$",
+        r"\s+Confirms$",
+        r"\s+Finalizes$",
+        r"\s+Decides$",
+        r"\s+Concludes$",
+        r"\s+Offer$",
+        r"\s+Counter$",
+        r"\s+Response$",
+        r"\s+Answer$",
+        r"\s+Reply$",
+        r"\s+Repeat$",
+        r"\s+Escalates$",
+        r"\s+Round$",
+        r"\s+Turn$",
+        r"\s+Step$",
+        r"\s+Phase$",
+        r"\s+Iteration$",
+        r"\s+Initial$",
+        r"\s+Contaminated$",
+        r"\s+Updated$",
+        r"\s+Modified$",
     ]
     for pattern in action_patterns:
-        normalized = re.sub(pattern, '', normalized, flags=re.IGNORECASE)
+        normalized = re.sub(pattern, "", normalized, flags=re.IGNORECASE)
 
     return normalized.strip()
 
@@ -159,7 +207,7 @@ class N8NCycleDetector(TurnAwareDetector):
                     pass
 
         if len(timestamps) >= 4:
-            increasing = all(timestamps[i] <= timestamps[i+1] for i in range(len(timestamps)-1))
+            increasing = all(timestamps[i] <= timestamps[i + 1] for i in range(len(timestamps) - 1))
             if increasing and timestamps[-1] > timestamps[0]:
                 return True
 
@@ -288,7 +336,7 @@ class N8NCycleDetector(TurnAwareDetector):
 
         if has_infinite or max_repetitions >= 5:
             severity = TurnAwareSeverity.SEVERE
-        elif max_repetitions >= 3 or any(l >= 4 for l in cycle_lengths):
+        elif max_repetitions >= 3 or any(length >= 4 for length in cycle_lengths):
             severity = TurnAwareSeverity.MODERATE
         else:
             severity = TurnAwareSeverity.MINOR
@@ -380,14 +428,16 @@ class N8NCycleDetector(TurnAwareDetector):
         for node_name, neighbors in adjacency.items():
             if node_name in neighbors:
                 node_type = node_lookup.get(node_name, {}).get("type", "")
-                issues.append({
-                    "type": "self_loop",
-                    "node": node_name,
-                    "node_type": node_type,
-                    "has_break_condition": False,
-                    "potentially_infinite": True,
-                    "description": f"Self-loop: node '{node_name}' is connected to itself",
-                })
+                issues.append(
+                    {
+                        "type": "self_loop",
+                        "node": node_name,
+                        "node_type": node_type,
+                        "has_break_condition": False,
+                        "potentially_infinite": True,
+                        "description": f"Self-loop: node '{node_name}' is connected to itself",
+                    }
+                )
                 affected_node_names.append(node_name)
 
         # 2. DFS-based cycle detection
@@ -429,17 +479,23 @@ class N8NCycleDetector(TurnAwareDetector):
 
             potentially_infinite = not has_break_condition
 
-            issues.append({
-                "type": "graph_cycle",
-                "cycle": cycle,
-                "cycle_length": len(cycle_nodes),
-                "has_break_condition": has_break_condition,
-                "potentially_infinite": potentially_infinite,
-                "description": (
-                    f"Cycle detected: {' -> '.join(cycle)}"
-                    + (" (no break condition found)" if potentially_infinite else " (has break condition)")
-                ),
-            })
+            issues.append(
+                {
+                    "type": "graph_cycle",
+                    "cycle": cycle,
+                    "cycle_length": len(cycle_nodes),
+                    "has_break_condition": has_break_condition,
+                    "potentially_infinite": potentially_infinite,
+                    "description": (
+                        f"Cycle detected: {' -> '.join(cycle)}"
+                        + (
+                            " (no break condition found)"
+                            if potentially_infinite
+                            else " (has break condition)"
+                        )
+                    ),
+                }
+            )
             affected_node_names.extend(cycle_nodes)
 
         if not issues:
@@ -468,11 +524,9 @@ class N8NCycleDetector(TurnAwareDetector):
 
         # Map affected node names to indices
         node_index_map = {node.get("name", ""): idx for idx, node in enumerate(nodes)}
-        affected_turns = sorted({
-            node_index_map[name]
-            for name in set(affected_node_names)
-            if name in node_index_map
-        })
+        affected_turns = sorted(
+            {node_index_map[name] for name in set(affected_node_names) if name in node_index_map}
+        )
 
         return TurnAwareDetectionResult(
             detected=True,
@@ -557,7 +611,11 @@ class N8NCycleDetector(TurnAwareDetector):
         # Skip initial trigger/setup nodes
         start_idx = 0
         for i, name in enumerate(normalized_sequence):
-            if 'trigger' in name.lower() or 'webhook' in name.lower() or 'initialize' in name.lower():
+            if (
+                "trigger" in name.lower()
+                or "webhook" in name.lower()
+                or "initialize" in name.lower()
+            ):
                 start_idx = i + 1
             else:
                 break
@@ -581,7 +639,7 @@ class N8NCycleDetector(TurnAwareDetector):
                 continue
 
             for i in range(0, n - cycle_len + 1, cycle_len):
-                if working_norm[i:i + cycle_len] == start_pattern:
+                if working_norm[i : i + cycle_len] == start_pattern:
                     repetitions += 1
                 else:
                     break
@@ -643,7 +701,7 @@ class N8NCycleDetector(TurnAwareDetector):
             start_pattern = node_sequence[:cycle_len]
 
             for i in range(0, n - cycle_len + 1, cycle_len):
-                if node_sequence[i:i + cycle_len] == start_pattern:
+                if node_sequence[i : i + cycle_len] == start_pattern:
                     repetitions += 1
                 else:
                     break
@@ -672,11 +730,11 @@ class N8NCycleDetector(TurnAwareDetector):
         normalized_sequence = [normalize_node_name(t.participant_id) for t in turns]
 
         # Skip utility nodes
-        skip_patterns = ['trigger', 'webhook', 'initialize', 'send to pisama', 'get']
+        skip_patterns = ["trigger", "webhook", "initialize", "send to pisama", "get"]
         working_idx = []
         working_names = []
         for i, name in enumerate(normalized_sequence):
-            if not any(p in name.lower() for p in skip_patterns) and 'lm' not in name.lower():
+            if not any(p in name.lower() for p in skip_patterns) and "lm" not in name.lower():
                 working_idx.append(i)
                 working_names.append(name)
 
@@ -702,7 +760,9 @@ class N8NCycleDetector(TurnAwareDetector):
                     interval_variance = len(set(intervals))
 
                     # Accept if: avg >= 2 AND (all same OR up to 2 different values with >=3 appearances)
-                    if avg_interval >= 2 and (interval_variance <= 1 or (interval_variance <= 2 and len(positions) >= 3)):
+                    if avg_interval >= 2 and (
+                        interval_variance <= 1 or (interval_variance <= 2 and len(positions) >= 3)
+                    ):
                         cycle_length = int(round(avg_interval))
                         original_turns = [working_idx[p] for p in positions]
 
@@ -739,7 +799,9 @@ class N8NCycleDetector(TurnAwareDetector):
                         break
 
                 if count >= self.min_cycle_repetitions:
-                    affected = [turns[k].turn_number for k in range(i, min(i + count * 2, len(turns)))]
+                    affected = [
+                        turns[k].turn_number for k in range(i, min(i + count * 2, len(turns)))
+                    ]
                     return {
                         "detected": True,
                         "type": "pingpong",
@@ -776,11 +838,16 @@ class N8NCycleDetector(TurnAwareDetector):
         for node, count, start in consecutive_counts:
             if count > self.max_healthy_retries:
                 has_errors = any(
-                    any(err in turns[j].content.lower() for err in ['error', 'fail', 'retry', 'exception'])
+                    any(
+                        err in turns[j].content.lower()
+                        for err in ["error", "fail", "retry", "exception"]
+                    )
                     for j in range(start, min(start + count, len(turns)))
                 )
 
-                affected = [turns[j].turn_number for j in range(start, min(start + count, len(turns)))]
+                affected = [
+                    turns[j].turn_number for j in range(start, min(start + count, len(turns)))
+                ]
                 return {
                     "detected": True,
                     "type": "retry_storm",

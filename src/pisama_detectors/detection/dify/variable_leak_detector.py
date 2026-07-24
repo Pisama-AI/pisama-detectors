@@ -16,8 +16,8 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -35,7 +35,10 @@ SENSITIVE_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
         {"pattern": re.compile(r"token_[a-z0-9]{32}"), "label": "Generic token"},
     ],
     "password": [
-        {"pattern": re.compile(r"password\s*=\s*\S+", re.IGNORECASE), "label": "Password assignment"},
+        {
+            "pattern": re.compile(r"password\s*=\s*\S+", re.IGNORECASE),
+            "label": "Password assignment",
+        },
         {"pattern": re.compile(r"passwd\s*=\s*\S+", re.IGNORECASE), "label": "Passwd assignment"},
         {"pattern": re.compile(r"secret\s*=\s*\S+", re.IGNORECASE), "label": "Secret assignment"},
         {"pattern": re.compile(r"credentials", re.IGNORECASE), "label": "Credentials reference"},
@@ -43,7 +46,10 @@ SENSITIVE_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
     "pii": [
         {"pattern": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "label": "SSN pattern"},
         {"pattern": re.compile(r"\b(?:\d[ -]*?){13,16}\b"), "label": "Credit card number"},
-        {"pattern": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"), "label": "Email address"},
+        {
+            "pattern": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+            "label": "Email address",
+        },
     ],
     "env_var": [
         {"pattern": re.compile(r"\$\{ENV_[A-Z_]+\}"), "label": "ENV_ variable"},
@@ -118,15 +124,17 @@ class DifyVariableLeakDetector(TurnAwareDetector):
                             cat_conf = CATEGORY_CONFIDENCE.get(category, 0.5)
                             max_confidence = max(max_confidence, cat_conf)
                             affected_node_ids.append(node_id)
-                            issues.append({
-                                "type": "sensitive_data",
-                                "category": category,
-                                "label": pat_info["label"],
-                                "node_id": node_id,
-                                "title": node_title,
-                                "matched_preview": self._redact(match.group()),
-                                "confidence": cat_conf,
-                            })
+                            issues.append(
+                                {
+                                    "type": "sensitive_data",
+                                    "category": category,
+                                    "label": pat_info["label"],
+                                    "node_id": node_id,
+                                    "title": node_title,
+                                    "matched_preview": self._redact(match.group()),
+                                    "confidence": cat_conf,
+                                }
+                            )
 
         # Check for iteration scope leaks
         scope_leaks = self._check_scope_leaks(nodes)
@@ -235,13 +243,15 @@ class DifyVariableLeakDetector(TurnAwareDetector):
                 for parent_id, outputs in child_outputs.items():
                     for out_val in outputs:
                         if out_val in text:
-                            leaks.append({
-                                "type": "scope_leak",
-                                "source_iteration_id": parent_id,
-                                "target_node_id": node_id,
-                                "target_title": node.get("title", ""),
-                                "leaked_value_preview": out_val[:100],
-                            })
+                            leaks.append(
+                                {
+                                    "type": "scope_leak",
+                                    "source_iteration_id": parent_id,
+                                    "target_node_id": node_id,
+                                    "target_title": node.get("title", ""),
+                                    "leaked_value_preview": out_val[:100],
+                                }
+                            )
                             break
         return leaks
 

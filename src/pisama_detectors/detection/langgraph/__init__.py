@@ -15,12 +15,12 @@ These detectors are framework-specific for LangGraph and consume
 the ``graph_execution`` data format.
 """
 
+from .checkpoint_corruption_detector import LangGraphCheckpointCorruptionDetector
+from .edge_misroute_detector import LangGraphEdgeMisrouteDetector
+from .parallel_sync_detector import LangGraphParallelSyncDetector
 from .recursion_detector import LangGraphRecursionDetector
 from .state_corruption_detector import LangGraphStateCorruptionDetector
-from .edge_misroute_detector import LangGraphEdgeMisrouteDetector
 from .tool_failure_detector import LangGraphToolFailureDetector
-from .parallel_sync_detector import LangGraphParallelSyncDetector
-from .checkpoint_corruption_detector import LangGraphCheckpointCorruptionDetector
 
 __all__ = [
     "LangGraphRecursionDetector",

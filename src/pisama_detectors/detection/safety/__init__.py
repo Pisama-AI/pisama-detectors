@@ -6,18 +6,18 @@ from `destructive_keywords` to keep the canonical list in one place.
 
 from pisama_detectors.detection.safety.destructive_keywords import (
     ADMIN_VERBS,
+    APPROVAL_HIGH_RISK_VERBS,
     BULK_DATA_VERBS,
+    COWORK_DESTRUCTIVE_VERBS,
     DELETE_VERBS,
     DEPLOY_VERBS,
     EXECUTE_VERBS,
+    EXPLORATION_DANGEROUS_VERBS,
     FINANCIAL_VERBS,
+    OPENCLAW_RISKY_KEYWORDS,
     PERMISSION_VERBS,
     SEND_VERBS,
     WRITE_VERBS,
-    APPROVAL_HIGH_RISK_VERBS,
-    COWORK_DESTRUCTIVE_VERBS,
-    EXPLORATION_DANGEROUS_VERBS,
-    OPENCLAW_RISKY_KEYWORDS,
     make_verb_pattern,
 )
 

@@ -11,13 +11,13 @@ but F10 in MAST is about IGNORING feedback, not confusion.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
+    MODULE_VERSION,
     TurnAwareDetectionResult,
     TurnAwareSeverity,
-    MODULE_VERSION,
+    TurnSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -61,6 +61,7 @@ class LLMCommunicationBreakdownDetector:
         """Lazy-load the LLM judge."""
         if self._judge is None:
             from ..llm_judge import MASTLLMJudge
+
             self._judge = MASTLLMJudge(api_key=self.api_key)
         return self._judge
 
@@ -73,12 +74,14 @@ class LLMCommunicationBreakdownDetector:
 
         turns = []
         for snapshot in snapshots:
-            turns.append(ConversationTurn(
-                role=snapshot.participant_type,
-                content=snapshot.content,
-                participant_id=snapshot.participant_id,
-                metadata=snapshot.turn_metadata or {},
-            ))
+            turns.append(
+                ConversationTurn(
+                    role=snapshot.participant_type,
+                    content=snapshot.content,
+                    participant_id=snapshot.participant_id,
+                    metadata=snapshot.turn_metadata or {},
+                )
+            )
         return turns
 
     def _extract_feedback_context(self, turns: List[TurnSnapshot]) -> str:
@@ -88,9 +91,25 @@ class LLMCommunicationBreakdownDetector:
 
         # Indicators that an agent is providing feedback/suggestions
         feedback_keywords = [
-            "suggest", "recommend", "should", "consider", "try", "instead",
-            "better", "fix", "change", "update", "need to", "must", "important",
-            "critical", "add", "remove", "modify", "improve", "don't forget",
+            "suggest",
+            "recommend",
+            "should",
+            "consider",
+            "try",
+            "instead",
+            "better",
+            "fix",
+            "change",
+            "update",
+            "need to",
+            "must",
+            "important",
+            "critical",
+            "add",
+            "remove",
+            "modify",
+            "improve",
+            "don't forget",
         ]
 
         # Look for feedback -> response pairs
@@ -111,13 +130,25 @@ class LLMCommunicationBreakdownDetector:
                     if next_pid != pid:
                         # Check if response acknowledges feedback
                         response_lower = next_turn.content.lower()
-                        ack_keywords = ["thanks", "noted", "will do", "good point",
-                                       "you're right", "agreed", "updated", "fixed",
-                                       "added", "changed", "incorporated"]
+                        ack_keywords = [
+                            "thanks",
+                            "noted",
+                            "will do",
+                            "good point",
+                            "you're right",
+                            "agreed",
+                            "updated",
+                            "fixed",
+                            "added",
+                            "changed",
+                            "incorporated",
+                        ]
                         has_ack = any(kw in response_lower for kw in ack_keywords)
 
                         label = "ACKNOWLEDGED" if has_ack else "RESPONSE"
-                        context.append(f"Turn {i+1} [{next_pid}] {label}: {next_turn.content[:300]}...")
+                        context.append(
+                            f"Turn {i + 1} [{next_pid}] {label}: {next_turn.content[:300]}..."
+                        )
 
         return "\n".join(context[:20])  # Limit for token budget
 
@@ -154,6 +185,7 @@ class LLMCommunicationBreakdownDetector:
 
         try:
             from ..task_extractors import extract_task
+
             extraction = extract_task(conv_turns, metadata)
         except Exception as e:
             logger.warning(f"Task extraction failed: {e}")
@@ -176,7 +208,9 @@ class LLMCommunicationBreakdownDetector:
             pid = t.participant_id or t.participant_type
             agent_actions.append(f"[{pid}]: {t.content[:250]}")
 
-        trace_summary = f"{feedback_context}\n\n## Full Trace:\n" + "\n---\n".join(agent_actions[:10])
+        trace_summary = f"{feedback_context}\n\n## Full Trace:\n" + "\n---\n".join(
+            agent_actions[:10]
+        )
 
         # Call LLM judge for F10
         try:
@@ -218,8 +252,12 @@ class LLMCommunicationBreakdownDetector:
             severity=severity,
             confidence=result.confidence,
             failure_mode="F10" if detected else None,
-            explanation=result.reasoning if result.reasoning else (
-                "LLM detected communication breakdown" if detected else "LLM found no communication breakdown"
+            explanation=result.reasoning
+            if result.reasoning
+            else (
+                "LLM detected communication breakdown"
+                if detected
+                else "LLM found no communication breakdown"
             ),
             evidence={
                 "llm_verdict": result.verdict,
@@ -280,6 +318,7 @@ class HybridCommunicationBreakdownDetector:
         """Lazy-load pattern detector."""
         if self._pattern_detector is None:
             from .communication import TurnAwareCommunicationBreakdownDetector
+
             self._pattern_detector = TurnAwareCommunicationBreakdownDetector(
                 intent_threshold=0.35,  # Keep default
                 max_ambiguity_issues=3,

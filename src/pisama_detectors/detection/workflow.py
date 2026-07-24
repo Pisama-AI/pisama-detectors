@@ -11,10 +11,10 @@ Detects structural problems in agent workflow design:
 """
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,11 @@ class WorkflowAnalysisResult:
 class FlawedWorkflowDetector:
     """
     Detects F5: Flawed Workflow Design - structural problems in agent graphs.
-    
+
     Analyzes workflow topology for unreachable nodes, dead ends,
     missing error handling, and other structural issues.
     """
-    
+
     def __init__(
         self,
         require_error_handling: bool = True,
@@ -80,12 +80,12 @@ class FlawedWorkflowDetector:
     def _build_graph(self, nodes: list[WorkflowNode]) -> tuple[dict, dict]:
         forward = defaultdict(list)
         backward = defaultdict(list)
-        
+
         for node in nodes:
             for target in node.outgoing:
                 forward[node.id].append(target)
                 backward[target].append(node.id)
-        
+
         return dict(forward), dict(backward)
 
     def _find_reachable(
@@ -95,7 +95,7 @@ class FlawedWorkflowDetector:
     ) -> set[str]:
         visited = set()
         stack = [start]
-        
+
         while stack:
             node = stack.pop()
             if node in visited:
@@ -104,7 +104,7 @@ class FlawedWorkflowDetector:
             for neighbor in graph.get(node, []):
                 if neighbor not in visited:
                     stack.append(neighbor)
-        
+
         return visited
 
     def _detect_unreachable(
@@ -116,11 +116,11 @@ class FlawedWorkflowDetector:
         entry_points = [n.id for n in nodes if not backward.get(n.id)]
         if not entry_points:
             entry_points = [nodes[0].id] if nodes else []
-        
+
         reachable = set()
         for entry in entry_points:
             reachable |= self._find_reachable(entry, forward)
-        
+
         all_nodes = {n.id for n in nodes}
         return list(all_nodes - reachable)
 
@@ -130,12 +130,12 @@ class FlawedWorkflowDetector:
         forward: dict,
     ) -> list[str]:
         terminal_nodes = {n.id for n in nodes if n.is_terminal}
-        
+
         dead_ends = []
         for node in nodes:
             if not forward.get(node.id) and node.id not in terminal_nodes:
                 dead_ends.append(node.id)
-        
+
         return dead_ends
 
     def _detect_infinite_loop_risk(
@@ -144,11 +144,11 @@ class FlawedWorkflowDetector:
         forward: dict,
     ) -> list[str]:
         risky = []
-        
+
         for node in nodes:
             if node.id in forward.get(node.id, []):
                 risky.append(node.id)
-        
+
         def find_cycles(node_id: str, path: set[str]) -> bool:
             if node_id in path:
                 return True
@@ -157,12 +157,12 @@ class FlawedWorkflowDetector:
                 if find_cycles(neighbor, path):
                     return True
             return False
-        
+
         for node in nodes:
             if node.id not in risky:
                 if find_cycles(node.id, set()):
                     risky.append(node.id)
-        
+
         return list(set(risky))
 
     def _detect_bottlenecks(
@@ -214,7 +214,7 @@ class FlawedWorkflowDetector:
         if len(nodes) <= 1:
             return []
         # Find the start node(s)
-        start_ids = {n.id for n in nodes if n.node_type == "start" or not backward.get(n.id)}
+        {n.id for n in nodes if n.node_type == "start" or not backward.get(n.id)}
         # A node is orphan if it has no incoming but is not the primary start
         primary_start = nodes[0].id if nodes else None
         orphans = []
@@ -273,12 +273,12 @@ class FlawedWorkflowDetector:
         terminal_nodes = [n for n in nodes if n.is_terminal]
         if not terminal_nodes:
             return True
-        
+
         for node in nodes:
             if not forward.get(node.id):
                 if not any(n.id == node.id for n in terminal_nodes):
                     pass
-        
+
         return False
 
     def detect(
@@ -299,25 +299,25 @@ class FlawedWorkflowDetector:
 
         forward, backward = self._build_graph(nodes)
         edge_count = sum(len(edges) for edges in forward.values())
-        
+
         issues = []
         problematic = []
-        
+
         unreachable = self._detect_unreachable(nodes, forward, backward)
         if unreachable:
             issues.append(WorkflowIssue.UNREACHABLE_NODE)
             problematic.extend(unreachable)
-        
+
         dead_ends = self._detect_dead_ends(nodes, forward)
         if dead_ends:
             issues.append(WorkflowIssue.DEAD_END)
             problematic.extend(dead_ends)
-        
+
         loop_risk = self._detect_infinite_loop_risk(nodes, forward)
         if loop_risk:
             issues.append(WorkflowIssue.INFINITE_LOOP_RISK)
             problematic.extend(loop_risk)
-        
+
         bottlenecks = self._detect_bottlenecks(nodes, forward, backward)
         if bottlenecks:
             issues.append(WorkflowIssue.BOTTLENECK)
@@ -340,12 +340,14 @@ class FlawedWorkflowDetector:
             # Only flag when the workflow shows intent to use error handlers
             # (at least one node has one) but significant nodes are missing them.
             # If NO nodes have handlers, it's a design choice — not a defect.
-            if (missing_handlers
-                    and has_any_handler
-                    and len(missing_handlers) >= len(non_trivial) * 0.5):
+            if (
+                missing_handlers
+                and has_any_handler
+                and len(missing_handlers) >= len(non_trivial) * 0.5
+            ):
                 issues.append(WorkflowIssue.MISSING_ERROR_HANDLING)
                 problematic.extend(missing_handlers[:5])
-        
+
         if self._detect_missing_termination(nodes, forward):
             issues.append(WorkflowIssue.MISSING_TERMINATION)
 
@@ -361,7 +363,10 @@ class FlawedWorkflowDetector:
                 explanation="Workflow structure appears valid",
             )
 
-        if WorkflowIssue.INFINITE_LOOP_RISK in issues or WorkflowIssue.MISSING_TERMINATION in issues:
+        if (
+            WorkflowIssue.INFINITE_LOOP_RISK in issues
+            or WorkflowIssue.MISSING_TERMINATION in issues
+        ):
             severity = WorkflowSeverity.SEVERE
         elif len(issues) >= 3:
             severity = WorkflowSeverity.MODERATE
@@ -386,8 +391,11 @@ class FlawedWorkflowDetector:
                 confidence = 0.70
             elif single_issue == WorkflowIssue.EXCESSIVE_DEPTH:
                 confidence = 0.60
-            elif single_issue in (WorkflowIssue.ORPHAN_NODE, WorkflowIssue.BOTTLENECK,
-                                  WorkflowIssue.MISSING_ERROR_HANDLING):
+            elif single_issue in (
+                WorkflowIssue.ORPHAN_NODE,
+                WorkflowIssue.BOTTLENECK,
+                WorkflowIssue.MISSING_ERROR_HANDLING,
+            ):
                 confidence = 0.50
             else:
                 confidence = 0.55
@@ -439,20 +447,22 @@ class FlawedWorkflowDetector:
                 problematic_nodes=[],
                 explanation="No spans in trace",
             )
-        
+
         nodes = []
         for i, span in enumerate(spans):
-            incoming = [spans[i-1].get("name", f"span_{i-1}")] if i > 0 else []
-            outgoing = [spans[i+1].get("name", f"span_{i+1}")] if i < len(spans) - 1 else []
-            
-            nodes.append(WorkflowNode(
-                id=span.get("span_id", f"span_{i}"),
-                name=span.get("name", f"span_{i}"),
-                node_type=span.get("type", "agent"),
-                incoming=incoming,
-                outgoing=outgoing,
-                has_error_handler="error" in span.get("attributes", {}),
-                is_terminal=(i == len(spans) - 1),
-            ))
-        
+            incoming = [spans[i - 1].get("name", f"span_{i - 1}")] if i > 0 else []
+            outgoing = [spans[i + 1].get("name", f"span_{i + 1}")] if i < len(spans) - 1 else []
+
+            nodes.append(
+                WorkflowNode(
+                    id=span.get("span_id", f"span_{i}"),
+                    name=span.get("name", f"span_{i}"),
+                    node_type=span.get("type", "agent"),
+                    incoming=incoming,
+                    outgoing=outgoing,
+                    has_error_handler="error" in span.get("attributes", {}),
+                    is_terminal=(i == len(spans) - 1),
+                )
+            )
+
         return self.detect(nodes)

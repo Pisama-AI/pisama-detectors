@@ -13,10 +13,10 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,9 +54,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def detect_graph_execution(
-        self, graph_execution: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_graph_execution(self, graph_execution: Dict[str, Any]) -> TurnAwareDetectionResult:
         """Analyze tool nodes for failure patterns."""
         nodes = graph_execution.get("nodes", [])
         graph_status = graph_execution.get("status", "")
@@ -108,18 +106,14 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
 
             # Check for retry pattern: same node_id in next superstep
             next_step_nodes = superstep_nodes.get(tool_superstep + 1, [])
-            is_retried = any(
-                n.get("node_id") == tool_id for n in next_step_nodes
-            )
+            is_retried = any(n.get("node_id") == tool_id for n in next_step_nodes)
 
             # Check for fallback pattern: different node handles the failure
             has_fallback = bool(next_step_nodes) and not is_retried
 
             # Check for uncaught failure: no recovery and graph failed
             is_uncaught = (
-                not is_retried
-                and not has_fallback
-                and graph_status in ("failed", "error")
+                not is_retried and not has_fallback and graph_status in ("failed", "error")
             )
 
             issue: Dict[str, Any] = {
@@ -127,9 +121,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
                 "tool_title": tool_title,
                 "superstep": tool_superstep,
                 "has_error": error is not None and error != "",
-                "error_preview": (
-                    str(error)[:200] if error else None
-                ),
+                "error_preview": (str(error)[:200] if error else None),
                 "is_retried": is_retried,
                 "has_fallback": has_fallback,
                 "is_uncaught": is_uncaught,
@@ -147,10 +139,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
                     (n for n in next_step_nodes if n.get("node_id") == tool_id),
                     None,
                 )
-                retry_succeeded = (
-                    retry_node is not None
-                    and retry_node.get("status") == "succeeded"
-                )
+                retry_succeeded = retry_node is not None and retry_node.get("status") == "succeeded"
                 issue["type"] = "retried_failure"
                 issue["retry_succeeded"] = retry_succeeded
                 issue["description"] = (
@@ -159,10 +148,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
                     f"({'succeeded' if retry_succeeded else 'also failed'})"
                 )
             elif has_fallback:
-                fallback_nodes = [
-                    n.get("title", n.get("node_id", ""))
-                    for n in next_step_nodes
-                ]
+                fallback_nodes = [n.get("title", n.get("node_id", "")) for n in next_step_nodes]
                 issue["type"] = "fallback_handled"
                 issue["fallback_nodes"] = fallback_nodes
                 issue["description"] = (
@@ -171,9 +157,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
                 )
             else:
                 issue["type"] = "tool_failure"
-                issue["description"] = (
-                    f"Tool '{tool_title}' failed at superstep {tool_superstep}"
-                )
+                issue["description"] = f"Tool '{tool_title}' failed at superstep {tool_superstep}"
 
             issues.append(issue)
 
@@ -190,7 +174,8 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
         # Determine confidence and severity
         uncaught_count = sum(1 for i in issues if i["type"] == "uncaught_failure")
         retried_failed = sum(
-            1 for i in issues
+            1
+            for i in issues
             if i["type"] == "retried_failure" and not i.get("retry_succeeded", False)
         )
 
@@ -219,8 +204,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
             confidence=confidence,
             failure_mode="F14",
             explanation=(
-                f"Tool failures detected: {', '.join(summary)} "
-                f"out of {len(tool_nodes)} tool nodes"
+                f"Tool failures detected: {', '.join(summary)} out of {len(tool_nodes)} tool nodes"
             ),
             affected_turns=sorted(set(affected_indices)),
             evidence={

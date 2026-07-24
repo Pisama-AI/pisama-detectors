@@ -4,13 +4,13 @@ Centralizes node identification, agent discovery, and connection graph
 building that was previously duplicated across 5+ modules.
 """
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from pisama_detectors.detection._n8n_constants import (
     AI_NODE_TYPES,
-    LM_CONFIG_NODE_TYPES,
-    ALL_AI_NODE_TYPES,
     AI_TYPE_KEYWORDS,
+    ALL_AI_NODE_TYPES,
+    LM_CONFIG_NODE_TYPES,
 )
 
 
@@ -37,9 +37,7 @@ def is_agent_node(node: Dict[str, Any]) -> bool:
     return node_type in AI_NODE_TYPES
 
 
-def has_ai_language_model_input(
-    node: Dict[str, Any], workflow: Dict[str, Any]
-) -> bool:
+def has_ai_language_model_input(node: Dict[str, Any], workflow: Dict[str, Any]) -> bool:
     """Check if a node has incoming ai_languageModel connections (sub-node LLM provider)."""
     node_name = node.get("name", "")
     connections = workflow.get("connections", {})
@@ -94,8 +92,4 @@ def count_ai_agents(workflow: Dict[str, Any]) -> int:
     Includes both agent nodes and LM configuration nodes, since in n8n
     each agent typically has a paired LM config node.
     """
-    return sum(
-        1
-        for n in workflow.get("nodes", [])
-        if is_ai_node_type(n.get("type", ""))
-    )
+    return sum(1 for n in workflow.get("nodes", []) if is_ai_node_type(n.get("type", "")))

@@ -18,8 +18,8 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -27,14 +27,27 @@ from pisama_detectors.detection.turn_aware._base import (
 logger = logging.getLogger(__name__)
 
 SENSITIVE_TOOLS: Set[str] = {
-    "exec", "eval", "shell", "run_command", "system",
-    "os_command", "write_file", "delete_file",
+    "exec",
+    "eval",
+    "shell",
+    "run_command",
+    "system",
+    "os_command",
+    "write_file",
+    "delete_file",
 }
 
 # Keywords in tool names that signal potential abuse
 ABUSE_TOOL_KEYWORDS: Set[str] = {
-    "delete", "ban", "block", "suspend", "terminate",
-    "bulk", "mass", "export", "dump",
+    "delete",
+    "ban",
+    "block",
+    "suspend",
+    "terminate",
+    "bulk",
+    "mass",
+    "export",
+    "dump",
 }
 
 EXCESSIVE_CALL_THRESHOLD = 4
@@ -85,19 +98,17 @@ class OpenClawToolAbuseDetector(TurnAwareDetector):
 
         # --- 1. Excessive tool calls ---
         if total_calls > EXCESSIVE_CALL_THRESHOLD:
-            call_indices = [
-                i for i, e in enumerate(events)
-                if e.get("type") == "tool.call"
-            ]
-            violations.append({
-                "type": "excessive_calls",
-                "total_calls": total_calls,
-                "threshold": EXCESSIVE_CALL_THRESHOLD,
-                "description": (
-                    f"{total_calls} tool calls exceed threshold "
-                    f"of {EXCESSIVE_CALL_THRESHOLD}"
-                ),
-            })
+            call_indices = [i for i, e in enumerate(events) if e.get("type") == "tool.call"]
+            violations.append(
+                {
+                    "type": "excessive_calls",
+                    "total_calls": total_calls,
+                    "threshold": EXCESSIVE_CALL_THRESHOLD,
+                    "description": (
+                        f"{total_calls} tool calls exceed threshold of {EXCESSIVE_CALL_THRESHOLD}"
+                    ),
+                }
+            )
             affected_turns.extend(call_indices)
 
         # --- 2. Redundant calls (same tool name repeated) ---
@@ -109,41 +120,44 @@ class OpenClawToolAbuseDetector(TurnAwareDetector):
 
         for name, indices in tool_name_counts.items():
             if len(indices) >= REDUNDANCY_THRESHOLD:
-                violations.append({
-                    "type": "redundant_calls",
-                    "tool_name": name,
-                    "call_count": len(indices),
-                    "description": (
-                        f"Tool '{name}' called {len(indices)} times "
-                        f"(redundancy threshold: {REDUNDANCY_THRESHOLD})"
-                    ),
-                })
+                violations.append(
+                    {
+                        "type": "redundant_calls",
+                        "tool_name": name,
+                        "call_count": len(indices),
+                        "description": (
+                            f"Tool '{name}' called {len(indices)} times "
+                            f"(redundancy threshold: {REDUNDANCY_THRESHOLD})"
+                        ),
+                    }
+                )
                 affected_turns.extend(indices)
 
         # --- 3. High error rate ---
         if total_calls >= MIN_CALLS_FOR_ERROR_RATE:
             failed = sum(
-                1 for r in tool_results
-                if (r.get("tool_result") or {}).get("status") == "failed"
+                1 for r in tool_results if (r.get("tool_result") or {}).get("status") == "failed"
             )
             error_rate = failed / total_calls if total_calls else 0.0
 
             if error_rate > ERROR_RATE_THRESHOLD:
                 fail_indices = [
-                    i for i, e in enumerate(events)
+                    i
+                    for i, e in enumerate(events)
                     if e.get("type") == "tool.result"
                     and (e.get("tool_result") or {}).get("status") == "failed"
                 ]
-                violations.append({
-                    "type": "high_error_rate",
-                    "error_rate": round(error_rate, 3),
-                    "failed_calls": failed,
-                    "total_calls": total_calls,
-                    "description": (
-                        f"Error rate {error_rate:.0%} ({failed}/{total_calls}) "
-                        f"exceeds 50%"
-                    ),
-                })
+                violations.append(
+                    {
+                        "type": "high_error_rate",
+                        "error_rate": round(error_rate, 3),
+                        "failed_calls": failed,
+                        "total_calls": total_calls,
+                        "description": (
+                            f"Error rate {error_rate:.0%} ({failed}/{total_calls}) exceeds 50%"
+                        ),
+                    }
+                )
                 affected_turns.extend(fail_indices)
 
         # --- 4. Sensitive tool usage (exact + keyword match) ---
@@ -153,33 +167,39 @@ class OpenClawToolAbuseDetector(TurnAwareDetector):
                 tool_name = (evt.get("tool_name") or "").lower()
                 # Exact match
                 if tool_name in SENSITIVE_TOOLS:
-                    sensitive_used.append({
-                        "index": i,
-                        "tool_name": evt.get("tool_name"),
-                        "match": "exact",
-                    })
+                    sensitive_used.append(
+                        {
+                            "index": i,
+                            "tool_name": evt.get("tool_name"),
+                            "match": "exact",
+                        }
+                    )
                     affected_turns.append(i)
                 else:
                     # Keyword match
                     name_parts = set(re.split(r"[_\-.\s]", tool_name))
                     matches = name_parts & ABUSE_TOOL_KEYWORDS
                     if matches:
-                        sensitive_used.append({
-                            "index": i,
-                            "tool_name": evt.get("tool_name"),
-                            "match": "keyword",
-                            "keywords": list(matches),
-                        })
+                        sensitive_used.append(
+                            {
+                                "index": i,
+                                "tool_name": evt.get("tool_name"),
+                                "match": "keyword",
+                                "keywords": list(matches),
+                            }
+                        )
                         affected_turns.append(i)
 
         if sensitive_used:
             tool_names = list({s["tool_name"] for s in sensitive_used})
-            violations.append({
-                "type": "sensitive_tools",
-                "tools_used": tool_names,
-                "call_count": len(sensitive_used),
-                "description": f"Sensitive tools used: {', '.join(tool_names)}",
-            })
+            violations.append(
+                {
+                    "type": "sensitive_tools",
+                    "tools_used": tool_names,
+                    "call_count": len(sensitive_used),
+                    "description": f"Sensitive tools used: {', '.join(tool_names)}",
+                }
+            )
 
         if not violations:
             return self._no_detection("No tool abuse detected")
@@ -203,8 +223,7 @@ class OpenClawToolAbuseDetector(TurnAwareDetector):
             confidence=confidence,
             failure_mode="F14",
             explanation=(
-                f"Tool abuse detected: {len(violations)} violation(s) "
-                f"in {total_calls} tool calls"
+                f"Tool abuse detected: {len(violations)} violation(s) in {total_calls} tool calls"
             ),
             affected_turns=sorted(set(affected_turns)),
             evidence={

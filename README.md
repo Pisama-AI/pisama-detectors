@@ -6,7 +6,13 @@
 
 **42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
-**59.9% joint accuracy on the [TRAIL](https://github.com/PatronusAI/trail) benchmark** (Patronus, 2025; 148 traces, 841 labelled errors), versus 11.9% for the best frontier-model judge tested. Eleven detectors mapped to TRAIL's annotation categories; raw results in [`benchmarks/trail.json`](benchmarks/trail.json). See [TRAIL benchmark](#trail-benchmark) below for the per-category breakdown.
+An archived Pisama heuristic run reports **59.9% joint accuracy on the
+[TRAIL](https://github.com/PatronusAI/trail) benchmark** (Patronus, 2025; 148
+traces, 841 labelled errors), versus 11.9% for the best frontier-model judge
+tested. The public confusion counts independently reproduce the reported
+0.754 macro-F1 and 0.746 micro-F1. Run `python benchmarks/verify_report.py`;
+see [`benchmarks/README.md`](benchmarks/README.md) for the exact
+reproducibility boundary.
 
 Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
 
@@ -112,17 +118,18 @@ for name, info in DETECTOR_REGISTRY.items():
 
 ## TRAIL benchmark
 
-[TRAIL](https://github.com/PatronusAI/trail) is Patronus's 2025 benchmark of LLM agent failures — 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors across ten failure categories.
+[TRAIL](https://github.com/PatronusAI/trail) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
 
 | Method | Joint accuracy | Macro F1 | Cost per trace |
 |---|---|---|---|
-| **Pisama heuristic (11 detectors)** | **59.9%** | **0.754** | ~$0 |
-| GPT-5.4 as judge | 11.9% | — | LLM call |
-| Gemini 3.1 Pro as judge | 6.8% | — | LLM call |
-| GPT-5.4-mini as judge | 1.5% | — | LLM call |
-| Gemini 3.1 Flash-Lite as judge | 1.1% | — | LLM call |
+| **Pisama heuristic (11 detectors)** | **59.9%** | **0.754** | $0 |
+| GPT-5.4 as judge | 11.9% | Not reported | LLM call |
+| Gemini 3.1 Pro as judge | 6.8% | Not reported | LLM call |
+| GPT-5.4-mini as judge | 1.5% | Not reported | LLM call |
+| Gemini 3.1 Flash-Lite as judge | 1.1% | Not reported | LLM call |
 
-Per-category F1 for the Pisama heuristic run (148 traces, 813 mapped annotations, 484 positives):
+Per-category F1 for the Pisama heuristic run (148 traces, 14 published
+category summaries, 808 total support):
 
 | Category | F1 | Precision | Recall | Support |
 |---|---|---|---|---|
@@ -133,11 +140,21 @@ Per-category F1 for the Pisama heuristic run (148 traces, 813 mapped annotations
 | Instruction Non-compliance | 0.743 | 1.000 | 0.591 | 154 |
 | Language-only hallucinations | 0.884 | 1.000 | 0.793 | 53 |
 | Poor Information Retrieval | 0.892 | 1.000 | 0.805 | 41 |
+| Resource Abuse | 1.000 | 1.000 | 1.000 | 57 |
+| Resource Exhaustion | 0.500 | 1.000 | 0.333 | 3 |
+| Task Orchestration | 0.000 | 0.000 | 0.000 | 49 |
+| Tool Output Misinterpretation | 0.583 | 1.000 | 0.412 | 17 |
+| Tool Selection Errors | 1.000 | 1.000 | 1.000 | 45 |
+| Tool-related hallucinations | 0.683 | 1.000 | 0.519 | 52 |
 | Formatting Errors | 0.457 | 1.000 | 0.296 | 196 |
 
-Raw run output, including per-trace predictions and the per-model frontier-judge baselines: [`benchmarks/trail.json`](benchmarks/trail.json) (Pisama) and [`benchmarks/trail_llm_baselines.json`](benchmarks/trail_llm_baselines.json) (judges).
-
-Reproduce: TRAIL provides the traces and labels; the eleven Pisama detectors mapped to TRAIL's categories are `hallucination`, `retrieval_quality`, `grounding`, `specification`, `context`, `loop`, `derailment`, `coordination`, `completion`, `workflow`, `overflow`. The mapping logic lives in the private monorepo today; we plan to upstream the runner to this package next.
+Archived run output and per-model frontier-judge baselines:
+[`benchmarks/trail.json`](benchmarks/trail.json) and
+[`benchmarks/trail_llm_baselines.json`](benchmarks/trail_llm_baselines.json).
+Run `python benchmarks/verify_report.py` to recompute the public
+per-category and aggregate F1 metrics from the confusion counts. The archived
+joint-accuracy value cannot be independently recomputed without the original
+per-annotation predictions, and is labeled accordingly.
 
 ## Calibration Caveat
 

@@ -9,15 +9,15 @@ detecting when:
 3. Agent addresses wrong task or substitutes tasks
 """
 
-import re
 import logging
-from typing import List, Optional, Dict, Any
+import re
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -49,10 +49,28 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Code patterns (shared with F7 detector logic)
     CODE_PATTERNS = [
-        "def ", "class ", "import ", "from ", "function ",
-        "const ", "let ", "var ", "return ", "if (", "if(",
-        "for (", "for(", "while ", "=>", "```", "{", "}",
-        "self.", "this.", "async ", "await ",
+        "def ",
+        "class ",
+        "import ",
+        "from ",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "return ",
+        "if (",
+        "if(",
+        "for (",
+        "for(",
+        "while ",
+        "=>",
+        "```",
+        "{",
+        "}",
+        "self.",
+        "this.",
+        "async ",
+        "await ",
     ]
 
     # Phase 1: Framework-specific benign patterns (legitimate role transitions, not derailment)
@@ -124,7 +142,10 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
     def embedder(self):
         if self._embedder is None:
             try:
-                from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+                from pisama_detectors.detection.shared_embedder import (
+                    get_shared_embedder as get_embedder,
+                )
+
                 self._embedder = get_embedder()
             except ImportError:
                 logger.warning("EmbeddingService not available, using fallback")
@@ -213,13 +234,15 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
                     if drift_score > self.drift_threshold:
                         high_drift_count += 1
                         if not self.require_strong_evidence:
-                            derailment_issues.append({
-                                "type": "topic_drift",
-                                "turn": agent_turn.turn_number,
-                                "drift_score": drift_score,
-                                "coverage": coverage,
-                                "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
-                            })
+                            derailment_issues.append(
+                                {
+                                    "type": "topic_drift",
+                                    "turn": agent_turn.turn_number,
+                                    "drift_score": drift_score,
+                                    "coverage": coverage,
+                                    "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
+                                }
+                            )
                             affected_turns.append(agent_turn.turn_number)
             else:
                 # Fallback to per-turn if batch fails
@@ -230,13 +253,15 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
                     if drift_score > self.drift_threshold:
                         high_drift_count += 1
                         if not self.require_strong_evidence:
-                            derailment_issues.append({
-                                "type": "topic_drift",
-                                "turn": agent_turn.turn_number,
-                                "drift_score": drift_score,
-                                "coverage": coverage,
-                                "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
-                            })
+                            derailment_issues.append(
+                                {
+                                    "type": "topic_drift",
+                                    "turn": agent_turn.turn_number,
+                                    "drift_score": drift_score,
+                                    "coverage": coverage,
+                                    "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
+                                }
+                            )
                             affected_turns.append(agent_turn.turn_number)
         else:
             # No turns to check or no embedder - use keyword fallback per turn
@@ -247,13 +272,15 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
                 if drift_score > self.drift_threshold:
                     high_drift_count += 1
                     if not self.require_strong_evidence:
-                        derailment_issues.append({
-                            "type": "topic_drift",
-                            "turn": agent_turn.turn_number,
-                            "drift_score": drift_score,
-                            "coverage": coverage,
-                            "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
-                        })
+                        derailment_issues.append(
+                            {
+                                "type": "topic_drift",
+                                "turn": agent_turn.turn_number,
+                                "drift_score": drift_score,
+                                "coverage": coverage,
+                                "description": f"Agent turn {agent_turn.turn_number} drifted from task (drift={drift_score:.2f})",
+                            }
+                        )
                         affected_turns.append(agent_turn.turn_number)
 
         # Check for progressive drift (getting worse over time)
@@ -271,24 +298,26 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
             )
         # Handle progressive drift detection result (from either path)
         if progressive_drift["detected"]:
-            derailment_issues.append({
-                "type": "progressive_drift",
-                "turn": progressive_drift["worst_turn"],
-                "description": "Agent responses progressively drifting from task",
-                "drift_progression": progressive_drift.get("drift_scores", []),
-            })
+            derailment_issues.append(
+                {
+                    "type": "progressive_drift",
+                    "turn": progressive_drift["worst_turn"],
+                    "description": "Agent responses progressively drifting from task",
+                    "drift_progression": progressive_drift.get("drift_scores", []),
+                }
+            )
             affected_turns.append(progressive_drift["worst_turn"])
 
         # Check for task substitution (strongest signal)
-        task_substitution = self._detect_task_substitution(
-            initial_task, agent_turns
-        )
+        task_substitution = self._detect_task_substitution(initial_task, agent_turns)
         if task_substitution["detected"]:
-            derailment_issues.append({
-                "type": "task_substitution",
-                "turn": task_substitution["turn"],
-                "description": task_substitution["description"],
-            })
+            derailment_issues.append(
+                {
+                    "type": "task_substitution",
+                    "turn": task_substitution["turn"],
+                    "description": task_substitution["description"],
+                }
+            )
             affected_turns.append(task_substitution["turn"])
 
         # If requiring strong evidence, only detect if we have:
@@ -297,9 +326,9 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
         # 3. Multiple (3+) high-drift turns
         if self.require_strong_evidence:
             has_strong_evidence = (
-                task_substitution["detected"] or
-                progressive_drift["detected"] or
-                high_drift_count >= 3
+                task_substitution["detected"]
+                or progressive_drift["detected"]
+                or high_drift_count >= 3
             )
             if not has_strong_evidence:
                 return TurnAwareDetectionResult(
@@ -312,12 +341,14 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
                 )
             # If we have strong evidence from high_drift_count, add drift issues
             elif high_drift_count >= 3 and not derailment_issues:
-                derailment_issues.append({
-                    "type": "high_drift",
-                    "turn": "multiple",
-                    "description": f"Multiple turns ({high_drift_count}) showed high topic drift from initial task",
-                    "drift_count": high_drift_count,
-                })
+                derailment_issues.append(
+                    {
+                        "type": "high_drift",
+                        "turn": "multiple",
+                        "description": f"Multiple turns ({high_drift_count}) showed high topic drift from initial task",
+                        "drift_count": high_drift_count,
+                    }
+                )
                 # Add affected turn numbers
                 for agent_turn in agent_turns:
                     if not (is_code_task and self._is_code_response(agent_turn.content)):
@@ -370,13 +401,65 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
         """Extract key terms from text, excluding stopwords."""
         words = text.lower().split()
         stopwords = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "as", "and", "but", "or", "nor", "so", "yet", "not", "it",
-            "this", "that", "these", "those", "i", "you", "we", "they",
-            "me", "him", "her", "us", "them", "my", "your", "our", "their",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "and",
+            "but",
+            "or",
+            "nor",
+            "so",
+            "yet",
+            "not",
+            "it",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "we",
+            "they",
+            "me",
+            "him",
+            "her",
+            "us",
+            "them",
+            "my",
+            "your",
+            "our",
+            "their",
         }
         return {w for w in words if len(w) > 2 and w not in stopwords}
 
@@ -399,10 +482,26 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
     def _is_code_task(self, task: str) -> bool:
         """Check if the task is asking for code."""
         code_keywords = [
-            "write", "code", "function", "implement", "create",
-            "program", "script", "fix", "debug", "add", "python",
-            "javascript", "java", "def", "class", "method",
-            "build", "develop", "generate", "make",
+            "write",
+            "code",
+            "function",
+            "implement",
+            "create",
+            "program",
+            "script",
+            "fix",
+            "debug",
+            "add",
+            "python",
+            "javascript",
+            "java",
+            "def",
+            "class",
+            "method",
+            "build",
+            "develop",
+            "generate",
+            "make",
         ]
         task_lower = task.lower()
         return any(kw in task_lower for kw in code_keywords)
@@ -509,10 +608,12 @@ class TurnAwareDerailmentDetector(EmbeddingMixin, TurnAwareDetector):
         drift_scores = []
         for turn in turns_to_analyze:
             drift, _ = self._compute_topic_drift(initial_task, turn.content, use_embeddings=False)
-            drift_scores.append({
-                "turn": turn.turn_number,
-                "drift": drift,
-            })
+            drift_scores.append(
+                {
+                    "turn": turn.turn_number,
+                    "drift": drift,
+                }
+            )
 
         # Check if drift is increasing
         scores = [d["drift"] for d in drift_scores]

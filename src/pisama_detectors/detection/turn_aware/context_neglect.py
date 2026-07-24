@@ -8,15 +8,15 @@ Detects when agents improperly utilize context from:
 3. Tool/system outputs
 """
 
-import re
 import logging
-from typing import List, Optional, Dict, Any
+import re
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -48,23 +48,54 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Code patterns that indicate a code response
     CODE_PATTERNS = [
-        "def ", "class ", "import ", "from ", "function ",
-        "const ", "let ", "var ", "return ", "if (", "if(",
-        "for (", "for(", "while ", "=>", "```", "{", "}",
-        "self.", "this.", "async ", "await ",
+        "def ",
+        "class ",
+        "import ",
+        "from ",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "return ",
+        "if (",
+        "if(",
+        "for (",
+        "for(",
+        "while ",
+        "=>",
+        "```",
+        "{",
+        "}",
+        "self.",
+        "this.",
+        "async ",
+        "await ",
     ]
 
     # Explicit neglect indicators - agent explicitly ignoring or misunderstanding
     # Enhanced for MAST benchmark patterns
     NEGLECT_INDICATORS = [
-        "instead", "rather than", "not what you asked",
-        "different topic", "unrelated", "i'll analyze",
-        "let me look at", "i'll check",
+        "instead",
+        "rather than",
+        "not what you asked",
+        "different topic",
+        "unrelated",
+        "i'll analyze",
+        "let me look at",
+        "i'll check",
         # Added for better MAST recall
-        "i'll focus on", "let me try", "actually",
-        "ignore", "skip", "disregard", "missing the point",
-        "that's not", "not related", "off-topic",
-        "weather", "temperature",  # Common wrong-topic responses
+        "i'll focus on",
+        "let me try",
+        "actually",
+        "ignore",
+        "skip",
+        "disregard",
+        "missing the point",
+        "that's not",
+        "not related",
+        "off-topic",
+        "weather",
+        "temperature",  # Common wrong-topic responses
     ]
 
     def __init__(
@@ -134,8 +165,7 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             if self.check_user_instructions and synthetic_user_turns and agents_to_check:
                 for agent_turn in agents_to_check:
                     prior_user_turns = [
-                        u for u in synthetic_user_turns
-                        if u.turn_number < agent_turn.turn_number
+                        u for u in synthetic_user_turns if u.turn_number < agent_turn.turn_number
                     ]
                     if not prior_user_turns:
                         continue
@@ -152,23 +182,25 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
                     )
 
                     if has_explicit_neglect:
-                        neglect_issues.append({
-                            "type": "explicit_neglect",
-                            "turn": agent_turn.turn_number,
-                            "description": f"Agent turn {agent_turn.turn_number} explicitly ignored user request",
-                        })
+                        neglect_issues.append(
+                            {
+                                "type": "explicit_neglect",
+                                "turn": agent_turn.turn_number,
+                                "description": f"Agent turn {agent_turn.turn_number} explicitly ignored user request",
+                            }
+                        )
                         affected_turns.append(agent_turn.turn_number)
                     elif not self.require_explicit_neglect:
-                        utilization = self._compute_utilization(
-                            user_context, agent_turn.content
-                        )
+                        utilization = self._compute_utilization(user_context, agent_turn.content)
                         if utilization < self.utilization_threshold:
-                            neglect_issues.append({
-                                "type": "user_instruction_neglect",
-                                "turn": agent_turn.turn_number,
-                                "utilization": utilization,
-                                "description": f"Agent turn {agent_turn.turn_number} poorly utilized user context",
-                            })
+                            neglect_issues.append(
+                                {
+                                    "type": "user_instruction_neglect",
+                                    "turn": agent_turn.turn_number,
+                                    "utilization": utilization,
+                                    "description": f"Agent turn {agent_turn.turn_number} poorly utilized user context",
+                                }
+                            )
                             affected_turns.append(agent_turn.turn_number)
 
         # Check 2: Agent responses vs tool outputs
@@ -176,7 +208,8 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             for agent_turn in agent_turns:
                 # Find tool turns immediately before this agent turn
                 prior_tool_turns = [
-                    t for t in tool_turns
+                    t
+                    for t in tool_turns
                     if t.turn_number < agent_turn.turn_number
                     and t.turn_number >= agent_turn.turn_number - 3  # Within 3 turns
                 ]
@@ -185,11 +218,13 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
                     if len(tool_context) >= self.min_context_length:
                         # For tool outputs, check if key data is referenced
                         if self._ignores_tool_data(tool_context, agent_turn.content):
-                            neglect_issues.append({
-                                "type": "tool_output_neglect",
-                                "turn": agent_turn.turn_number,
-                                "description": f"Agent turn {agent_turn.turn_number} ignored tool output",
-                            })
+                            neglect_issues.append(
+                                {
+                                    "type": "tool_output_neglect",
+                                    "turn": agent_turn.turn_number,
+                                    "description": f"Agent turn {agent_turn.turn_number} ignored tool output",
+                                }
+                            )
                             affected_turns.append(agent_turn.turn_number)
 
         # NOTE: Removed context_drift check - repetition is F5's job, not F7
@@ -208,7 +243,9 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
         # Determine severity based on number and type of issues
         if len(neglect_issues) >= 3:
             severity = TurnAwareSeverity.SEVERE
-        elif len(neglect_issues) >= 2 or any(i["type"] == "explicit_neglect" for i in neglect_issues):
+        elif len(neglect_issues) >= 2 or any(
+            i["type"] == "explicit_neglect" for i in neglect_issues
+        ):
             severity = TurnAwareSeverity.MODERATE
         else:
             severity = TurnAwareSeverity.MINOR
@@ -243,9 +280,22 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
     def _is_code_request(self, content: str) -> bool:
         """Check if user is asking for code."""
         code_keywords = [
-            "write", "code", "function", "implement", "create",
-            "program", "script", "fix", "debug", "add", "python",
-            "javascript", "java", "def", "class", "method",
+            "write",
+            "code",
+            "function",
+            "implement",
+            "create",
+            "program",
+            "script",
+            "fix",
+            "debug",
+            "add",
+            "python",
+            "javascript",
+            "java",
+            "def",
+            "class",
+            "method",
         ]
         content_lower = content.lower()
         return any(kw in content_lower for kw in code_keywords)
@@ -280,15 +330,56 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
         # Common domain-specific keywords that indicate topic
         # Enhanced for MAST benchmark diversity
         topic_indicators = {
-            "sales", "data", "analysis", "report", "weather", "temperature",
-            "calculator", "function", "code", "implementation", "database",
-            "user", "authentication", "api", "server", "client", "file",
-            "error", "bug", "test", "performance", "security", "config",
+            "sales",
+            "data",
+            "analysis",
+            "report",
+            "weather",
+            "temperature",
+            "calculator",
+            "function",
+            "code",
+            "implementation",
+            "database",
+            "user",
+            "authentication",
+            "api",
+            "server",
+            "client",
+            "file",
+            "error",
+            "bug",
+            "test",
+            "performance",
+            "security",
+            "config",
             # Added for better MAST coverage
-            "upload", "download", "login", "register", "password", "email",
-            "todo", "task", "list", "game", "chat", "message", "search",
-            "product", "order", "cart", "payment", "invoice", "customer",
-            "document", "image", "video", "audio", "pdf", "export", "import",
+            "upload",
+            "download",
+            "login",
+            "register",
+            "password",
+            "email",
+            "todo",
+            "task",
+            "list",
+            "game",
+            "chat",
+            "message",
+            "search",
+            "product",
+            "order",
+            "cart",
+            "payment",
+            "invoice",
+            "customer",
+            "document",
+            "image",
+            "video",
+            "audio",
+            "pdf",
+            "export",
+            "import",
         }
         words = set(text.split())
         return words & topic_indicators
@@ -296,8 +387,8 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
     def _ignores_tool_data(self, tool_output: str, agent_response: str) -> bool:
         """Check if agent ignores important data from tool output."""
         # Extract numbers from tool output
-        numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', tool_output))
-        response_numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', agent_response))
+        numbers = set(re.findall(r"\b\d+(?:\.\d+)?\b", tool_output))
+        response_numbers = set(re.findall(r"\b\d+(?:\.\d+)?\b", agent_response))
 
         # If tool output has significant numbers and none appear in response
         if len(numbers) >= 3 and len(numbers & response_numbers) == 0:
@@ -328,10 +419,7 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
         return len(overlap) / len(context_words)
 
     def _check_semantic_context_alignment(
-        self,
-        user_context: str,
-        agent_response: str,
-        threshold: float = 0.5
+        self, user_context: str, agent_response: str, threshold: float = 0.5
     ) -> Dict[str, Any]:
         """Check if agent response semantically aligns with user context.
 
@@ -407,18 +495,28 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             if len(turn.content) > 200 and overlap_ratio < 0.1:
                 # Additional check: is this turn about something completely different?
                 if not self._is_code_response(turn.content):
-                    issues.append({
-                        "type": "low_context_coherence",
-                        "turn": turn.turn_number,
-                        "description": f"Turn {turn.turn_number} has low coherence with task context",
-                        "overlap_ratio": overlap_ratio,
-                    })
+                    issues.append(
+                        {
+                            "type": "low_context_coherence",
+                            "turn": turn.turn_number,
+                            "description": f"Turn {turn.turn_number} has low coherence with task context",
+                            "overlap_ratio": overlap_ratio,
+                        }
+                    )
 
         # Step 3: Check for explicit neglect indicators
         neglect_indicators = [
-            "forgot", "forgotten", "didn't mention", "wasn't clear",
-            "misunderstood", "wrong assumption", "actually",
-            "wait", "hold on", "let me reconsider", "missed",
+            "forgot",
+            "forgotten",
+            "didn't mention",
+            "wasn't clear",
+            "misunderstood",
+            "wrong assumption",
+            "actually",
+            "wait",
+            "hold on",
+            "let me reconsider",
+            "missed",
         ]
 
         for i, turn in enumerate(agent_turns[3:], start=3):
@@ -426,13 +524,17 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             for indicator in neglect_indicators:
                 if indicator in turn_lower:
                     # Check if this seems like catching a mistake
-                    context = turn_lower[max(0, turn_lower.find(indicator)-30):turn_lower.find(indicator)+50]
+                    context = turn_lower[
+                        max(0, turn_lower.find(indicator) - 30) : turn_lower.find(indicator) + 50
+                    ]
                     if any(x in context for x in ["requirement", "task", "should", "need", "must"]):
-                        issues.append({
-                            "type": "explicit_neglect_recovery",
-                            "turn": turn.turn_number,
-                            "description": f"Agent catches forgotten context: '{indicator}'",
-                        })
+                        issues.append(
+                            {
+                                "type": "explicit_neglect_recovery",
+                                "turn": turn.turn_number,
+                                "description": f"Agent catches forgotten context: '{indicator}'",
+                            }
+                        )
                         break
 
         # Step 4: Check for re-asking questions (strong signal)
@@ -457,17 +559,23 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
                         if topic_words:
                             found = sum(1 for w in topic_words if w in earlier)
                             if found >= len(topic_words) * 0.6:
-                                issues.append({
-                                    "type": "re_asks_discussed_topic",
-                                    "turn": turn.turn_number,
-                                    "description": f"Re-asks about already discussed: {asked_topic[:30]}",
-                                })
+                                issues.append(
+                                    {
+                                        "type": "re_asks_discussed_topic",
+                                        "turn": turn.turn_number,
+                                        "description": f"Re-asks about already discussed: {asked_topic[:30]}",
+                                    }
+                                )
                                 break
 
         # Prioritize and return issues
         # Strong signals: explicit_neglect_recovery, re_asks_discussed_topic
         # Weak signals: low_context_coherence
-        strong_issues = [i for i in issues if i["type"] in ("explicit_neglect_recovery", "re_asks_discussed_topic")]
+        strong_issues = [
+            i
+            for i in issues
+            if i["type"] in ("explicit_neglect_recovery", "re_asks_discussed_topic")
+        ]
         weak_issues = [i for i in issues if i["type"] == "low_context_coherence"]
 
         if strong_issues:
@@ -488,7 +596,10 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
         text_lower = text.lower()
 
         # Extract programming-related terms
-        prog_terms = re.findall(r'\b(python|java|javascript|react|django|flask|api|database|sql|cli|gui|web|app|file|data|user|input|output|function|class|method)\b', text_lower)
+        prog_terms = re.findall(
+            r"\b(python|java|javascript|react|django|flask|api|database|sql|cli|gui|web|app|file|data|user|input|output|function|class|method)\b",
+            text_lower,
+        )
         keywords.update(prog_terms)
 
         # Extract quoted terms (often specific requirements)
@@ -497,15 +608,15 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             keywords.update(w.lower() for w in q.split() if len(w) > 3)
 
         # Extract CamelCase terms (class/component names)
-        camel = re.findall(r'\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b', text)
+        camel = re.findall(r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b", text)
         keywords.update(c.lower() for c in camel)
 
         # Extract snake_case terms
-        snake = re.findall(r'\b([a-z]+_[a-z_]+)\b', text)
+        snake = re.findall(r"\b([a-z]+_[a-z_]+)\b", text)
         keywords.update(snake)
 
         # Extract key nouns that appear multiple times
-        words = re.findall(r'\b[a-z]{4,}\b', text_lower)
+        words = re.findall(r"\b[a-z]{4,}\b", text_lower)
         word_counts = {}
         for w in words:
             word_counts[w] = word_counts.get(w, 0) + 1
@@ -513,7 +624,34 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
         keywords.update(frequent[:10])
 
         # Remove common stop words
-        stop_words = {'that', 'this', 'with', 'from', 'have', 'will', 'been', 'were', 'they', 'their', 'would', 'could', 'should', 'about', 'into', 'more', 'some', 'such', 'than', 'then', 'them', 'when', 'where', 'which', 'while', 'your'}
+        stop_words = {
+            "that",
+            "this",
+            "with",
+            "from",
+            "have",
+            "will",
+            "been",
+            "were",
+            "they",
+            "their",
+            "would",
+            "could",
+            "should",
+            "about",
+            "into",
+            "more",
+            "some",
+            "such",
+            "than",
+            "then",
+            "them",
+            "when",
+            "where",
+            "which",
+            "while",
+            "your",
+        }
         keywords -= stop_words
 
         return keywords
@@ -543,8 +681,8 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
     def _extract_key_entities(self, text: str) -> set:
         """Extract key named entities from text."""
         # Simple entity extraction - focus on technical terms
-        words = re.findall(r'\b[A-Z][a-zA-Z]+(?:[A-Z][a-zA-Z]+)*\b', text)  # CamelCase
-        words += re.findall(r'\b[a-z]+_[a-z_]+\b', text)  # snake_case
+        words = re.findall(r"\b[A-Z][a-zA-Z]+(?:[A-Z][a-zA-Z]+)*\b", text)  # CamelCase
+        words += re.findall(r"\b[a-z]+_[a-z_]+\b", text)  # snake_case
         return set(words)
 
     def _check_for_contradiction(self, prior_context: str, current_turn: str) -> Optional[str]:
@@ -567,8 +705,11 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
             if marker in current_lower:
                 # Check if it's contradicting something from prior context
                 idx = current_lower.find(marker)
-                context_around = current_lower[max(0, idx-50):idx+50]
-                if any(word in context_around for word in ["requirement", "task", "original", "specification"]):
+                context_around = current_lower[max(0, idx - 50) : idx + 50]
+                if any(
+                    word in context_around
+                    for word in ["requirement", "task", "original", "specification"]
+                ):
                     return f"Explicit change detected near '{marker}'"
 
         return None
@@ -576,10 +717,23 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
     def _is_decision_turn(self, content: str) -> bool:
         """Check if this turn makes a decision that should consider requirements."""
         decision_indicators = [
-            "i will", "i'll", "let me", "let's", "we will", "we'll",
-            "implementing", "creating", "building", "developing",
-            "the approach", "my plan", "the solution", "the design",
-            "decided to", "choosing", "selected",
+            "i will",
+            "i'll",
+            "let me",
+            "let's",
+            "we will",
+            "we'll",
+            "implementing",
+            "creating",
+            "building",
+            "developing",
+            "the approach",
+            "my plan",
+            "the solution",
+            "the design",
+            "decided to",
+            "choosing",
+            "selected",
         ]
         content_lower = content.lower()
         return any(ind in content_lower for ind in decision_indicators)
@@ -622,8 +776,12 @@ class TurnAwareContextNeglectDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Check for phrases indicating repetition
         repeat_phrases = [
-            "let me implement", "let me create", "let me write",
-            "i will implement", "i will create", "i will write",
+            "let me implement",
+            "let me create",
+            "let me write",
+            "i will implement",
+            "i will create",
+            "i will write",
         ]
 
         for phrase in repeat_phrases:

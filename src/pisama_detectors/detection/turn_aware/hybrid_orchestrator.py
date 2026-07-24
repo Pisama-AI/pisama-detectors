@@ -6,14 +6,14 @@ Convenience function to run all turn-aware detectors on a conversation.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
-    TurnAwareDetectionResult,
-    MAX_TURNS_BEFORE_SUMMARIZATION,
     MAX_TOKENS_BEFORE_SUMMARIZATION,
+    MAX_TURNS_BEFORE_SUMMARIZATION,
+    TurnAwareDetectionResult,
+    TurnAwareDetector,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,23 +39,23 @@ def analyze_conversation_turns(
     """
     if detectors is None:
         # Import all detector classes
-        from .specification import TurnAwareSpecificationMismatchDetector
-        from .task_decomposition import TurnAwareTaskDecompositionDetector
-        from .resource import TurnAwareResourceMisallocationDetector
-        from .conversation import TurnAwareConversationHistoryDetector
-        from .loop import TurnAwareLoopDetector
-        from .derailment import TurnAwareDerailmentDetector
-        from .context_neglect import TurnAwareContextNeglectDetector
-        from .withholding import TurnAwareInformationWithholdingDetector
-        from .role_usurpation import TurnAwareRoleUsurpationDetector
+        from .clarification import TurnAwareClarificationRequestDetector
         from .communication import TurnAwareCommunicationBreakdownDetector
+        from .completion import TurnAwareCompletionMisjudgmentDetector
+        from .context_neglect import TurnAwareContextNeglectDetector
+        from .conversation import TurnAwareConversationHistoryDetector
         from .coordination import TurnAwareCoordinationFailureDetector
+        from .derailment import TurnAwareDerailmentDetector
+        from .loop import TurnAwareLoopDetector
         from .output_validation import TurnAwareOutputValidationDetector
         from .quality_gate import TurnAwareQualityGateBypassDetector
-        from .completion import TurnAwareCompletionMisjudgmentDetector
-        from .termination import TurnAwareTerminationAwarenessDetector
         from .reasoning_action import TurnAwareReasoningActionMismatchDetector
-        from .clarification import TurnAwareClarificationRequestDetector
+        from .resource import TurnAwareResourceMisallocationDetector
+        from .role_usurpation import TurnAwareRoleUsurpationDetector
+        from .specification import TurnAwareSpecificationMismatchDetector
+        from .task_decomposition import TurnAwareTaskDecompositionDetector
+        from .termination import TurnAwareTerminationAwarenessDetector
+        from .withholding import TurnAwareInformationWithholdingDetector
 
         detectors = [
             TurnAwareSpecificationMismatchDetector(),  # F1
@@ -124,10 +124,7 @@ def analyze_conversation_turns(
                     start_turn, end_turn = last_chunk.recent_turns
 
                     # Filter to recent turns
-                    working_turns = [
-                        t for t in turns
-                        if start_turn <= t.turn_number <= end_turn
-                    ]
+                    working_turns = [t for t in turns if start_turn <= t.turn_number <= end_turn]
 
                     # Always include first turn (task) if not already
                     first_turn = next((t for t in turns if t.turn_number == 1), None)

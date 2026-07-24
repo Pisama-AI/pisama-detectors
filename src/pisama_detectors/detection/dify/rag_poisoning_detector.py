@@ -15,18 +15,18 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.rag_poisoning import (
-    INJECTION_PATTERNS,
     check_llm_echo,
     scan_for_injections,
 )
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
+
 
 class DifyRagPoisoningDetector(TurnAwareDetector):
     """Detects prompt injection payloads in Dify knowledge retrieval outputs.
@@ -94,14 +94,16 @@ class DifyRagPoisoningDetector(TurnAwareDetector):
                 if found_patterns:
                     pattern_count += len(found_patterns)
                     affected_node_ids.append(node_id)
-                    issues.append({
-                        "type": "rag_injection",
-                        "node_id": node_id,
-                        "node_title": node.get("title", ""),
-                        "document_index": doc_idx,
-                        "patterns_found": found_patterns,
-                        "content_preview": content[:200],
-                    })
+                    issues.append(
+                        {
+                            "type": "rag_injection",
+                            "node_id": node_id,
+                            "node_title": node.get("title", ""),
+                            "document_index": doc_idx,
+                            "patterns_found": found_patterns,
+                            "content_preview": content[:200],
+                        }
+                    )
 
         # Check if downstream LLM echoes injected content
         if issues:
@@ -160,11 +162,13 @@ class DifyRagPoisoningDetector(TurnAwareDetector):
         shaping (one issue per LLM node, with node_id/title metadata).
         """
         echo_issues: List[Dict[str, Any]] = []
-        injected_strings = sorted({
-            pat["matched"]
-            for issue in injection_issues
-            for pat in issue.get("patterns_found", [])
-        })
+        injected_strings = sorted(
+            {
+                pat["matched"]
+                for issue in injection_issues
+                for pat in issue.get("patterns_found", [])
+            }
+        )
         if not injected_strings:
             return echo_issues
 
@@ -172,13 +176,15 @@ class DifyRagPoisoningDetector(TurnAwareDetector):
             llm_output = str(llm_node.get("outputs", {}))
             echoed = check_llm_echo(injected_strings, llm_output)
             if echoed:
-                echo_issues.append({
-                    "type": "llm_echo",
-                    "llm_node_id": llm_node.get("node_id", ""),
-                    "llm_node_title": llm_node.get("title", ""),
-                    "echoed_patterns": echoed,
-                    "output_preview": llm_output[:200],
-                })
+                echo_issues.append(
+                    {
+                        "type": "llm_echo",
+                        "llm_node_id": llm_node.get("node_id", ""),
+                        "llm_node_title": llm_node.get("title", ""),
+                        "echoed_patterns": echoed,
+                        "output_preview": llm_output[:200],
+                    }
+                )
         return echo_issues
 
     def _no_detection(self, reason: str) -> TurnAwareDetectionResult:

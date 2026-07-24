@@ -13,10 +13,10 @@ import logging
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,9 +54,7 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def detect_graph_execution(
-        self, graph_execution: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_graph_execution(self, graph_execution: Dict[str, Any]) -> TurnAwareDetectionResult:
         """Validate checkpoint integrity."""
         checkpoints = graph_execution.get("checkpoints", [])
 
@@ -94,17 +92,19 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
             prev_step = checkpoints[i - 1].get("superstep", 0)
             curr_step = checkpoints[i].get("superstep", 0)
             if curr_step < prev_step:
-                issues.append({
-                    "type": "non_monotonic",
-                    "checkpoint_index": i,
-                    "previous_superstep": prev_step,
-                    "current_superstep": curr_step,
-                    "checkpoint_id": checkpoints[i].get("checkpoint_id", ""),
-                    "description": (
-                        f"Checkpoint {i} has superstep {curr_step} "
-                        f"which is less than previous superstep {prev_step}"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "non_monotonic",
+                        "checkpoint_index": i,
+                        "previous_superstep": prev_step,
+                        "current_superstep": curr_step,
+                        "checkpoint_id": checkpoints[i].get("checkpoint_id", ""),
+                        "description": (
+                            f"Checkpoint {i} has superstep {curr_step} "
+                            f"which is less than previous superstep {prev_step}"
+                        ),
+                    }
+                )
                 affected_supersteps.append(curr_step)
 
         # 2. Check for gaps in superstep sequence
@@ -115,18 +115,20 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
             # Allow same superstep (multiple checkpoints per step)
             if actual > expected:
                 gap_size = actual - expected
-                issues.append({
-                    "type": "superstep_gap",
-                    "expected_superstep": expected,
-                    "actual_superstep": actual,
-                    "gap_size": gap_size,
-                    "checkpoint_index": i,
-                    "checkpoint_id": checkpoints[i].get("checkpoint_id", ""),
-                    "description": (
-                        f"Gap in checkpoint sequence: expected superstep "
-                        f"{expected} but found {actual} (gap of {gap_size})"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "superstep_gap",
+                        "expected_superstep": expected,
+                        "actual_superstep": actual,
+                        "gap_size": gap_size,
+                        "checkpoint_index": i,
+                        "checkpoint_id": checkpoints[i].get("checkpoint_id", ""),
+                        "description": (
+                            f"Gap in checkpoint sequence: expected superstep "
+                            f"{expected} but found {actual} (gap of {gap_size})"
+                        ),
+                    }
+                )
                 affected_supersteps.append(actual)
 
         # 3. State consistency with state_snapshots
@@ -139,16 +141,18 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
                 snap_state = snapshot_by_step[cp_step]
                 inconsistencies = self._compare_states(cp_state, snap_state)
                 if inconsistencies:
-                    issues.append({
-                        "type": "state_inconsistency",
-                        "superstep": cp_step,
-                        "checkpoint_id": cp_id,
-                        "inconsistencies": inconsistencies,
-                        "description": (
-                            f"Checkpoint at superstep {cp_step} state differs "
-                            f"from state_snapshot: {len(inconsistencies)} mismatches"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "state_inconsistency",
+                            "superstep": cp_step,
+                            "checkpoint_id": cp_id,
+                            "inconsistencies": inconsistencies,
+                            "description": (
+                                f"Checkpoint at superstep {cp_step} state differs "
+                                f"from state_snapshot: {len(inconsistencies)} mismatches"
+                            ),
+                        }
+                    )
                     affected_supersteps.append(cp_step)
 
         # 4. Schema completeness
@@ -160,16 +164,18 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
                 cp_keys = set(cp_state.keys())
                 missing = schema_keys - cp_keys
                 if missing:
-                    issues.append({
-                        "type": "missing_schema_keys",
-                        "superstep": cp_step,
-                        "checkpoint_id": cp_id,
-                        "missing_keys": sorted(missing),
-                        "description": (
-                            f"Checkpoint at superstep {cp_step} missing "
-                            f"schema keys: {', '.join(sorted(missing))}"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "missing_schema_keys",
+                            "superstep": cp_step,
+                            "checkpoint_id": cp_id,
+                            "missing_keys": sorted(missing),
+                            "description": (
+                                f"Checkpoint at superstep {cp_step} missing "
+                                f"schema keys: {', '.join(sorted(missing))}"
+                            ),
+                        }
+                    )
                     affected_supersteps.append(cp_step)
 
         if not issues:
@@ -178,9 +184,7 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
                 severity=TurnAwareSeverity.NONE,
                 confidence=0.85,
                 failure_mode=None,
-                explanation=(
-                    f"All {len(checkpoints)} checkpoints pass integrity checks"
-                ),
+                explanation=(f"All {len(checkpoints)} checkpoints pass integrity checks"),
                 detector_name=self.name,
             )
 
@@ -247,22 +251,28 @@ class LangGraphCheckpointCorruptionDetector(TurnAwareDetector):
             in_snap = key in snapshot_state
 
             if in_cp and not in_snap:
-                mismatches.append({
-                    "key": key,
-                    "issue": "extra_in_checkpoint",
-                    "description": f"Key '{key}' in checkpoint but not in snapshot",
-                })
+                mismatches.append(
+                    {
+                        "key": key,
+                        "issue": "extra_in_checkpoint",
+                        "description": f"Key '{key}' in checkpoint but not in snapshot",
+                    }
+                )
             elif in_snap and not in_cp:
-                mismatches.append({
-                    "key": key,
-                    "issue": "missing_in_checkpoint",
-                    "description": f"Key '{key}' in snapshot but not in checkpoint",
-                })
+                mismatches.append(
+                    {
+                        "key": key,
+                        "issue": "missing_in_checkpoint",
+                        "description": f"Key '{key}' in snapshot but not in checkpoint",
+                    }
+                )
             elif checkpoint_state[key] != snapshot_state[key]:
-                mismatches.append({
-                    "key": key,
-                    "issue": "value_mismatch",
-                    "description": f"Key '{key}' has different values in checkpoint vs snapshot",
-                })
+                mismatches.append(
+                    {
+                        "key": key,
+                        "issue": "value_mismatch",
+                        "description": f"Key '{key}' has different values in checkpoint vs snapshot",
+                    }
+                )
 
         return mismatches

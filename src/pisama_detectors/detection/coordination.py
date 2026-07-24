@@ -1,28 +1,112 @@
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Set, Tuple, Any
 from collections import defaultdict
-
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # v1.8: Common English words that are frequently capitalized but are NOT names.
 # Used to filter name-substitution detection in _detect_data_corruption_relay.
 # Without this, casual dialogue ("Hey, remember...") and tool-call syntax
 # ("[Function call: ...]") trigger false positives on MemGPT/function-executor
 # traces. All entries must be multi-letter to match the `[A-Z][a-z]+` regex.
-_COMMON_ENGLISH_CAPS = frozenset({
-    "Hey", "Hi", "Hello", "Yes", "No", "Okay", "Ok", "Sure", "Thanks", "Thank",
-    "Please", "Well", "Yeah", "Yep", "Nope", "Now", "Let", "Looks", "Seems",
-    "My", "Your", "Our", "Their", "His", "Her", "Its",
-    "You", "We", "They", "She", "He", "It",
-    "This", "That", "These", "Those",
-    "What", "Where", "When", "Why", "How", "Who", "Which",
-    "The", "More", "Most", "Less", "Least", "Some", "Any", "All", "Every",
-    "Would", "Could", "Should", "Must", "May", "Might", "Can", "Will", "Shall",
-    "Do", "Did", "Does", "Have", "Has", "Had", "Am", "Is", "Are", "Was", "Were",
-    "Here", "There", "Then", "Also", "Still", "Just", "Only",
-    "Function", "Error", "Warning", "Note", "Info", "Debug", "Status", "Success",
-    "True", "False", "None", "Null",
-    "Call", "Message", "Response", "Request", "Reply",
-})
+_COMMON_ENGLISH_CAPS = frozenset(
+    {
+        "Hey",
+        "Hi",
+        "Hello",
+        "Yes",
+        "No",
+        "Okay",
+        "Ok",
+        "Sure",
+        "Thanks",
+        "Thank",
+        "Please",
+        "Well",
+        "Yeah",
+        "Yep",
+        "Nope",
+        "Now",
+        "Let",
+        "Looks",
+        "Seems",
+        "My",
+        "Your",
+        "Our",
+        "Their",
+        "His",
+        "Her",
+        "Its",
+        "You",
+        "We",
+        "They",
+        "She",
+        "He",
+        "It",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "Where",
+        "When",
+        "Why",
+        "How",
+        "Who",
+        "Which",
+        "The",
+        "More",
+        "Most",
+        "Less",
+        "Least",
+        "Some",
+        "Any",
+        "All",
+        "Every",
+        "Would",
+        "Could",
+        "Should",
+        "Must",
+        "May",
+        "Might",
+        "Can",
+        "Will",
+        "Shall",
+        "Do",
+        "Did",
+        "Does",
+        "Have",
+        "Has",
+        "Had",
+        "Am",
+        "Is",
+        "Are",
+        "Was",
+        "Were",
+        "Here",
+        "There",
+        "Then",
+        "Also",
+        "Still",
+        "Just",
+        "Only",
+        "Function",
+        "Error",
+        "Warning",
+        "Note",
+        "Info",
+        "Debug",
+        "Status",
+        "Success",
+        "True",
+        "False",
+        "None",
+        "Null",
+        "Call",
+        "Message",
+        "Response",
+        "Request",
+        "Reply",
+    }
+)
 
 
 @dataclass
@@ -57,9 +141,11 @@ class CoordinationAnalysisResult:
 class CoordinationAnalyzer:
     def __init__(self, confidence_scaling: float = 1.0):
         self.message_timeout_seconds = 30.0
-        self.max_back_forth_count = 8  # v1.5: raised from 5 (pipeline agents naturally exchange more)
+        self.max_back_forth_count = (
+            8  # v1.5: raised from 5 (pipeline agents naturally exchange more)
+        )
         self.confidence_scaling = confidence_scaling
-    
+
     def analyze_coordination(
         self,
         messages: List[Message],
@@ -93,7 +179,7 @@ class CoordinationAnalyzer:
             issues=issues,
             metrics=metrics,
         )
-    
+
     def _is_pipeline_topology(self, messages: List[Message], agent_ids: List[str]) -> bool:
         """v1.5: Detect if agents communicate in a linear chain (A→B→C→...).
         Pipeline topologies should not be penalized for limited communication breadth
@@ -153,17 +239,17 @@ class CoordinationAnalyzer:
         issues.extend(self._detect_stale_handoff_loop(messages))
 
         metrics = self._compute_metrics(messages, agent_ids)
-        
+
         max_severity = "low"
         severity_counts = {"low": 0, "medium": 0, "high": 0, "critical": 0}
-        
+
         for issue in issues:
             sev = issue.severity
             if sev in severity_counts:
                 severity_counts[sev] += 1
             if self._severity_rank(sev) > self._severity_rank(max_severity):
                 max_severity = sev
-        
+
         raw_score = self._calculate_raw_score(issues, severity_counts, metrics)
         confidence, calibration_info = self._calibrate_confidence(
             issues=issues,
@@ -172,9 +258,9 @@ class CoordinationAnalyzer:
             metrics=metrics,
             raw_score=raw_score,
         )
-        
+
         healthy = len([i for i in issues if i.severity in ["high", "critical"]]) == 0
-        
+
         return CoordinationAnalysisResult(
             healthy=healthy,
             issues=issues,
@@ -185,11 +271,11 @@ class CoordinationAnalyzer:
             raw_score=raw_score,
             calibration_info=calibration_info,
         )
-    
+
     def _severity_rank(self, severity: str) -> int:
         ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
         return ranks.get(severity, 0)
-    
+
     def _calculate_raw_score(
         self,
         issues: List[CoordinationIssue],
@@ -198,19 +284,19 @@ class CoordinationAnalyzer:
     ) -> float:
         if not issues:
             return 0.0
-        
+
         issue_score = (
-            severity_counts.get("low", 0) * 0.1 +
-            severity_counts.get("medium", 0) * 0.25 +
-            severity_counts.get("high", 0) * 0.4 +
-            severity_counts.get("critical", 0) * 0.6
+            severity_counts.get("low", 0) * 0.1
+            + severity_counts.get("medium", 0) * 0.25
+            + severity_counts.get("high", 0) * 0.4
+            + severity_counts.get("critical", 0) * 0.6
         )
-        
+
         ack_rate = metrics.get("acknowledgment_rate", 1.0)
         health_penalty = (1.0 - ack_rate) * 0.2
-        
+
         return min(1.0, issue_score + health_penalty)
-    
+
     def _calibrate_confidence(
         self,
         issues: List[CoordinationIssue],
@@ -227,7 +313,7 @@ class CoordinationAnalyzer:
                 "raw_score": 0.0,
                 "confidence_scaling": self.confidence_scaling,
             }
-        
+
         severity_weight = {
             "low": 0.4,
             "medium": 0.6,
@@ -246,11 +332,11 @@ class CoordinationAnalyzer:
         # v1.1: Boosted weights — many true positives were getting low confidence
         # causing them to fall below the optimized threshold.
         base_confidence = (
-            severity_weight * 0.40 +
-            raw_score * 0.35 +
-            diversity_factor * 0.10 +
-            issue_factor +
-            health_factor
+            severity_weight * 0.40
+            + raw_score * 0.35
+            + diversity_factor * 0.10
+            + issue_factor
+            + health_factor
         )
         # v1.6: Tightened floors — medium at 0.30 caused 87% FP on medium-difficulty
         # cases. Now require 2+ distinct issue types for medium to pass the floor.
@@ -260,9 +346,9 @@ class CoordinationAnalyzer:
             pass
         else:
             base_confidence = max(base_confidence, severity_floor.get(max_severity, 0.20))
-        
+
         calibrated = min(0.99, base_confidence * self.confidence_scaling)
-        
+
         calibration_info = {
             "issue_count": len(issues),
             "severity_counts": severity_counts,
@@ -274,15 +360,15 @@ class CoordinationAnalyzer:
             "raw_score": round(raw_score, 4),
             "confidence_scaling": self.confidence_scaling,
         }
-        
+
         return round(calibrated, 4), calibration_info
-    
+
     def _detect_ignored_messages(self, messages: List[Message]) -> List[CoordinationIssue]:
         issues = []
 
         # v1.6: Identify "broadcast destinations" — agents that are receive-only
         # like 'system', 'logger', 'audit'. Messages to these don't need replies.
-        broadcast_targets = {'system', 'logger', 'audit', 'log', 'broadcast', 'monitor', 'tracer'}
+        broadcast_targets = {"system", "logger", "audit", "log", "broadcast", "monitor", "tracer"}
 
         # v1.6: Check if any message in the trace has explicit acknowledged=True
         # If yes, the field is reliable. If not, the field is missing/unreliable.
@@ -312,8 +398,7 @@ class CoordinationAnalyzer:
             # Check for ANY activity from the recipient after this message
             msg_ts = _ts_key(msg)
             recipient_activity = [
-                m for m in messages
-                if _ts_key(m) > msg_ts and m.from_agent == msg.to_agent
+                m for m in messages if _ts_key(m) > msg_ts and m.from_agent == msg.to_agent
             ]
 
             # Conditions for flagging as ignored:
@@ -338,29 +423,38 @@ class CoordinationAnalyzer:
 
             if should_flag:
                 flagged_pairs.add(pair)
-                issues.append(CoordinationIssue(
-                    issue_type="ignored_message",
-                    agents_involved=[msg.from_agent, msg.to_agent],
-                    message=f"Message from {msg.from_agent} to {msg.to_agent} was not acknowledged",
-                    severity=severity,
-                ))
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="ignored_message",
+                        agents_involved=[msg.from_agent, msg.to_agent],
+                        message=f"Message from {msg.from_agent} to {msg.to_agent} was not acknowledged",
+                        severity=severity,
+                    )
+                )
 
         # v1.1: Detect content-based ignored messages — receiver asks for the
         # same information that was already sent to them (message was lost/ignored
         # despite being "acknowledged").
         for i, msg in enumerate(messages):
             later_from_recipient = [
-                m for m in messages
-                if m.timestamp > msg.timestamp and m.from_agent == msg.to_agent
+                m for m in messages if m.timestamp > msg.timestamp and m.from_agent == msg.to_agent
             ]
             for reply in later_from_recipient:
                 reply_lower = reply.content.lower()
                 msg_lower = msg.content.lower()
                 # If reply asks for what was already provided, it's a lost message
-                request_phrases = ["please provide", "requesting", "still waiting",
-                                   "no .* received", "where is", "send me",
-                                   "need the", "waiting for"]
+                request_phrases = [
+                    "please provide",
+                    "requesting",
+                    "still waiting",
+                    "no .* received",
+                    "where is",
+                    "send me",
+                    "need the",
+                    "waiting for",
+                ]
                 import re as _re
+
                 is_repeat_request = any(_re.search(p, reply_lower) for p in request_phrases)
                 # Check content overlap — is the reply asking about the same topic?
                 msg_words = set(w for w in msg_lower.split() if len(w) > 4)
@@ -370,16 +464,18 @@ class CoordinationAnalyzer:
                 else:
                     overlap = 0
                 if is_repeat_request and overlap > 0.2:
-                    issues.append(CoordinationIssue(
-                        issue_type="message_lost",
-                        agents_involved=[msg.from_agent, msg.to_agent],
-                        message=f"Message from {msg.from_agent} appears lost — {msg.to_agent} re-requests same info",
-                        severity="high",
-                    ))
+                    issues.append(
+                        CoordinationIssue(
+                            issue_type="message_lost",
+                            agents_involved=[msg.from_agent, msg.to_agent],
+                            message=f"Message from {msg.from_agent} appears lost — {msg.to_agent} re-requests same info",
+                            severity="high",
+                        )
+                    )
                     break  # One detection per message pair
 
         return issues
-    
+
     def _detect_information_withholding(
         self,
         messages: List[Message],
@@ -416,15 +512,17 @@ class CoordinationAnalyzer:
 
             if len(recipients) < len(potential_recipients) * 0.5 and len(potential_recipients) > 1:
                 missing = potential_recipients - recipients
-                issues.append(CoordinationIssue(
-                    issue_type="limited_communication",
-                    agents_involved=[agent] + list(missing),
-                    message=f"Agent {agent} has not communicated with: {missing}",
-                    severity="low",
-                ))
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="limited_communication",
+                        agents_involved=[agent] + list(missing),
+                        message=f"Agent {agent} has not communicated with: {missing}",
+                        severity="low",
+                    )
+                )
 
         return issues
-    
+
     def _detect_excessive_back_forth(self, messages: List[Message]) -> List[CoordinationIssue]:
         issues = []
 
@@ -440,12 +538,14 @@ class CoordinationAnalyzer:
             if self._is_tool_agent(pair[0]) or self._is_tool_agent(pair[1]):
                 continue
             if count > self.max_back_forth_count:
-                issues.append(CoordinationIssue(
-                    issue_type="excessive_back_forth",
-                    agents_involved=list(pair),
-                    message=f"Agents {pair[0]} and {pair[1]} have exchanged {count} messages (threshold: {self.max_back_forth_count})",
-                    severity="medium",
-                ))
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="excessive_back_forth",
+                        agents_involved=list(pair),
+                        message=f"Agents {pair[0]} and {pair[1]} have exchanged {count} messages (threshold: {self.max_back_forth_count})",
+                        severity="medium",
+                    )
+                )
 
         return issues
 
@@ -456,58 +556,77 @@ class CoordinationAnalyzer:
         be penalized the same way as agent-to-agent chatter."""
         lower = agent_id.lower()
         tool_markers = (
-            "function_executor", "tool_executor", "function_caller",
-            "tool_caller", "_executor", "_tool", "tools", "toolkit",
-            "function_runner", "tool_runner",
+            "function_executor",
+            "tool_executor",
+            "function_caller",
+            "tool_caller",
+            "_executor",
+            "_tool",
+            "tools",
+            "toolkit",
+            "function_runner",
+            "tool_runner",
         )
         return any(marker in lower for marker in tool_markers)
-    
+
     def _detect_circular_delegation(self, messages: List[Message]) -> List[CoordinationIssue]:
         issues = []
-        
+
         import re as _re
+
         delegation_graph: Dict[str, List[str]] = defaultdict(list)
         for msg in messages:
             content_lower = msg.content.lower()
             # v1.1: Use both exact substring and regex for delegation detection.
             # Regex handles cases like "pass this to" or "hand it off to".
             delegation_phrases = [
-                "delegate", "hand off", "handoff", "take over",
-                "your turn", "assign to", "forward to", "escalate to",
-                "handle this", "proceed with", "can you handle",
-                "please take", "transfer to", "route to",
+                "delegate",
+                "hand off",
+                "handoff",
+                "take over",
+                "your turn",
+                "assign to",
+                "forward to",
+                "escalate to",
+                "handle this",
+                "proceed with",
+                "can you handle",
+                "please take",
+                "transfer to",
+                "route to",
             ]
             delegation_regexes = [
                 r"pass\s+(?:\w+\s+)?to\b",  # "pass to", "pass this to", "pass it to"
-                r"hand\s+\w+\s+off\b",    # "hand it off"
+                r"hand\s+\w+\s+off\b",  # "hand it off"
                 r"delegat\w*\s+(?:this|it|to)\b",  # "delegating to", "delegated this"
             ]
-            has_delegation = (
-                any(phrase in content_lower for phrase in delegation_phrases) or
-                any(_re.search(pat, content_lower) for pat in delegation_regexes)
+            has_delegation = any(phrase in content_lower for phrase in delegation_phrases) or any(
+                _re.search(pat, content_lower) for pat in delegation_regexes
             )
             if has_delegation:
                 delegation_graph[msg.from_agent].append(msg.to_agent)
-        
+
         for start_agent in delegation_graph:
             visited = set()
             stack = [start_agent]
-            
+
             while stack:
                 current = stack.pop()
                 if current in visited:
-                    issues.append(CoordinationIssue(
-                        issue_type="circular_delegation",
-                        agents_involved=list(visited),
-                        message=f"Circular delegation detected involving {visited}",
-                        severity="high",
-                    ))
+                    issues.append(
+                        CoordinationIssue(
+                            issue_type="circular_delegation",
+                            agents_involved=list(visited),
+                            message=f"Circular delegation detected involving {visited}",
+                            severity="high",
+                        )
+                    )
                     break
                 visited.add(current)
                 stack.extend(delegation_graph.get(current, []))
-        
+
         return issues
-    
+
     # ── v1.4: New detection methods ────────────────────────────────────────
 
     def _detect_conflicting_instructions(self, messages: List[Message]) -> List[CoordinationIssue]:
@@ -518,11 +637,15 @@ class CoordinationAnalyzer:
         for msg in messages:
             by_recipient[msg.to_agent].append(msg)
 
-        _CONFLICT_PAIRS = [
-            ({"update", "set", "change", "enable", "activate", "start", "add"},
-             {"delete", "remove", "disable", "deactivate", "stop", "drop"}),
-            ({"create", "insert", "save", "write", "open"},
-             {"delete", "remove", "destroy", "close", "drop"}),
+        conflict_pairs = [
+            (
+                {"update", "set", "change", "enable", "activate", "start", "add"},
+                {"delete", "remove", "disable", "deactivate", "stop", "drop"},
+            ),
+            (
+                {"create", "insert", "save", "write", "open"},
+                {"delete", "remove", "destroy", "close", "drop"},
+            ),
             ({"lock"}, {"unlock"}),
             ({"approve", "accept"}, {"reject", "deny", "decline"}),
         ]
@@ -540,14 +663,16 @@ class CoordinationAnalyzer:
                         pass  # Non-numeric timestamps
                     w1 = set(m1.content.lower().split())
                     w2 = set(m2.content.lower().split())
-                    for pos_set, neg_set in _CONFLICT_PAIRS:
+                    for pos_set, neg_set in conflict_pairs:
                         if (w1 & pos_set and w2 & neg_set) or (w1 & neg_set and w2 & pos_set):
-                            issues.append(CoordinationIssue(
-                                issue_type="conflicting_instructions",
-                                agents_involved=[m1.from_agent, m2.from_agent, recipient],
-                                message=f"Conflicting instructions to {recipient}: '{m1.content[:50]}' vs '{m2.content[:50]}'",
-                                severity="high",
-                            ))
+                            issues.append(
+                                CoordinationIssue(
+                                    issue_type="conflicting_instructions",
+                                    agents_involved=[m1.from_agent, m2.from_agent, recipient],
+                                    message=f"Conflicting instructions to {recipient}: '{m1.content[:50]}' vs '{m2.content[:50]}'",
+                                    severity="high",
+                                )
+                            )
                             break
         return issues
 
@@ -578,18 +703,21 @@ class CoordinationAnalyzer:
                         continue
                     overlap = len(w1 & w2) / min(len(w1), len(w2))
                     if overlap >= 0.7:
-                        issues.append(CoordinationIssue(
-                            issue_type="duplicate_dispatch",
-                            agents_involved=[sender, m1.to_agent, m2.to_agent],
-                            message=f"Same task dispatched to {m1.to_agent} and {m2.to_agent}: '{m1.content[:50]}'",
-                            severity="medium",
-                        ))
+                        issues.append(
+                            CoordinationIssue(
+                                issue_type="duplicate_dispatch",
+                                agents_involved=[sender, m1.to_agent, m2.to_agent],
+                                message=f"Same task dispatched to {m1.to_agent} and {m2.to_agent}: '{m1.content[:50]}'",
+                                severity="medium",
+                            )
+                        )
         return issues
 
     def _detect_data_corruption_relay(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect when data values change during relay between agents."""
         issues = []
         import re as _re
+
         # Find relay chains: A→B then B→C with overlapping topic (C must differ from A)
         for i, m1 in enumerate(messages):
             for m2 in messages:
@@ -609,18 +737,20 @@ class CoordinationAnalyzer:
                     continue  # Different topic — not a relay
 
                 # Extract key-value pairs or named entities
-                kv1 = dict(_re.findall(r'(\w+):\s*(\w+)', m1.content))
-                kv2 = dict(_re.findall(r'(\w+):\s*(\w+)', m2.content))
+                kv1 = dict(_re.findall(r"(\w+):\s*(\w+)", m1.content))
+                kv2 = dict(_re.findall(r"(\w+):\s*(\w+)", m2.content))
                 if kv1 and kv2:
                     shared_keys = set(kv1.keys()) & set(kv2.keys())
                     for key in shared_keys:
                         if kv1[key] != kv2[key]:
-                            issues.append(CoordinationIssue(
-                                issue_type="data_corruption_relay",
-                                agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
-                                message=f"Data corrupted in relay: {key} changed from '{kv1[key]}' to '{kv2[key]}'",
-                                severity="high",
-                            ))
+                            issues.append(
+                                CoordinationIssue(
+                                    issue_type="data_corruption_relay",
+                                    agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
+                                    message=f"Data corrupted in relay: {key} changed from '{kv1[key]}' to '{kv2[key]}'",
+                                    severity="high",
+                                )
+                            )
                             return issues  # One detection per chain
 
                 # Also check for proper noun substitution (names)
@@ -632,18 +762,19 @@ class CoordinationAnalyzer:
                     # or common English words that are frequently capitalized
                     # (Hey, Function, Yes, My, etc. — see _COMMON_ENGLISH_CAPS).
                     names = set()
-                    for m in _re.finditer(r'\b[A-Z][a-z]+\b', text):
+                    for m in _re.finditer(r"\b[A-Z][a-z]+\b", text):
                         pos = m.start()
                         if pos == 0:
                             continue  # First word of message
-                        before = text[max(0, pos - 3):pos].strip()
-                        if before and before[-1] in '.!?':
+                        before = text[max(0, pos - 3) : pos].strip()
+                        if before and before[-1] in ".!?":
                             continue  # First word of sentence
                         word = m.group()
                         if word in _COMMON_ENGLISH_CAPS:
                             continue  # v1.8: Common English cap, not a name
                         names.add(word)
                     return names
+
                 names1 = _extract_names(m1.content)
                 names2 = _extract_names(m2.content)
                 # v1.8: Require at least one shared name before flagging
@@ -654,12 +785,14 @@ class CoordinationAnalyzer:
                     changed_names = names1 - names2
                     new_names = names2 - names1
                     if changed_names and new_names:
-                        issues.append(CoordinationIssue(
-                            issue_type="data_corruption_relay",
-                            agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
-                            message=f"Name changed in relay: {changed_names} became {new_names}",
-                            severity="high",
-                        ))
+                        issues.append(
+                            CoordinationIssue(
+                                issue_type="data_corruption_relay",
+                                agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
+                                message=f"Name changed in relay: {changed_names} became {new_names}",
+                                severity="high",
+                            )
+                        )
                         return issues
         return issues
 
@@ -667,11 +800,12 @@ class CoordinationAnalyzer:
         """v1.4: Detect when sequential steps complete out of order."""
         issues = []
         import re as _re
+
         # Find orchestrator dispatching sequential steps
         step_dispatches: Dict[str, List[Tuple[Message, int]]] = defaultdict(list)
         for msg in messages:
             # Look for step/phase numbering in content
-            match = _re.search(r'\b(?:step|phase|task)\s*(\d+)', msg.content, _re.IGNORECASE)
+            match = _re.search(r"\b(?:step|phase|task)\s*(\d+)", msg.content, _re.IGNORECASE)
             if match:
                 step_num = int(match.group(1))
                 step_dispatches[msg.from_agent].append((msg, step_num))
@@ -683,22 +817,32 @@ class CoordinationAnalyzer:
                 msg_late, step_late = dispatches[i + 1]
                 # Check if the later step's recipient responded before the earlier step's
                 early_response = next(
-                    (m for m in messages if m.from_agent == msg_early.to_agent
-                     and m.timestamp > msg_early.timestamp),
+                    (
+                        m
+                        for m in messages
+                        if m.from_agent == msg_early.to_agent and m.timestamp > msg_early.timestamp
+                    ),
                     None,
                 )
                 late_response = next(
-                    (m for m in messages if m.from_agent == msg_late.to_agent
-                     and m.timestamp > msg_late.timestamp),
+                    (
+                        m
+                        for m in messages
+                        if m.from_agent == msg_late.to_agent and m.timestamp > msg_late.timestamp
+                    ),
                     None,
                 )
-                if late_response and (not early_response or late_response.timestamp < early_response.timestamp):
-                    issues.append(CoordinationIssue(
-                        issue_type="ordering_violation",
-                        agents_involved=[sender, msg_early.to_agent, msg_late.to_agent],
-                        message=f"Step {step_late} completed before step {step_early}",
-                        severity="medium",
-                    ))
+                if late_response and (
+                    not early_response or late_response.timestamp < early_response.timestamp
+                ):
+                    issues.append(
+                        CoordinationIssue(
+                            issue_type="ordering_violation",
+                            agents_involved=[sender, msg_early.to_agent, msg_late.to_agent],
+                            message=f"Step {step_late} completed before step {step_early}",
+                            severity="medium",
+                        )
+                    )
         return issues
 
     def _detect_excessive_delegation(self, messages: List[Message]) -> List[CoordinationIssue]:
@@ -726,28 +870,31 @@ class CoordinationAnalyzer:
         for chain in chains:
             if len(chain) >= 3:  # 3+ forwards = excessive
                 agents = [chain[0].from_agent] + [m.to_agent for m in chain]
-                issues.append(CoordinationIssue(
-                    issue_type="excessive_delegation",
-                    agents_involved=agents,
-                    message=f"Task forwarded through {len(chain)} agents without work: {' → '.join(agents)}",
-                    severity="medium",
-                ))
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="excessive_delegation",
+                        agents_involved=agents,
+                        message=f"Task forwarded through {len(chain)} agents without work: {' → '.join(agents)}",
+                        severity="medium",
+                    )
+                )
         return issues
 
     def _detect_resource_contention(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect when multiple agents compete for the same resource."""
         issues = []
         import re as _re
-        _RESOURCE_VERBS = {"lock", "acquire", "reserve", "claim", "allocate", "write"}
+
+        resource_verbs = {"lock", "acquire", "reserve", "claim", "allocate", "write"}
         # Find messages requesting resource access
         resource_requests: List[Tuple[Message, str]] = []
         for msg in messages:
             lower = msg.content.lower()
-            has_verb = any(v in lower for v in _RESOURCE_VERBS)
+            has_verb = any(v in lower for v in resource_verbs)
             if has_verb:
                 # Extract resource name (word after verb, or common patterns)
-                for v in _RESOURCE_VERBS:
-                    match = _re.search(v + r'\s+(?:to\s+)?(?:resource\s+)?(\w+)', lower)
+                for v in resource_verbs:
+                    match = _re.search(v + r"\s+(?:to\s+)?(?:resource\s+)?(\w+)", lower)
                     if match:
                         resource_requests.append((msg, match.group(1)))
                         break
@@ -764,19 +911,31 @@ class CoordinationAnalyzer:
                     except (TypeError, ValueError):
                         pass  # Non-numeric — assume contention possible
                     if True:
-                        issues.append(CoordinationIssue(
-                            issue_type="resource_contention",
-                            agents_involved=[m1.from_agent, m2.from_agent],
-                            message=f"Resource contention: {m1.from_agent} and {m2.from_agent} both requesting '{r1}'",
-                            severity="high",
-                        ))
+                        issues.append(
+                            CoordinationIssue(
+                                issue_type="resource_contention",
+                                agents_involved=[m1.from_agent, m2.from_agent],
+                                message=f"Resource contention: {m1.from_agent} and {m2.from_agent} both requesting '{r1}'",
+                                severity="high",
+                            )
+                        )
         return issues
 
     def _detect_rapid_instruction_change(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect when an agent cancels/overrides a recent instruction."""
         issues = []
-        _CANCEL_WORDS = {"cancel", "instead", "disregard", "ignore", "scratch", "stop",
-                         "abort", "nevermind", "never mind", "actually"}
+        cancel_words = {
+            "cancel",
+            "instead",
+            "disregard",
+            "ignore",
+            "scratch",
+            "stop",
+            "abort",
+            "nevermind",
+            "never mind",
+            "actually",
+        }
         # Group by (from_agent, to_agent) pair
         by_pair: Dict[Tuple[str, str], List[Message]] = defaultdict(list)
         for msg in messages:
@@ -805,13 +964,15 @@ class CoordinationAnalyzer:
                 except (TypeError, ValueError):
                     pass  # Non-numeric — fall through to content check
                 lower2 = m2.content.lower()
-                if any(w in lower2 for w in _CANCEL_WORDS):
-                    issues.append(CoordinationIssue(
-                        issue_type="rapid_instruction_change",
-                        agents_involved=list(pair),
-                        message=f"Rapid instruction change from {pair[0]} to {pair[1]}: '{m2.content[:50]}'",
-                        severity="low",
-                    ))
+                if any(w in lower2 for w in cancel_words):
+                    issues.append(
+                        CoordinationIssue(
+                            issue_type="rapid_instruction_change",
+                            agents_involved=list(pair),
+                            message=f"Rapid instruction change from {pair[0]} to {pair[1]}: '{m2.content[:50]}'",
+                            severity="low",
+                        )
+                    )
         return issues
 
     def _detect_stalled_progress(self, messages: List[Message]) -> List[CoordinationIssue]:
@@ -823,11 +984,15 @@ class CoordinationAnalyzer:
         actual progress.
         """
         import re as _re
+
         issues = []
         stall_patterns = [
-            _re.compile(r'(\d+)\s*/\s*(\d+)\s+steps\s+completed', _re.IGNORECASE),
-            _re.compile(r'(\d+)\s+completed,\s*(\d+)\s+in\s+progress,\s*(\d+)\s+blocked,\s*(\d+)\s+not\s+started', _re.IGNORECASE),
-            _re.compile(r'progress[:\s]+0\.0%|0%\s+complete', _re.IGNORECASE),
+            _re.compile(r"(\d+)\s*/\s*(\d+)\s+steps\s+completed", _re.IGNORECASE),
+            _re.compile(
+                r"(\d+)\s+completed,\s*(\d+)\s+in\s+progress,\s*(\d+)\s+blocked,\s*(\d+)\s+not\s+started",
+                _re.IGNORECASE,
+            ),
+            _re.compile(r"progress[:\s]+0\.0%|0%\s+complete", _re.IGNORECASE),
         ]
         for msg in messages:
             content = msg.content
@@ -843,12 +1008,14 @@ class CoordinationAnalyzer:
                         if completed == 0 and len(groups) >= 2:
                             total = int(groups[1])
                             if total >= 3:  # Real workflow with steps
-                                issues.append(CoordinationIssue(
-                                    issue_type="stalled_progress",
-                                    agents_involved=[msg.from_agent, msg.to_agent],
-                                    message=f"Workflow stalled: 0/{total} steps completed",
-                                    severity="high",
-                                ))
+                                issues.append(
+                                    CoordinationIssue(
+                                        issue_type="stalled_progress",
+                                        agents_involved=[msg.from_agent, msg.to_agent],
+                                        message=f"Workflow stalled: 0/{total} steps completed",
+                                        severity="high",
+                                    )
+                                )
                                 break
                     except (ValueError, IndexError):
                         pass
@@ -863,16 +1030,20 @@ class CoordinationAnalyzer:
         issues = []
         for msg in messages:
             content_lower = msg.content.lower()
-            if 'duplicate response' in content_lower or 'repeating ineffective' in content_lower:
-                issues.append(CoordinationIssue(
-                    issue_type="duplicate_responses",
-                    agents_involved=[msg.from_agent, msg.to_agent],
-                    message=f"Duplicate responses observed: {msg.content[:80]}",
-                    severity="high",
-                ))
+            if "duplicate response" in content_lower or "repeating ineffective" in content_lower:
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="duplicate_responses",
+                        agents_involved=[msg.from_agent, msg.to_agent],
+                        message=f"Duplicate responses observed: {msg.content[:80]}",
+                        severity="high",
+                    )
+                )
         return issues
 
-    def _detect_discussion_without_progress(self, messages: List[Message]) -> List[CoordinationIssue]:
+    def _detect_discussion_without_progress(
+        self, messages: List[Message]
+    ) -> List[CoordinationIssue]:
         """v1.6: Detect long discussions where agents agree but don't make decisions.
 
         MAST framework patterns show CEO/CPO/CTO discussing without actually
@@ -887,9 +1058,20 @@ class CoordinationAnalyzer:
 
         issues = []
         agreement_phrases = [
-            'i agree', 'agreed', 'good idea', 'great idea', 'sounds good', 'makes sense',
-            'i fully agree', 'fully agree', 'i concur', 'concur', 'absolutely',
-            'i think you', 'good point', 'excellent point',
+            "i agree",
+            "agreed",
+            "good idea",
+            "great idea",
+            "sounds good",
+            "makes sense",
+            "i fully agree",
+            "fully agree",
+            "i concur",
+            "concur",
+            "absolutely",
+            "i think you",
+            "good point",
+            "excellent point",
         ]
 
         agreement_count = 0
@@ -899,27 +1081,30 @@ class CoordinationAnalyzer:
             if any(phrase in content_lower for phrase in agreement_phrases):
                 agreement_count += 1
             # Look for concrete output: code blocks, file names, function definitions
-            if '```' in msg.content or 'def ' in msg.content or 'function ' in msg.content:
+            if "```" in msg.content or "def " in msg.content or "function " in msg.content:
                 has_concrete_output = True
             # Also: look for file paths, URLs, specific deliverables
-            if any(marker in content_lower for marker in ['.py', '.js', '.json', '.yaml', '.md', 'http://', 'https://']):
+            if any(
+                marker in content_lower
+                for marker in [".py", ".js", ".json", ".yaml", ".md", "http://", "https://"]
+            ):
                 has_concrete_output = True
 
         # If 30%+ of messages are agreement and no concrete output → stalled discussion
         agreement_rate = agreement_count / len(messages)
         if agreement_rate >= 0.30 and not has_concrete_output:
-            issues.append(CoordinationIssue(
-                issue_type="discussion_without_progress",
-                agents_involved=list(set(m.from_agent for m in messages))[:5],
-                message=f"Long discussion ({len(messages)} msgs) with high agreement rate ({agreement_rate:.0%}) but no concrete output",
-                severity="medium",
-            ))
+            issues.append(
+                CoordinationIssue(
+                    issue_type="discussion_without_progress",
+                    agents_involved=list(set(m.from_agent for m in messages))[:5],
+                    message=f"Long discussion ({len(messages)} msgs) with high agreement rate ({agreement_rate:.0%}) but no concrete output",
+                    severity="medium",
+                )
+            )
 
         return issues
 
-    def _detect_repeated_content_cycle(
-        self, messages: List[Message]
-    ) -> List[CoordinationIssue]:
+    def _detect_repeated_content_cycle(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.9: Detect agents emitting verbatim-identical content repeatedly.
 
         In Magentic / AutoGen / MetaGPT traces, coordination stalls often
@@ -948,42 +1133,50 @@ class CoordinationAnalyzer:
                 continue
             top_key, top_count = max(counts.items(), key=lambda kv: kv[1])
             if top_count >= 3:
-                return [CoordinationIssue(
-                    issue_type="repeated_content_cycle",
-                    agents_involved=[sender],
-                    message=(
-                        f"Agent '{sender}' emitted the same content {top_count} times "
-                        f"— stalled re-broadcasting pattern"
-                    ),
-                    severity="medium",
-                )]
+                return [
+                    CoordinationIssue(
+                        issue_type="repeated_content_cycle",
+                        agents_involved=[sender],
+                        message=(
+                            f"Agent '{sender}' emitted the same content {top_count} times "
+                            f"— stalled re-broadcasting pattern"
+                        ),
+                        severity="medium",
+                    )
+                ]
         return []
 
     def _detect_response_delay(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect unusually long delays between request and response."""
         issues = []
+
         # Find request-response pairs
         def _ts(m):
             try:
                 return float(m.timestamp)
             except (TypeError, ValueError):
                 return 0.0
+
         for msg in messages:
             responses = [
-                m for m in messages
-                if m.from_agent == msg.to_agent and m.to_agent == msg.from_agent
+                m
+                for m in messages
+                if m.from_agent == msg.to_agent
+                and m.to_agent == msg.from_agent
                 and _ts(m) > _ts(msg)
             ]
             if responses:
                 first_response = min(responses, key=_ts)
                 delay = _ts(first_response) - _ts(msg)
                 if delay > 10.0:  # 10 seconds threshold
-                    issues.append(CoordinationIssue(
-                        issue_type="slow_response",
-                        agents_involved=[msg.from_agent, msg.to_agent],
-                        message=f"Slow response from {msg.to_agent}: {delay:.0f}s delay",
-                        severity="low",
-                    ))
+                    issues.append(
+                        CoordinationIssue(
+                            issue_type="slow_response",
+                            agents_involved=[msg.from_agent, msg.to_agent],
+                            message=f"Slow response from {msg.to_agent}: {delay:.0f}s delay",
+                            severity="low",
+                        )
+                    )
         return issues
 
     def _detect_indirect_delegation(self, messages: List[Message]) -> List[CoordinationIssue]:
@@ -1010,12 +1203,14 @@ class CoordinationAnalyzer:
                         w3 = set(w[:5] for w in m3.content.lower().split() if len(w) > 3)
                         prefix_overlap = len(w1 & w3)
                         if prefix_overlap > 0 or len(messages) <= 4:
-                            issues.append(CoordinationIssue(
-                                issue_type="indirect_delegation",
-                                agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
-                                message=f"{m1.to_agent} re-delegated to {m2.to_agent} who replied directly to {m1.from_agent}",
-                                severity="low",
-                            ))
+                            issues.append(
+                                CoordinationIssue(
+                                    issue_type="indirect_delegation",
+                                    agents_involved=[m1.from_agent, m1.to_agent, m2.to_agent],
+                                    message=f"{m1.to_agent} re-delegated to {m2.to_agent} who replied directly to {m1.from_agent}",
+                                    severity="low",
+                                )
+                            )
                             return issues  # One per trace
         return issues
 
@@ -1043,15 +1238,17 @@ class CoordinationAnalyzer:
         max_sender, max_count = max(msg_counts.items(), key=lambda kv: kv[1])
         share = max_count / total
         if share > 0.60:
-            return [CoordinationIssue(
-                issue_type="lead_hoarding",
-                agents_involved=[max_sender],
-                message=(
-                    f"Agent '{max_sender}' sent {max_count}/{total} messages "
-                    f"({share:.0%}) — other teammates are underutilized"
-                ),
-                severity="medium",
-            )]
+            return [
+                CoordinationIssue(
+                    issue_type="lead_hoarding",
+                    agents_involved=[max_sender],
+                    message=(
+                        f"Agent '{max_sender}' sent {max_count}/{total} messages "
+                        f"({share:.0%}) — other teammates are underutilized"
+                    ),
+                    severity="medium",
+                )
+            ]
         return []
 
     def _detect_silent_agent(
@@ -1077,20 +1274,20 @@ class CoordinationAnalyzer:
         if silent and len(team_agents) > 1:
             silent_ratio = len(silent) / len(team_agents)
             if silent_ratio > 0.30:
-                return [CoordinationIssue(
-                    issue_type="silent_agent",
-                    agents_involved=sorted(silent),
-                    message=(
-                        f"{len(silent)}/{len(team_agents)} team agents "
-                        f"({silent_ratio:.0%}) produced no output"
-                    ),
-                    severity="medium",
-                )]
+                return [
+                    CoordinationIssue(
+                        issue_type="silent_agent",
+                        agents_involved=sorted(silent),
+                        message=(
+                            f"{len(silent)}/{len(team_agents)} team agents "
+                            f"({silent_ratio:.0%}) produced no output"
+                        ),
+                        severity="medium",
+                    )
+                ]
         return []
 
-    def _detect_stale_handoff_loop(
-        self, messages: List[Message]
-    ) -> List[CoordinationIssue]:
+    def _detect_stale_handoff_loop(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.7: Detect circular handoffs where the handoff content stays similar.
 
         Ported from escalation_loop: when agents pass the same issue back and
@@ -1120,10 +1317,7 @@ class CoordinationAnalyzer:
             ordered = sorted(msgs + reverse_msgs, key=lambda m: m.timestamp)[:3]
             if len(ordered) < 3:
                 continue
-            word_sets = [
-                set(w.lower() for w in m.content.split() if len(w) > 3)
-                for m in ordered
-            ]
+            word_sets = [set(w.lower() for w in m.content.split() if len(w) > 3) for m in ordered]
             if not all(word_sets):
                 continue
             overlaps = []
@@ -1134,15 +1328,17 @@ class CoordinationAnalyzer:
                 jaccard = len(a & b) / max(len(a | b), 1)
                 overlaps.append(jaccard)
             if overlaps and sum(overlaps) / len(overlaps) >= 0.70:
-                loop_signal.append(CoordinationIssue(
-                    issue_type="stale_handoff_loop",
-                    agents_involved=[sender, recipient],
-                    message=(
-                        f"Circular handoffs between '{sender}' and "
-                        f"'{recipient}' with stale content (no progress)"
-                    ),
-                    severity="high",
-                ))
+                loop_signal.append(
+                    CoordinationIssue(
+                        issue_type="stale_handoff_loop",
+                        agents_involved=[sender, recipient],
+                        message=(
+                            f"Circular handoffs between '{sender}' and "
+                            f"'{recipient}' with stale content (no progress)"
+                        ),
+                        severity="high",
+                    )
+                )
                 seen_loops.add(loop_key)
         return loop_signal
 
@@ -1152,8 +1348,8 @@ class CoordinationAnalyzer:
     # standalone signal rather than a rule-path issue because integrating
     # into severity_counts inflated calibrated confidence across many
     # traces, hurting overall F1.
-    _STUCK_PAIR_GATE = 0.80        # avg cosine similarity across pair messages
-    _STUCK_PAIR_MIN_MSGS = 3       # require 3+ messages in the pair
+    _STUCK_PAIR_GATE = 0.80  # avg cosine similarity across pair messages
+    _STUCK_PAIR_MIN_MSGS = 3  # require 3+ messages in the pair
 
     def semantic_stuck_pair_signal(self, messages: List[Message]) -> float:
         """v2.0 Sprint 7 Phase FF-2: semantic stuck-pair similarity signal.
@@ -1198,6 +1394,7 @@ class CoordinationAnalyzer:
         # pay the model-load cost.
         try:
             from pisama_detectors.detection.shared_embedder import get_shared_embedder
+
             embedder = get_shared_embedder()
             if not embedder:
                 return 0.0
@@ -1231,15 +1428,13 @@ class CoordinationAnalyzer:
     ) -> Dict[str, float]:
         if not messages or not agent_ids:
             return {}
-        
+
         total_messages = len(messages)
         acknowledged = sum(1 for m in messages if m.acknowledged)
-        
-        unique_pairs = len(set(
-            tuple(sorted([m.from_agent, m.to_agent])) for m in messages
-        ))
+
+        unique_pairs = len(set(tuple(sorted([m.from_agent, m.to_agent])) for m in messages))
         max_pairs = len(agent_ids) * (len(agent_ids) - 1) / 2
-        
+
         return {
             "acknowledgment_rate": acknowledged / total_messages if total_messages > 0 else 0,
             "communication_density": unique_pairs / max_pairs if max_pairs > 0 else 0,

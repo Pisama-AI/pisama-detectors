@@ -12,13 +12,13 @@ Based on MAST research (NeurIPS 2025): FM-2.4 Information Withholding (12%)
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -48,32 +48,60 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
 
     # Question indicators
     QUESTION_PATTERNS = [
-        "?", "what is", "how do", "can you", "could you",
-        "please provide", "please share", "need to know",
-        "tell me", "explain", "clarify", "which",
+        "?",
+        "what is",
+        "how do",
+        "can you",
+        "could you",
+        "please provide",
+        "please share",
+        "need to know",
+        "tell me",
+        "explain",
+        "clarify",
+        "which",
     ]
 
     # Withholding indicators in responses - balanced for precision/recall
     # Removed: 'private' (matches code keywords like "private void")
     # Keep some generic indicators but they need context from other checks
     WITHHOLDING_INDICATORS = [
-        "can't share", "cannot disclose", "not allowed to",
-        "confidential", "restricted",
-        "don't have that", "no information",
-        "not sure", "i don't know", "unclear",
+        "can't share",
+        "cannot disclose",
+        "not allowed to",
+        "confidential",
+        "restricted",
+        "don't have that",
+        "no information",
+        "not sure",
+        "i don't know",
+        "unclear",
         # Missing/incomplete but more specific
-        "didn't provide", "didn't include", "didn't mention",
-        "not provided", "incomplete information",
-        "omitted", "left out", "didn't answer",
-        "you didn't", "wasn't included",
-        "withholding", "refuse to share",
+        "didn't provide",
+        "didn't include",
+        "didn't mention",
+        "not provided",
+        "incomplete information",
+        "omitted",
+        "left out",
+        "didn't answer",
+        "you didn't",
+        "wasn't included",
+        "withholding",
+        "refuse to share",
     ]
 
     # Missing context indicators
     MISSING_CONTEXT = [
-        "what do you mean", "more context", "be more specific",
-        "unclear what", "don't understand", "confused about",
-        "missing information", "need more details", "incomplete",
+        "what do you mean",
+        "more context",
+        "be more specific",
+        "unclear what",
+        "don't understand",
+        "confused about",
+        "missing information",
+        "need more details",
+        "incomplete",
     ]
 
     def __init__(
@@ -186,8 +214,20 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
                 continue
 
             # Must have question words to be a real question
-            question_words = ["what", "how", "why", "where", "when", "which", "who",
-                              "can you", "could you", "would you", "please", "tell me"]
+            question_words = [
+                "what",
+                "how",
+                "why",
+                "where",
+                "when",
+                "which",
+                "who",
+                "can you",
+                "could you",
+                "would you",
+                "please",
+                "tell me",
+            ]
             if not any(qw in content_lower for qw in question_words):
                 continue
 
@@ -219,12 +259,14 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
                             break
 
             if not answered:
-                issues.append({
-                    "type": "unanswered_question",
-                    "turns": [turn.turn_number],
-                    "description": "Question appears unanswered",
-                    "answer_quality": answer_quality,
-                })
+                issues.append(
+                    {
+                        "type": "unanswered_question",
+                        "turns": [turn.turn_number],
+                        "description": "Question appears unanswered",
+                        "answer_quality": answer_quality,
+                    }
+                )
         return issues[:3]
 
     def _detect_withholding(self, turns: List[TurnSnapshot]) -> list:
@@ -234,12 +276,14 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
             content_lower = turn.content.lower()
             for indicator in self.WITHHOLDING_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "explicit_withholding",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Info withheld: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "explicit_withholding",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Info withheld: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -250,12 +294,14 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
             content_lower = turn.content.lower()
             for indicator in self.MISSING_CONTEXT:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "missing_context",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Missing context: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "missing_context",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Missing context: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -263,8 +309,12 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
         """Detect explicit info requests that were ignored."""
         issues = []
         request_phrases = [
-            "please provide", "please share", "send me",
-            "give me", "need the", "what about",
+            "please provide",
+            "please share",
+            "send me",
+            "give me",
+            "need the",
+            "what about",
         ]
 
         for i, turn in enumerate(turns[:-1]):
@@ -281,11 +331,13 @@ class TurnAwareInformationWithholdingDetector(EmbeddingMixin, TurnAwareDetector)
                                 addressed = True
                                 break
                     if not addressed:
-                        issues.append({
-                            "type": "ignored_request",
-                            "turns": [turn.turn_number],
-                            "phrase": phrase,
-                            "description": f"Request ignored: '{phrase}'",
-                        })
+                        issues.append(
+                            {
+                                "type": "ignored_request",
+                                "turns": [turn.turn_number],
+                                "phrase": phrase,
+                                "description": f"Request ignored: '{phrase}'",
+                            }
+                        )
                     break
         return issues[:2]

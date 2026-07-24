@@ -15,8 +15,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -66,9 +66,7 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
         if not nodes:
             return self._no_detection("No nodes in workflow run")
 
-        classifier_nodes = [
-            n for n in nodes if n.get("node_type") == "question_classifier"
-        ]
+        classifier_nodes = [n for n in nodes if n.get("node_type") == "question_classifier"]
         if not classifier_nodes:
             return self._no_detection("No question_classifier nodes found")
 
@@ -87,25 +85,29 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
             if confidence_val is not None and confidence_val < LOW_CONFIDENCE_THRESHOLD:
                 drift_signals += 1
                 affected_node_ids.append(node_id)
-                issues.append({
-                    "type": "low_confidence",
-                    "node_id": node_id,
-                    "title": node_title,
-                    "confidence": confidence_val,
-                    "threshold": LOW_CONFIDENCE_THRESHOLD,
-                })
+                issues.append(
+                    {
+                        "type": "low_confidence",
+                        "node_id": node_id,
+                        "title": node_title,
+                        "confidence": confidence_val,
+                        "threshold": LOW_CONFIDENCE_THRESHOLD,
+                    }
+                )
 
             # Signal 2: Fallback category
             category = self._get_category(outputs)
             if category and category.lower().strip() in FALLBACK_LABELS:
                 drift_signals += 1
                 affected_node_ids.append(node_id)
-                issues.append({
-                    "type": "fallback_category",
-                    "node_id": node_id,
-                    "title": node_title,
-                    "category": category,
-                })
+                issues.append(
+                    {
+                        "type": "fallback_category",
+                        "node_id": node_id,
+                        "title": node_title,
+                        "category": category,
+                    }
+                )
 
             # Signal 3: Category not in configured list
             configured_categories = self._get_configured_categories(inputs)
@@ -115,13 +117,15 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
                 if normalized_category not in normalized_configured:
                     drift_signals += 1
                     affected_node_ids.append(node_id)
-                    issues.append({
-                        "type": "category_mismatch",
-                        "node_id": node_id,
-                        "title": node_title,
-                        "output_category": category,
-                        "configured_categories": configured_categories,
-                    })
+                    issues.append(
+                        {
+                            "type": "category_mismatch",
+                            "node_id": node_id,
+                            "title": node_title,
+                            "output_category": category,
+                            "configured_categories": configured_categories,
+                        }
+                    )
 
         # Signal 4: Inter-classifier disagreement
         if len(classifier_nodes) >= 2:
@@ -195,9 +199,7 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
                 return [str(c) for c in val if c]
         return []
 
-    def _check_disagreements(
-        self, classifier_nodes: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _check_disagreements(self, classifier_nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Check if multiple classifiers disagree on the same input."""
         disagreements = []
 
@@ -205,7 +207,9 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
         input_groups: Dict[str, List[Dict[str, Any]]] = {}
         for node in classifier_nodes:
             inputs = node.get("inputs", {})
-            input_text = inputs.get("query", "") or inputs.get("text", "") or inputs.get("input", "")
+            input_text = (
+                inputs.get("query", "") or inputs.get("text", "") or inputs.get("input", "")
+            )
             if isinstance(input_text, str) and input_text:
                 key = input_text[:200]  # Truncate for grouping
                 if key not in input_groups:
@@ -225,15 +229,16 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
             if len(categories) >= 2:
                 unique_cats = {c for _, c in categories}
                 if len(unique_cats) > 1:
-                    disagreements.append({
-                        "type": "classifier_disagreement",
-                        "input_preview": input_key[:100],
-                        "classifications": [
-                            {"node_id": nid, "category": cat}
-                            for nid, cat in categories
-                        ],
-                        "node_ids": [nid for nid, _ in categories],
-                    })
+                    disagreements.append(
+                        {
+                            "type": "classifier_disagreement",
+                            "input_preview": input_key[:100],
+                            "classifications": [
+                                {"node_id": nid, "category": cat} for nid, cat in categories
+                            ],
+                            "node_ids": [nid for nid, _ in categories],
+                        }
+                    )
 
         return disagreements
 

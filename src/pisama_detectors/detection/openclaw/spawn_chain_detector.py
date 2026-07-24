@@ -15,8 +15,8 @@ import logging
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -27,8 +27,16 @@ MAX_SAFE_SPAWN_DEPTH = 3
 
 # Keywords suggesting higher-privilege agents
 PRIVILEGE_KEYWORDS = {
-    "admin", "root", "supervisor", "manager", "elevated", "privileged",
-    "system", "internal", "master", "controller",
+    "admin",
+    "root",
+    "supervisor",
+    "manager",
+    "elevated",
+    "privileged",
+    "system",
+    "internal",
+    "master",
+    "controller",
 }
 
 
@@ -63,9 +71,7 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
             return self._no_detection("No events in session")
 
         spawn_events = [
-            (i, evt)
-            for i, evt in enumerate(events)
-            if evt.get("type") == "session.spawn"
+            (i, evt) for i, evt in enumerate(events) if evt.get("type") == "session.spawn"
         ]
 
         if not spawn_events:
@@ -84,27 +90,30 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
         # --- 1. Excessive spawn depth ---
         if spawn_count > MAX_SAFE_SPAWN_DEPTH:
             indices = [idx for idx, _ in spawn_events]
-            issues.append({
-                "type": "excessive_depth",
-                "spawn_count": spawn_count,
-                "threshold": MAX_SAFE_SPAWN_DEPTH,
-                "description": f"{spawn_count} spawns exceed safe depth of {MAX_SAFE_SPAWN_DEPTH}",
-            })
+            issues.append(
+                {
+                    "type": "excessive_depth",
+                    "spawn_count": spawn_count,
+                    "threshold": MAX_SAFE_SPAWN_DEPTH,
+                    "description": f"{spawn_count} spawns exceed safe depth of {MAX_SAFE_SPAWN_DEPTH}",
+                }
+            )
             affected_turns.extend(indices)
 
         # --- 1b. Depth field check ---
         if max_depth > MAX_SAFE_SPAWN_DEPTH and not issues:
             indices = [idx for idx, _ in spawn_events]
-            issues.append({
-                "type": "excessive_depth",
-                "spawn_count": spawn_count,
-                "depth": max_depth,
-                "threshold": MAX_SAFE_SPAWN_DEPTH,
-                "description": (
-                    f"Spawn depth {max_depth} exceeds safe threshold "
-                    f"of {MAX_SAFE_SPAWN_DEPTH}"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "excessive_depth",
+                    "spawn_count": spawn_count,
+                    "depth": max_depth,
+                    "threshold": MAX_SAFE_SPAWN_DEPTH,
+                    "description": (
+                        f"Spawn depth {max_depth} exceeds safe threshold of {MAX_SAFE_SPAWN_DEPTH}"
+                    ),
+                }
+            )
             affected_turns.extend(indices)
 
         # --- 2. Circular references ---
@@ -112,12 +121,14 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
         for idx, evt in spawn_events:
             spawned_id = self._get_data_field(evt, "spawned_session_id")
             if spawned_id and spawned_id in seen_ids:
-                issues.append({
-                    "type": "circular_reference",
-                    "spawned_session_id": spawned_id,
-                    "event_index": idx,
-                    "description": f"Circular spawn: '{spawned_id}' already seen",
-                })
+                issues.append(
+                    {
+                        "type": "circular_reference",
+                        "spawned_session_id": spawned_id,
+                        "event_index": idx,
+                        "description": f"Circular spawn: '{spawned_id}' already seen",
+                    }
+                )
                 affected_turns.append(idx)
             if spawned_id:
                 seen_ids.add(spawned_id)
@@ -126,12 +137,14 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
             child_ids = self._get_child_session_ids(evt)
             for cid in child_ids:
                 if cid in seen_ids:
-                    issues.append({
-                        "type": "circular_reference",
-                        "spawned_session_id": cid,
-                        "event_index": idx,
-                        "description": f"Circular spawn: child '{cid}' already seen",
-                    })
+                    issues.append(
+                        {
+                            "type": "circular_reference",
+                            "spawned_session_id": cid,
+                            "event_index": idx,
+                            "description": f"Circular spawn: child '{cid}' already seen",
+                        }
+                    )
                     affected_turns.append(idx)
                 seen_ids.add(cid)
 
@@ -150,14 +163,16 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
                 escalation_indices.append(idx)
 
         if len(escalation_chain) >= 2:
-            issues.append({
-                "type": "privilege_escalation",
-                "chain": escalation_chain,
-                "description": (
-                    f"Privilege escalation pattern: spawning {len(escalation_chain)} "
-                    f"privileged agents ({', '.join(escalation_chain)})"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "privilege_escalation",
+                    "chain": escalation_chain,
+                    "description": (
+                        f"Privilege escalation pattern: spawning {len(escalation_chain)} "
+                        f"privileged agents ({', '.join(escalation_chain)})"
+                    ),
+                }
+            )
             affected_turns.extend(escalation_indices)
 
         if not issues:
@@ -220,11 +235,7 @@ class OpenClawSpawnChainDetector(TurnAwareDetector):
             return str(target)
         data = evt.get("data", {})
         if isinstance(data, dict):
-            target = (
-                data.get("target_agent", "")
-                or data.get("agent", "")
-                or data.get("target", "")
-            )
+            target = data.get("target_agent", "") or data.get("agent", "") or data.get("target", "")
         return str(target) if target else ""
 
     def _get_child_session_ids(self, evt: dict) -> List[str]:

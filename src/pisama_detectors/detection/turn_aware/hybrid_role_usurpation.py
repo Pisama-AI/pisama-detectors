@@ -11,13 +11,13 @@ F7, F8, F11, F12, F14). Rule-based detection achieves only 2.5% recall.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
+    MODULE_VERSION,
     TurnAwareDetectionResult,
     TurnAwareSeverity,
-    MODULE_VERSION,
+    TurnSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -60,6 +60,7 @@ class LLMRoleUsurpationDetector:
         """Lazy-load the LLM judge."""
         if self._judge is None:
             from ..llm_judge import MASTLLMJudge
+
             self._judge = MASTLLMJudge(api_key=self.api_key)
         return self._judge
 
@@ -72,12 +73,14 @@ class LLMRoleUsurpationDetector:
 
         turns = []
         for snapshot in snapshots:
-            turns.append(ConversationTurn(
-                role=snapshot.participant_type,
-                content=snapshot.content,
-                participant_id=snapshot.participant_id,
-                metadata=snapshot.turn_metadata or {},
-            ))
+            turns.append(
+                ConversationTurn(
+                    role=snapshot.participant_type,
+                    content=snapshot.content,
+                    participant_id=snapshot.participant_id,
+                    metadata=snapshot.turn_metadata or {},
+                )
+            )
         return turns
 
     def _extract_role_context(self, turns: List[TurnSnapshot]) -> str:
@@ -142,6 +145,7 @@ class LLMRoleUsurpationDetector:
 
         try:
             from ..task_extractors import extract_task
+
             extraction = extract_task(conv_turns, metadata)
         except Exception as e:
             logger.warning(f"Task extraction failed: {e}")
@@ -208,9 +212,9 @@ class LLMRoleUsurpationDetector:
             severity=severity,
             confidence=result.confidence,
             failure_mode="F9" if detected else None,
-            explanation=result.reasoning if result.reasoning else (
-                "LLM detected role usurpation" if detected else "LLM found no role usurpation"
-            ),
+            explanation=result.reasoning
+            if result.reasoning
+            else ("LLM detected role usurpation" if detected else "LLM found no role usurpation"),
             evidence={
                 "llm_verdict": result.verdict,
                 "llm_confidence": result.confidence,
@@ -270,6 +274,7 @@ class HybridRoleUsurpationDetector:
         """Lazy-load pattern detector."""
         if self._pattern_detector is None:
             from .role_usurpation import TurnAwareRoleUsurpationDetector
+
             self._pattern_detector = TurnAwareRoleUsurpationDetector(
                 min_turns=3,
                 strict_mode=False,

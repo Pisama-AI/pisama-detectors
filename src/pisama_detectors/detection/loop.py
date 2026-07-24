@@ -17,6 +17,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import List, Optional
+
 from pisama_detectors._config import get_settings, get_tenant_thresholds
 from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
 
@@ -26,14 +27,29 @@ DETECTOR_VERSION = "1.6"
 # v1.6: Monotonic-counter keys that are bookkeeping, not work progress.
 # When these are the ONLY strictly-distinct keys, the agent is still looping
 # on the same work (same tool call, same error) — don't short-circuit.
-_BOOKKEEPING_KEYS = frozenset({
-    "iteration_count", "iteration_index", "iteration",
-    "turn_count", "turn", "step", "superstep",
-    "retry", "retry_count", "retries",
-    "attempt", "attempts", "format_attempts",
-    "execution_time_ms", "timestamp_ms", "timestamp",
-    "sequence_num", "sequence", "seq",
-})
+_BOOKKEEPING_KEYS = frozenset(
+    {
+        "iteration_count",
+        "iteration_index",
+        "iteration",
+        "turn_count",
+        "turn",
+        "step",
+        "superstep",
+        "retry",
+        "retry_count",
+        "retries",
+        "attempt",
+        "attempts",
+        "format_attempts",
+        "execution_time_ms",
+        "timestamp_ms",
+        "timestamp",
+        "sequence_num",
+        "sequence",
+        "seq",
+    }
+)
 
 settings = get_settings()
 
@@ -126,7 +142,9 @@ class MultiLevelLoopDetector:
         return cls(framework=framework)
 
     @classmethod
-    def for_tenant(cls, tenant_settings: Optional[dict], framework: Optional[str] = None) -> "MultiLevelLoopDetector":
+    def for_tenant(
+        cls, tenant_settings: Optional[dict], framework: Optional[str] = None
+    ) -> "MultiLevelLoopDetector":
         """Create a detector configured for a specific tenant.
 
         Uses tenant-specific threshold overrides merged with framework defaults.
@@ -196,13 +214,22 @@ class MultiLevelLoopDetector:
         length_factor = min(1.0, loop_length / 5)
         evidence_factor = evidence_strength
 
-        calibrated = base_confidence * 0.5 + raw_score * 0.25 + length_factor * 0.15 + evidence_factor * 0.10
+        calibrated = (
+            base_confidence * 0.5 + raw_score * 0.25 + length_factor * 0.15 + evidence_factor * 0.10
+        )
         calibrated = min(0.99, calibrated * self.confidence_scaling)
 
         return round(calibrated, 4)
 
     def _no_loop(self, **kwargs) -> LoopDetectionResult:
-        return LoopDetectionResult(detected=False, confidence=0.0, method=None, cost=0.0, framework=self.framework, **kwargs)
+        return LoopDetectionResult(
+            detected=False,
+            confidence=0.0,
+            method=None,
+            cost=0.0,
+            framework=self.framework,
+            **kwargs,
+        )
 
     def detect_loop(self, states: List[StateSnapshot]) -> LoopDetectionResult:
         if len(states) < 3:
@@ -228,7 +255,7 @@ class MultiLevelLoopDetector:
         if self._has_iterating_signal(states):
             return self._no_loop(evidence={"iterating_signal": True})
 
-        window = states[-self.window_size:-1] if len(states) > self.window_size else states[:-1]
+        window = states[-self.window_size : -1] if len(states) > self.window_size else states[:-1]
 
         return (
             self._detect_structural_loop(current, window, states)
@@ -244,8 +271,10 @@ class MultiLevelLoopDetector:
     ) -> Optional[LoopDetectionResult]:
         """Tier 1: Structural matching — same agent, same state keys, no progress."""
         matches = [
-            i for i, prev in enumerate(window)
-            if self._structural_match(current, prev) and not self._has_meaningful_progress(prev, current)
+            i
+            for i, prev in enumerate(window)
+            if self._structural_match(current, prev)
+            and not self._has_meaningful_progress(prev, current)
         ]
         if not matches:
             return None
@@ -264,13 +293,19 @@ class MultiLevelLoopDetector:
 
         return LoopDetectionResult(
             detected=True,
-            confidence=self._calibrate_confidence(raw_score, "structural", min(1.0, len(matches) / 2), loop_length),
+            confidence=self._calibrate_confidence(
+                raw_score, "structural", min(1.0, len(matches) / 2), loop_length
+            ),
             method="structural",
             cost=0.0,
             loop_start_index=window_start + first_match,
             loop_length=loop_length,
             raw_score=raw_score,
-            evidence={"structural_matches": len(matches), "window_size": len(window), "structural_threshold": self.structural_threshold},
+            evidence={
+                "structural_matches": len(matches),
+                "window_size": len(window),
+                "structural_threshold": self.structural_threshold,
+            },
             framework=self.framework,
         )
 
@@ -279,7 +314,9 @@ class MultiLevelLoopDetector:
     ) -> Optional[LoopDetectionResult]:
         """Tier 2: Hash collision — identical state_delta content."""
         current_hash = self._compute_state_hash(current)
-        matches = [i for i, prev in enumerate(window) if self._compute_state_hash(prev) == current_hash]
+        matches = [
+            i for i, prev in enumerate(window) if self._compute_state_hash(prev) == current_hash
+        ]
         if not matches:
             return None
 
@@ -290,8 +327,12 @@ class MultiLevelLoopDetector:
         if not current.state_delta:
             matched_contents = [window[i].content for i in matches if not window[i].state_delta]
             if matched_contents and not any(
-                c == current.content or (len(c) > 20 and len(current.content) > 20
-                and (c.startswith(current.content[:40]) or current.content.startswith(c[:40])))
+                c == current.content
+                or (
+                    len(c) > 20
+                    and len(current.content) > 20
+                    and (c.startswith(current.content[:40]) or current.content.startswith(c[:40]))
+                )
                 for c in matched_contents
             ):
                 return None
@@ -302,7 +343,9 @@ class MultiLevelLoopDetector:
 
         return LoopDetectionResult(
             detected=True,
-            confidence=self._calibrate_confidence(raw_score, "hash", min(1.0, len(matches) / 2), loop_length),
+            confidence=self._calibrate_confidence(
+                raw_score, "hash", min(1.0, len(matches) / 2), loop_length
+            ),
             method="hash",
             cost=0.0,
             loop_start_index=len(states) - 1 - loop_length,
@@ -329,13 +372,19 @@ class MultiLevelLoopDetector:
                 for i, emb in enumerate(embeddings[:-1])
             ]
             high_sim_matches = [
-                (i, sim) for i, sim in high_sim_matches
-                if sim > self.semantic_threshold and not self._has_meaningful_progress(window[i], current)
+                (i, sim)
+                for i, sim in high_sim_matches
+                if sim > self.semantic_threshold
+                and not self._has_meaningful_progress(window[i], current)
             ]
 
             # v1.2: If current state is a summary/recap, don't flag as loop
             if self._is_summary_or_progress(current.content):
-                return self._no_loop(evidence={"summary_pattern_detected": True}) if high_sim_matches else None
+                return (
+                    self._no_loop(evidence={"summary_pattern_detected": True})
+                    if high_sim_matches
+                    else None
+                )
 
             if len(high_sim_matches) < self.min_matches_for_loop:
                 return None
@@ -348,7 +397,9 @@ class MultiLevelLoopDetector:
 
             return LoopDetectionResult(
                 detected=True,
-                confidence=self._calibrate_confidence(avg_similarity, "semantic", min(1.0, len(high_sim_matches) / 4), loop_length),
+                confidence=self._calibrate_confidence(
+                    avg_similarity, "semantic", min(1.0, len(high_sim_matches) / 4), loop_length
+                ),
                 method="semantic",
                 cost=0.0,
                 loop_start_index=window_start + first_match_idx,
@@ -365,21 +416,106 @@ class MultiLevelLoopDetector:
         except Exception:
             return None
 
-    _LEXICAL_STOPWORDS = frozenset({
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "must", "can", "shall",
-        "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-        "my", "your", "his", "its", "our", "their",
-        "this", "that", "these", "those",
-        "and", "or", "but", "if", "then", "else", "when", "where", "why", "how",
-        "what", "which", "who", "whom", "whose",
-        "to", "of", "in", "on", "at", "by", "for", "with", "about", "from",
-        "as", "into", "than", "so", "just", "more", "most", "some", "any", "all",
-        "not", "no", "nor", "only", "own", "same",
-        "very", "too", "also", "here", "there",
-        "please", "like", "still",
-    })
+    _LEXICAL_STOPWORDS = frozenset(
+        {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "shall",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "me",
+            "him",
+            "her",
+            "us",
+            "them",
+            "my",
+            "your",
+            "his",
+            "its",
+            "our",
+            "their",
+            "this",
+            "that",
+            "these",
+            "those",
+            "and",
+            "or",
+            "but",
+            "if",
+            "then",
+            "else",
+            "when",
+            "where",
+            "why",
+            "how",
+            "what",
+            "which",
+            "who",
+            "whom",
+            "whose",
+            "to",
+            "of",
+            "in",
+            "on",
+            "at",
+            "by",
+            "for",
+            "with",
+            "about",
+            "from",
+            "as",
+            "into",
+            "than",
+            "so",
+            "just",
+            "more",
+            "most",
+            "some",
+            "any",
+            "all",
+            "not",
+            "no",
+            "nor",
+            "only",
+            "own",
+            "same",
+            "very",
+            "too",
+            "also",
+            "here",
+            "there",
+            "please",
+            "like",
+            "still",
+        }
+    )
 
     def _tokenize_content(self, text: str) -> set:
         """Extract content word tokens as 4-char prefixes so morphological
@@ -387,11 +523,9 @@ class MultiLevelLoopDetector:
         collapse to the same stem. Trade-off: over-collapses some unrelated
         short words, but maximizes recall for stuck-topic loop detection."""
         import re
+
         tokens = re.findall(r"[a-zA-Z]{3,}", text.lower())
-        return {
-            t[:4] for t in tokens
-            if t not in self._LEXICAL_STOPWORDS and len(t) >= 3
-        }
+        return {t[:4] for t in tokens if t not in self._LEXICAL_STOPWORDS and len(t) >= 3}
 
     def _detect_lexical_loop(
         self, current: StateSnapshot, window: List[StateSnapshot], states: List[StateSnapshot]
@@ -427,7 +561,9 @@ class MultiLevelLoopDetector:
 
         return LoopDetectionResult(
             detected=True,
-            confidence=self._calibrate_confidence(avg_overlap, "lexical", min(1.0, len(matches) / 4), loop_length),
+            confidence=self._calibrate_confidence(
+                avg_overlap, "lexical", min(1.0, len(matches) / 4), loop_length
+            ),
             method="lexical",
             cost=0.0,
             loop_start_index=window_start + first_match_idx,
@@ -455,10 +591,12 @@ class MultiLevelLoopDetector:
                     return True
                 if a and b and len(a) > 30 and len(b) > 30 and a[:30] == b[:30]:
                     return True
+
         # Identical state_delta with bookkeeping keys stripped
         def _stripped(sd: dict) -> str:
             cleaned = {k: v for k, v in sd.items() if k not in _BOOKKEEPING_KEYS}
             return json.dumps(cleaned, sort_keys=True, default=str)
+
         for i in range(len(earlier)):
             if not earlier[i].state_delta:
                 continue
@@ -529,10 +667,7 @@ class MultiLevelLoopDetector:
         return False
 
     def _structural_match(self, a: StateSnapshot, b: StateSnapshot) -> bool:
-        return (
-            a.agent_id == b.agent_id and
-            set(a.state_delta.keys()) == set(b.state_delta.keys())
-        )
+        return a.agent_id == b.agent_id and set(a.state_delta.keys()) == set(b.state_delta.keys())
 
     def _has_meaningful_progress(self, prev: StateSnapshot, current: StateSnapshot) -> bool:
         # v1.6: Bookkeeping keys (iteration counters, timestamps) change on
@@ -541,8 +676,7 @@ class MultiLevelLoopDetector:
         curr_keys = set(current.state_delta.keys()) - _BOOKKEEPING_KEYS
         delta_keys = curr_keys - prev_keys
         value_changes = sum(
-            1 for k in curr_keys
-            if k in prev_keys and current.state_delta[k] != prev.state_delta[k]
+            1 for k in curr_keys if k in prev_keys and current.state_delta[k] != prev.state_delta[k]
         )
         if len(delta_keys) > 0 or value_changes >= 2:
             return True
@@ -578,7 +712,9 @@ class MultiLevelLoopDetector:
             if n_samples < n_clusters * 2:
                 return None
 
-            cluster_labels = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit_predict(embeddings)
+            cluster_labels = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit_predict(
+                embeddings
+            )
             recent_window = min(self.window_size, len(cluster_labels))
             recent_labels = cluster_labels[-recent_window:]
 
@@ -593,7 +729,9 @@ class MultiLevelLoopDetector:
             if self._cluster_is_batch_iteration(states, cluster_labels, evidence):
                 return None
 
-            return self._build_clustering_result(embeddings, cluster_labels, recent_window, n_clusters, evidence)
+            return self._build_clustering_result(
+                embeddings, cluster_labels, recent_window, n_clusters, evidence
+            )
         except Exception:
             return None
 
@@ -648,7 +786,7 @@ class MultiLevelLoopDetector:
         cycle_length = 0
         for potential_cycle in range(2, len(recent_labels) // 2 + 1):
             pattern = tuple(recent_labels[-potential_cycle:])
-            check_against = tuple(recent_labels[-2*potential_cycle:-potential_cycle])
+            check_against = tuple(recent_labels[-2 * potential_cycle : -potential_cycle])
             if pattern == check_against:
                 cycle_length = potential_cycle
                 break
@@ -665,7 +803,9 @@ class MultiLevelLoopDetector:
 
         if cycle_length >= 2:
             is_loop = True
-            evidence["type"] = evidence.get("type", "") + "_cycle" if evidence.get("type") else "cluster_cycle"
+            evidence["type"] = (
+                evidence.get("type", "") + "_cycle" if evidence.get("type") else "cluster_cycle"
+            )
             evidence["cycle_length"] = cycle_length
 
         if not is_loop:
@@ -690,7 +830,8 @@ class MultiLevelLoopDetector:
         if len(cluster_embs) >= 2:
             sims = [
                 self.embedder.similarity(cluster_embs[i], cluster_embs[j])
-                for i in range(len(cluster_embs)) for j in range(i + 1, len(cluster_embs))
+                for i in range(len(cluster_embs))
+                for j in range(i + 1, len(cluster_embs))
             ]
             avg_intra_sim = sum(sims) / len(sims) if sims else 0.0
 
@@ -708,7 +849,9 @@ class MultiLevelLoopDetector:
 
         return LoopDetectionResult(
             detected=True,
-            confidence=self._calibrate_confidence(raw_score, "semantic_clustering", min(1.0, max_cluster_count / 5), max_cluster_count),
+            confidence=self._calibrate_confidence(
+                raw_score, "semantic_clustering", min(1.0, max_cluster_count / 5), max_cluster_count
+            ),
             method="semantic_clustering",
             cost=0.0,
             loop_start_index=loop_start_index,
