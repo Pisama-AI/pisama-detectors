@@ -2,6 +2,11 @@
 
 All notable changes to `pisama-detectors` are documented here.
 
+## [Unreleased]
+
+- Add CodeQL, dependency review, Dependabot, and a coverage regression gate.
+- Update pinned CI and trusted-publishing actions.
+
 ## [0.3.0] - 2026-07-23
 
 ### Changed
