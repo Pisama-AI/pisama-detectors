@@ -73,7 +73,13 @@ def get_tenant_thresholds(
         for k, v in overrides.items():
             if k in merged:
                 merged[k] = v
-    return FrameworkThresholds(**merged)
+    return FrameworkThresholds(
+        structural_threshold=float(merged["structural_threshold"]),
+        semantic_threshold=float(merged["semantic_threshold"]),
+        loop_detection_window=int(merged["loop_detection_window"]),
+        min_matches_for_loop=int(merged["min_matches_for_loop"]),
+        confidence_scaling=float(merged["confidence_scaling"]),
+    )
 
 
 @dataclass

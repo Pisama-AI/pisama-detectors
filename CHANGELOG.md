@@ -4,8 +4,16 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+- Ship a PEP 561 marker and type-check the supported top-level API in CI.
+- Coerce tenant threshold overrides to their declared numeric types.
+- Document the legacy turn-aware namespace as frozen and outside the supported
+  top-level API.
 - Add CodeQL, dependency review, Dependabot, and a coverage regression gate.
 - Update pinned CI and trusted-publishing actions.
+- Fix all Dify and OpenClaw public functions so they invoke their real
+  workflow and session analyzers instead of returning the empty metadata path.
+- Add positive public-contract tests for every Dify and OpenClaw detector.
+- Correct the public cost result and decomposition input type annotations.
 
 ## [0.3.0] - 2026-07-23
 
