@@ -973,9 +973,9 @@ class TaskDecompositionDetector:
         agent_capabilities: Optional[dict[str, list[str]]] = None,
     ) -> DecompositionResult:
         # v2.0: Handle list-format decomposition (e.g. from AgentBench/GAIA traces)
-        # List boundaries are structural evidence of separate subtasks. Preserve
-        # intrinsic markers when present and add explicit Step prefixes when the
-        # item text itself has none.
+        # List boundaries are structural evidence of separate subtasks. Normalize
+        # every item to one marker grammar so mixed intrinsic marker styles cannot
+        # collapse into a single parsed subtask.
         if isinstance(decomposition, list):
             raw_strs = []
             for item in decomposition:
@@ -983,16 +983,10 @@ class TaskDecompositionDetector:
                     raw_strs.append(str(item.get("subtask") or item.get("description") or item))
                 else:
                     raw_strs.append(str(item))
-            joined = "\n".join(raw_strs)
-            has_intrinsic_markers = re.search(
-                r"(?:^|\n)\s*(?:\d+[.)]|[-•*]\s|step\s*\d*[:.]|phase\s|goal\s*\d)",
-                joined,
-                re.IGNORECASE,
+            decomposition = "\n".join(
+                f"Step {index + 1}: {raw}"
+                for index, raw in enumerate(raw_strs)
             )
-            if raw_strs and not has_intrinsic_markers:
-                decomposition = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(raw_strs))
-            else:
-                decomposition = joined
 
         # v2.1: Recognize SWE-bench / patch-plan format:
         #   "Repository: X\n Fix: ... \n Tests to pass: [...]"

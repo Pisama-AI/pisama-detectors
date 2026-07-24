@@ -167,6 +167,52 @@ CORE_BEHAVIOR_CASES: dict[str, tuple[Callable[[], Any], Callable[[], Any]]] = {
             context_limit=200_000,
         ),
     ),
+    "coordination": (
+        lambda: pd.detect_coordination(
+            [
+                {
+                    "sender": "planner",
+                    "receiver": "reviewer",
+                    "content": "Review the release.",
+                    "acknowledged": False,
+                }
+            ],
+            ["planner", "reviewer"],
+        ),
+        lambda: pd.detect_coordination(
+            [
+                {
+                    "sender": "planner",
+                    "receiver": "reviewer",
+                    "content": "Review the release.",
+                    "acknowledged": True,
+                }
+            ]
+        ),
+    ),
+    "decomposition": (
+        lambda: pd.detect_decomposition(
+            (
+                "Build a production API with authentication, database persistence, "
+                "validation, monitoring, and tests."
+            ),
+            [],
+        ),
+        lambda: pd.detect_decomposition(
+            (
+                "Build a production API with authentication, database persistence, "
+                "validation, monitoring, and tests."
+            ),
+            [
+                "Design the API.",
+                "Add authentication.",
+                "Add database persistence.",
+                "Add validation.",
+                "Add monitoring.",
+                "Add tests.",
+            ],
+        ),
+    ),
 }
 
 
@@ -203,3 +249,21 @@ def test_corruption_type_drift_identifies_the_changed_field() -> None:
 
     type_drift = next(issue for issue in result.issues if issue.issue_type == "type_drift")
     assert type_drift.field == "payload"
+
+
+def test_persona_detector_separates_role_alignment_from_drift() -> None:
+    aligned = pd.detect_persona_drift(
+        "security-analyst",
+        "A careful security analyst who audits vulnerabilities.",
+        "I audited the vulnerability evidence and recommend a security patch.",
+    )
+    drifted = pd.detect_persona_drift(
+        "security-analyst",
+        "A careful security analyst who audits vulnerabilities.",
+        "Here is a cheerful recipe for apple pie.",
+    )
+
+    assert aligned.consistent
+    assert not aligned.drift_detected
+    assert not drifted.consistent
+    assert drifted.drift_detected

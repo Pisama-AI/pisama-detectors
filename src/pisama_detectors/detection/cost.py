@@ -86,7 +86,7 @@ class CostResult:
 
 
 class CostCalculator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.pricing = LLM_PRICING_2025
         self.aliases = MODEL_ALIASES
         self._custom_pricing: Dict[str, ModelPricing] = {}

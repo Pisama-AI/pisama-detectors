@@ -23,11 +23,6 @@ def _verify_evidence(path: Path, evidence_path: Path) -> dict[str, Any]:
     artifact = evidence["artifact"]
     evaluation = evidence["evaluation"]
 
-    if artifact["path"] != path.name:
-        raise ValueError(
-            f"evidence artifact path is {artifact['path']!r}, report path is {path.name!r}"
-        )
-
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != artifact["sha256"]:
         raise ValueError("TRAIL report digest does not match the reviewed evidence card")

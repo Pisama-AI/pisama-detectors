@@ -34,12 +34,12 @@ should use the typed functions documented below.
 
 ## Quality gates
 
-CI runs positive and negative behavioral cases across the supported detector
-surface, enforces at least 63% statement coverage, and strictly type-checks
-the public wrapper contract. The frozen `detection.turn_aware` compatibility
-namespace is excluded from the supported-surface coverage calculation.
-Supported Python versions are exercised through the 3.10 to 3.13 test matrix,
-including wheel installation and public API smoke tests.
+CI exercises failure and healthy-path behavior for the detector functions,
+checks the cost result contract, enforces at least 61% statement coverage
+across every Python module shipped in the wheel, resolves public runtime type
+annotations, and strictly type-checks the public wrapper contract. Supported
+Python versions are exercised through the 3.10 to 3.13 test matrix, including
+wheel installation and public API smoke tests.
 
 ## Quick Start
 

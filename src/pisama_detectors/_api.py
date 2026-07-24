@@ -8,28 +8,27 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, ParamSpec, TypeVar
+from typing import Any, Dict, List, Optional, ParamSpec, TypeVar
 
-if TYPE_CHECKING:
-    from pisama_detectors.detection.communication import CommunicationBreakdownResult
-    from pisama_detectors.detection.completion import CompletionResult
-    from pisama_detectors.detection.context import ContextNeglectResult
-    from pisama_detectors.detection.context_pressure import ContextPressureResult
-    from pisama_detectors.detection.convergence import ConvergenceResult
-    from pisama_detectors.detection.coordination import CoordinationAnalysisResult
-    from pisama_detectors.detection.corruption import CorruptionResult
-    from pisama_detectors.detection.cost import CostResult
-    from pisama_detectors.detection.decomposition import DecompositionResult
-    from pisama_detectors.detection.derailment import DerailmentResult
-    from pisama_detectors.detection.hallucination import HallucinationResult
-    from pisama_detectors.detection.injection import InjectionResult
-    from pisama_detectors.detection.loop import LoopDetectionResult
-    from pisama_detectors.detection.overflow import OverflowResult
-    from pisama_detectors.detection.persona import PersonaConsistencyResult
-    from pisama_detectors.detection.specification import SpecificationMismatchResult
-    from pisama_detectors.detection.turn_aware._base import TurnAwareDetectionResult
-    from pisama_detectors.detection.withholding import WithholdingResult
-    from pisama_detectors.detection.workflow import WorkflowAnalysisResult
+from pisama_detectors.detection.communication import CommunicationBreakdownResult
+from pisama_detectors.detection.completion import CompletionResult
+from pisama_detectors.detection.context import ContextNeglectResult
+from pisama_detectors.detection.context_pressure import ContextPressureResult
+from pisama_detectors.detection.convergence import ConvergenceResult
+from pisama_detectors.detection.coordination import CoordinationAnalysisResult
+from pisama_detectors.detection.corruption import CorruptionResult
+from pisama_detectors.detection.cost import CostResult
+from pisama_detectors.detection.decomposition import DecompositionResult
+from pisama_detectors.detection.derailment import DerailmentResult
+from pisama_detectors.detection.hallucination import HallucinationResult
+from pisama_detectors.detection.injection import InjectionResult
+from pisama_detectors.detection.loop import LoopDetectionResult
+from pisama_detectors.detection.overflow import OverflowResult
+from pisama_detectors.detection.persona import PersonaConsistencyResult
+from pisama_detectors.detection.specification import SpecificationMismatchResult
+from pisama_detectors.detection.turn_aware._base import TurnAwareDetectionResult
+from pisama_detectors.detection.withholding import WithholdingResult
+from pisama_detectors.detection.workflow import WorkflowAnalysisResult
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")

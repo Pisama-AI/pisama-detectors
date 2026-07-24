@@ -39,14 +39,14 @@ Run the same quality gates as CI:
 ```bash
 ruff check src tests typing_tests benchmarks/verify_report.py
 mypy
-mypy --strict --ignore-missing-imports --follow-imports=skip \
+mypy --strict --ignore-missing-imports --follow-imports=normal \
   src/pisama_detectors/{__init__,_api,_config}.py typing_tests/public_api.py
-python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=63
+python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=61
 python benchmarks/verify_report.py
 ```
 
-Coverage measures the supported detector surface. The frozen
-`detection.turn_aware` compatibility namespace is excluded.
+Coverage measures every Python module shipped in the wheel, including the
+frozen `detection.turn_aware` compatibility namespace.
 
 ## PR checklist
 

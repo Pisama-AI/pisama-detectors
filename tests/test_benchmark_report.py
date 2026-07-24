@@ -40,6 +40,17 @@ def test_trail_report_digest_prevents_unreviewed_evidence_changes(tmp_path: Path
         verify_report(report)
 
 
+def test_trail_report_digest_allows_a_renamed_verified_copy(tmp_path: Path) -> None:
+    source = Path("benchmarks/trail.json")
+    report = tmp_path / "review-copy.json"
+    report.write_bytes(source.read_bytes())
+
+    summary = verify_report(report)
+
+    assert summary["evidence_sha256_verified"] is True
+    assert summary["evaluation_scope"] == "archived_pisama_platform_run"
+
+
 def test_trail_evidence_rejects_held_out_relabeling(tmp_path: Path) -> None:
     evidence = json.loads(Path("benchmarks/evidence.json").read_text())
     evidence["evaluation"]["held_out"] = True
