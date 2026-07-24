@@ -551,7 +551,7 @@ def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyClassifierDriftDetector
 
     detector = DifyClassifierDriftDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 @_register("dify_iteration_escape", "Detect Dify iteration escape", "beta")
@@ -560,7 +560,7 @@ def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyIterationEscapeDetector
 
     detector = DifyIterationEscapeDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 @_register("dify_rag_poisoning", "Detect Dify RAG poisoning", "production")
@@ -569,7 +569,7 @@ def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyRagPoisoningDetector
 
     detector = DifyRagPoisoningDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 @_register("dify_tool_schema_mismatch", "Detect Dify tool schema mismatch", "beta")
@@ -578,7 +578,7 @@ def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyToolSchemaMismatchDetector
 
     detector = DifyToolSchemaMismatchDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 @_register("dify_variable_leak", "Detect Dify variable leak", "production")
@@ -587,7 +587,7 @@ def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyVariableLeakDetector
 
     detector = DifyVariableLeakDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 @_register("dify_model_fallback", "Detect Dify model fallback issues", "beta")
@@ -596,7 +596,7 @@ def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.dify import DifyModelFallbackDetector
 
     detector = DifyModelFallbackDetector()
-    return detector.detect(trace)
+    return detector.detect_workflow_run(trace)
 
 
 # ============================================================
@@ -669,7 +669,7 @@ def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawSessionLoopDetector
 
     detector = OpenClawSessionLoopDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("openclaw_sandbox_escape", "Detect OpenClaw sandbox escape", "production")
@@ -678,7 +678,7 @@ def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawSandboxEscapeDetector
 
     detector = OpenClawSandboxEscapeDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("openclaw_tool_abuse", "Detect OpenClaw tool abuse", "production")
@@ -687,7 +687,7 @@ def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawToolAbuseDetector
 
     detector = OpenClawToolAbuseDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("openclaw_spawn_chain", "Detect OpenClaw spawn chain issues", "beta")
@@ -696,7 +696,7 @@ def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawSpawnChainDetector
 
     detector = OpenClawSpawnChainDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("openclaw_channel_mismatch", "Detect OpenClaw channel mismatch", "beta")
@@ -705,7 +705,7 @@ def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawChannelMismatchDetector
 
     detector = OpenClawChannelMismatchDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("openclaw_elevated_risk", "Detect OpenClaw elevated risk actions", "production")
@@ -714,7 +714,7 @@ def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> Any:
     from pisama_detectors.detection.openclaw import OpenClawElevatedRiskDetector
 
     detector = OpenClawElevatedRiskDetector()
-    return detector.detect(trace)
+    return detector.detect_session(trace)
 
 
 @_register("context_pressure", "Detect context-pressure-induced quality degradation", "beta")

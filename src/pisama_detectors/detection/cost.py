@@ -80,7 +80,7 @@ class CostResult:
     input_cost_usd: float
     output_cost_usd: float
     total_cost_usd: float
-    total_cost_cents: int
+    total_cost_cents: float
     model: str
     provider: str
 

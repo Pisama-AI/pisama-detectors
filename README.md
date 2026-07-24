@@ -16,6 +16,18 @@ reproducibility boundary.
 
 Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
 
+## Which Pisama package should I use?
+
+Start with [`pisama`](https://pypi.org/project/pisama/) for the canonical MIT
+CLI and framework-agnostic detector API. Use `pisama-detectors` when you need
+the BSL-licensed Dify, LangGraph, n8n, or OpenClaw detector families listed
+below. New framework-agnostic detector work belongs in `pisama-core`; this
+package remains the home of the specialized families.
+
+The legacy `pisama_detectors.detection.turn_aware` namespace is frozen for
+compatibility and is not part of the supported top-level API. New integrations
+should use the typed functions documented below.
+
 ## Quick Start
 
 ```bash

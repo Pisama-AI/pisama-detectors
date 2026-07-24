@@ -26,7 +26,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -969,7 +969,7 @@ class TaskDecompositionDetector:
     def detect(
         self,
         task_description: str,
-        decomposition: str,
+        decomposition: str | list[dict[str, Any] | str],
         agent_capabilities: Optional[dict[str, list[str]]] = None,
     ) -> DecompositionResult:
         # v2.0: Handle list-format decomposition (e.g. from AgentBench/GAIA traces)
