@@ -17,13 +17,13 @@ Particularly important for multi-agent orchestration systems.
 import json as json_lib
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,27 +48,56 @@ class TurnAwareCommunicationBreakdownDetector(TurnAwareDetector):
 
     # Intent action verbs for alignment checking
     ACTION_VERBS = [
-        "create", "update", "delete", "get", "fetch", "send", "process",
-        "analyze", "generate", "search", "find", "calculate", "compare",
-        "summarize", "extract", "transform", "validate", "verify",
-        "implement", "build", "deploy", "test", "review",
+        "create",
+        "update",
+        "delete",
+        "get",
+        "fetch",
+        "send",
+        "process",
+        "analyze",
+        "generate",
+        "search",
+        "find",
+        "calculate",
+        "compare",
+        "summarize",
+        "extract",
+        "transform",
+        "validate",
+        "verify",
+        "implement",
+        "build",
+        "deploy",
+        "test",
+        "review",
     ]
 
     # Ambiguous language patterns
     AMBIGUOUS_PATTERNS = [
-        (r'\b(it|this|that|these|those)\b(?!\s+(?:is|are|was|were|has|have))', "ambiguous_pronoun"),
-        (r'\bsome\s+\w+', "vague_quantifier"),
-        (r'\bmaybe|perhaps|possibly|probably\b', "uncertain_language"),
-        (r'\betc\.?|and\s+so\s+on|and\s+more\b', "incomplete_enumeration"),
-        (r'\bsoon|later|eventually\b', "vague_timeline"),
+        (r"\b(it|this|that|these|those)\b(?!\s+(?:is|are|was|were|has|have))", "ambiguous_pronoun"),
+        (r"\bsome\s+\w+", "vague_quantifier"),
+        (r"\bmaybe|perhaps|possibly|probably\b", "uncertain_language"),
+        (r"\betc\.?|and\s+so\s+on|and\s+more\b", "incomplete_enumeration"),
+        (r"\bsoon|later|eventually\b", "vague_timeline"),
     ]
 
     # Misunderstanding indicators
     MISUNDERSTANDING_INDICATORS = [
-        "i think you meant", "did you mean", "not sure what",
-        "unclear", "confused", "misunderstood", "didn't understand",
-        "wrong", "incorrect", "that's not", "actually",
-        "let me clarify", "to clarify", "what i meant",
+        "i think you meant",
+        "did you mean",
+        "not sure what",
+        "unclear",
+        "confused",
+        "misunderstood",
+        "didn't understand",
+        "wrong",
+        "incorrect",
+        "that's not",
+        "actually",
+        "let me clarify",
+        "to clarify",
+        "what i meant",
     ]
 
     # Format expectation keywords
@@ -138,12 +167,14 @@ class TurnAwareCommunicationBreakdownDetector(TurnAwareDetector):
         for turn in agent_turns:
             ambiguity_issues = self._check_ambiguity(turn)
             if len(ambiguity_issues) >= self.max_ambiguity_issues:
-                issues.append({
-                    "type": "semantic_ambiguity",
-                    "turn": turn.turn_number,
-                    "issues": ambiguity_issues,
-                    "description": f"Turn {turn.turn_number} has {len(ambiguity_issues)} ambiguous language patterns",
-                })
+                issues.append(
+                    {
+                        "type": "semantic_ambiguity",
+                        "turn": turn.turn_number,
+                        "issues": ambiguity_issues,
+                        "description": f"Turn {turn.turn_number} has {len(ambiguity_issues)} ambiguous language patterns",
+                    }
+                )
                 affected_turns.append(turn.turn_number)
 
         if not issues:
@@ -268,7 +299,7 @@ class TurnAwareCommunicationBreakdownDetector(TurnAwareDetector):
                 return None  # Valid JSON
             except (json_lib.JSONDecodeError, ValueError, KeyError):
                 # Check for embedded JSON
-                if re.search(r'\{[^{}]+\}', receiver_content):
+                if re.search(r"\{[^{}]+\}", receiver_content):
                     return None  # Has JSON-like content
                 return {
                     "type": "format_mismatch",
@@ -279,7 +310,11 @@ class TurnAwareCommunicationBreakdownDetector(TurnAwareDetector):
                 }
 
         elif expected_format == "code":
-            if "```" in receiver_content or "def " in receiver_content or "class " in receiver_content:
+            if (
+                "```" in receiver_content
+                or "def " in receiver_content
+                or "class " in receiver_content
+            ):
                 return None  # Has code
             return {
                 "type": "format_mismatch",

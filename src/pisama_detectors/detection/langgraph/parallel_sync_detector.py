@@ -18,10 +18,10 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def detect_graph_execution(
-        self, graph_execution: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_graph_execution(self, graph_execution: Dict[str, Any]) -> TurnAwareDetectionResult:
         nodes = graph_execution.get("nodes", [])
 
         if not nodes:
@@ -84,9 +82,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
 
         # Find supersteps with parallel execution (>1 node)
         parallel_steps = {
-            step: step_nodes
-            for step, step_nodes in superstep_nodes.items()
-            if len(step_nodes) > 1
+            step: step_nodes for step, step_nodes in superstep_nodes.items() if len(step_nodes) > 1
         }
 
         issues: List[Dict[str, Any]] = []
@@ -95,9 +91,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
         if parallel_steps:
             for step, step_nodes in sorted(parallel_steps.items()):
                 # 1. Check for write conflicts (only flag if no proper join)
-                write_conflicts = self._detect_write_conflicts(
-                    step, step_nodes, superstep_nodes
-                )
+                write_conflicts = self._detect_write_conflicts(step, step_nodes, superstep_nodes)
                 if write_conflicts:
                     issues.append(write_conflicts)
                     affected_supersteps.append(step)
@@ -109,9 +103,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
                     affected_supersteps.append(step)
 
                 # 3. Check for missing join node
-                missing_join = self._detect_missing_join(
-                    step, step_nodes, superstep_nodes
-                )
+                missing_join = self._detect_missing_join(step, step_nodes, superstep_nodes)
                 if missing_join:
                     issues.append(missing_join)
                     affected_supersteps.append(step)
@@ -123,9 +115,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
                     affected_supersteps.append(step)
 
                 # 5. Check for downstream failure after parallel
-                downstream = self._detect_downstream_failure(
-                    step, step_nodes, superstep_nodes
-                )
+                downstream = self._detect_downstream_failure(step, step_nodes, superstep_nodes)
                 if downstream:
                     issues.append(downstream)
                     affected_supersteps.append(step)
@@ -133,15 +123,12 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
         # 6. Check state snapshots for error indicators after parallel steps
         state_snapshots = graph_execution.get("state_snapshots", [])
         if state_snapshots and parallel_steps:
-            state_issues = self._detect_state_errors(
-                state_snapshots, parallel_steps
-            )
+            state_issues = self._detect_state_errors(state_snapshots, parallel_steps)
             issues.extend(state_issues)
 
         if not issues:
             msg = (
-                f"Parallel execution in {len(parallel_steps)} supersteps, "
-                f"no sync issues detected"
+                f"Parallel execution in {len(parallel_steps)} supersteps, no sync issues detected"
                 if parallel_steps
                 else "No parallel execution detected"
             )
@@ -239,20 +226,14 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             for key in self._get_output_keys(node):
                 key_writers.setdefault(key, []).append(node_id)
 
-        conflicts = {
-            key: writers
-            for key, writers in key_writers.items()
-            if len(writers) > 1
-        }
+        conflicts = {key: writers for key, writers in key_writers.items() if len(writers) > 1}
 
         if not conflicts:
             return None
 
         # Check if there's a proper join node in the next superstep
         next_step = all_superstep_nodes.get(superstep + 1, [])
-        has_join = len(next_step) == 1 and next_step[0].get("status") in (
-            "succeeded", "completed"
-        )
+        has_join = len(next_step) == 1 and next_step[0].get("status") in ("succeeded", "completed")
 
         if has_join:
             # Map-reduce pattern with successful join — not a real conflict
@@ -265,9 +246,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             "description": (
                 f"Superstep {superstep}: {len(conflicts)} state key(s) written by "
                 f"multiple parallel nodes without proper join: "
-                + ", ".join(
-                    f"'{k}' by [{', '.join(w)}]" for k, w in conflicts.items()
-                )
+                + ", ".join(f"'{k}' by [{', '.join(w)}]" for k, w in conflicts.items())
             ),
         }
 
@@ -282,17 +261,19 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             a_reads = self._get_input_keys(node_a)
             a_writes = self._get_output_keys(node_a)
 
-            for node_b in step_nodes[i + 1:]:
+            for node_b in step_nodes[i + 1 :]:
                 b_id = node_b.get("node_id", "")
                 b_reads = self._get_input_keys(node_b)
                 b_writes = self._get_output_keys(node_b)
 
                 conflicting_keys = (a_reads & b_writes) | (b_reads & a_writes)
                 if conflicting_keys:
-                    races.append({
-                        "nodes": [a_id, b_id],
-                        "keys": list(conflicting_keys),
-                    })
+                    races.append(
+                        {
+                            "nodes": [a_id, b_id],
+                            "keys": list(conflicting_keys),
+                        }
+                    )
 
         if not races:
             return None
@@ -346,7 +327,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
         self, superstep: int, step_nodes: List[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """Detect mixed success/failure among parallel nodes in same superstep."""
-        statuses = [n.get("status", "") for n in step_nodes]
+        [n.get("status", "") for n in step_nodes]
         succeeded = [n for n in step_nodes if n.get("status") in ("succeeded", "completed")]
         failed = [n for n in step_nodes if n.get("status") == "failed"]
 
@@ -375,10 +356,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
         if not next_step_nodes:
             return None
 
-        failed_downstream = [
-            n for n in next_step_nodes
-            if n.get("status") in ("failed", "skipped")
-        ]
+        failed_downstream = [n for n in next_step_nodes if n.get("status") in ("failed", "skipped")]
 
         if failed_downstream:
             return {
@@ -415,9 +393,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             state = ss.get("state", {})
 
             # Only check states AFTER parallel execution
-            is_after_parallel = any(
-                ps < step for ps in parallel_steps
-            )
+            is_after_parallel = any(ps < step for ps in parallel_steps)
             if not is_after_parallel:
                 continue
 
@@ -425,14 +401,16 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             found_errors = [kw for kw in error_keywords if kw in state_str]
 
             if found_errors:
-                issues.append({
-                    "type": "state_error_after_parallel",
-                    "superstep": step,
-                    "error_indicators": found_errors,
-                    "description": (
-                        f"State at superstep {step} (after parallel execution) "
-                        f"contains error indicators: {', '.join(found_errors)}"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "state_error_after_parallel",
+                        "superstep": step,
+                        "error_indicators": found_errors,
+                        "description": (
+                            f"State at superstep {step} (after parallel execution) "
+                            f"contains error indicators: {', '.join(found_errors)}"
+                        ),
+                    }
+                )
 
         return issues

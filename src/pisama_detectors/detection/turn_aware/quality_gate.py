@@ -13,13 +13,13 @@ Based on MAST research (NeurIPS 2025): FM-3.2 No/Incomplete Verification (50%)
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -50,81 +50,152 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Bypass indicators - made more specific to reduce FPs
     BYPASS_INDICATORS = [
-        "skip the review", "let's skip testing", "skipping the test",
-        "bypass the check", "bypass validation",
-        "ignore the warning", "ignoring the error",
-        "no need to test", "skip testing", "skip review",
-        "good enough for now", "ship it anyway", "move on anyway",
-        "we can fix it later", "TODO: fix later", "FIXME: later",
+        "skip the review",
+        "let's skip testing",
+        "skipping the test",
+        "bypass the check",
+        "bypass validation",
+        "ignore the warning",
+        "ignoring the error",
+        "no need to test",
+        "skip testing",
+        "skip review",
+        "good enough for now",
+        "ship it anyway",
+        "move on anyway",
+        "we can fix it later",
+        "TODO: fix later",
+        "FIXME: later",
         # Deferral patterns - stricter
-        "defer to next release", "post-release fix",
-        "add this in v2", "phase 2 feature", "next sprint item",
-        "out of scope for now", "future work item",
+        "defer to next release",
+        "post-release fix",
+        "add this in v2",
+        "phase 2 feature",
+        "next sprint item",
+        "out of scope for now",
+        "future work item",
         # Added for improved recall (v2.1)
-        "moving forward without", "accepting the risk",
-        "deploying despite", "skipping for now",
-        "we can test later", "test this later",
-        "proceed without testing", "no time to test",
-        "pushing without review", "merge without approval",
+        "moving forward without",
+        "accepting the risk",
+        "deploying despite",
+        "skipping for now",
+        "we can test later",
+        "test this later",
+        "proceed without testing",
+        "no time to test",
+        "pushing without review",
+        "merge without approval",
     ]
 
     # Warning ignore indicators - stricter
     WARNING_IGNORES = [
-        "ignore this warning", "suppress this warning", "disable warning for",
-        "warning ignored because", "warnings disabled for",
-        "lint disable for", "noqa:", "pylint: disable=",
-        "eslint-disable-next", "despite the warning", "@suppress(",
+        "ignore this warning",
+        "suppress this warning",
+        "disable warning for",
+        "warning ignored because",
+        "warnings disabled for",
+        "lint disable for",
+        "noqa:",
+        "pylint: disable=",
+        "eslint-disable-next",
+        "despite the warning",
+        "@suppress(",
         # Error handling - stricter
-        "ignoring this error", "error ignored because", "skip this error",
-        "known issue in", "accepted risk for", "won't fix because",
-        "proceed anyway because", "continue anyway despite",
+        "ignoring this error",
+        "error ignored because",
+        "skip this error",
+        "known issue in",
+        "accepted risk for",
+        "won't fix because",
+        "proceed anyway because",
+        "continue anyway despite",
     ]
 
     # Missing quality steps - stricter
     MISSING_QUALITY = [
-        "no tests written", "without any testing", "untested code",
-        "no review done", "without code review", "unreviewed code",
-        "no qa performed", "skip qa step", "no quality check",
-        "didn't test this", "haven't tested yet", "not tested yet",
+        "no tests written",
+        "without any testing",
+        "untested code",
+        "no review done",
+        "without code review",
+        "unreviewed code",
+        "no qa performed",
+        "skip qa step",
+        "no quality check",
+        "didn't test this",
+        "haven't tested yet",
+        "not tested yet",
         # Incomplete verification - stricter
-        "no verification done", "unverified changes", "not verified yet",
-        "no validation performed", "not validated yet",
-        "assume it's correct", "trust me on this",
+        "no verification done",
+        "unverified changes",
+        "not verified yet",
+        "no validation performed",
+        "not validated yet",
+        "assume it's correct",
+        "trust me on this",
     ]
 
     # Rush indicators - stricter
     RUSH_INDICATORS = [
-        "quick and dirty fix", "just ship it", "good enough for now",
-        "will fix this later", "temporary workaround", "hack for now",
-        "workaround for the", "shortcut to avoid", "quick fix for",
-        "time constraint forces", "deadline pressure",
+        "quick and dirty fix",
+        "just ship it",
+        "good enough for now",
+        "will fix this later",
+        "temporary workaround",
+        "hack for now",
+        "workaround for the",
+        "shortcut to avoid",
+        "quick fix for",
+        "time constraint forces",
+        "deadline pressure",
         # Rush patterns - stricter
-        "crunch mode", "time pressure on", "minimal viable product",
-        "bare minimum for", "cut corners on", "expedite at cost",
+        "crunch mode",
+        "time pressure on",
+        "minimal viable product",
+        "bare minimum for",
+        "cut corners on",
+        "expedite at cost",
     ]
 
     # Verifier role indicators (v2.1 - rubber-stamp detection)
     VERIFIER_ROLE_INDICATORS = [
-        "verifier", "validator", "reviewer", "checker", "qa",
-        "agent_verifier", "verify_agent", "verification",
+        "verifier",
+        "validator",
+        "reviewer",
+        "checker",
+        "qa",
+        "agent_verifier",
+        "verify_agent",
+        "verification",
     ]
 
     # Rubber-stamp verification patterns (weak verification without rigor)
     RUBBER_STAMP_PATTERNS = [
         # Explicit rubber-stamping without checking
-        "looks correct without", "seems correct but",
-        "looks good to me", "lgtm",
+        "looks correct without",
+        "seems correct but",
+        "looks good to me",
+        "lgtm",
         # Acceptance without evidence
-        "approve without review", "skip verification",
-        "no review needed", "verification not required",
-        "skip the check", "bypass the review",
+        "approve without review",
+        "skip verification",
+        "no review needed",
+        "verification not required",
+        "skip the check",
+        "bypass the review",
     ]
 
     # Weak verification phrases (verification claimed but no substance)
     WEAK_VERIFICATION_PHRASES = [
-        "verified", "validation complete", "check complete",
-        "review complete", "qa passed", "looks good",
-        "all good", "approved", "accepted",
+        "verified",
+        "validation complete",
+        "check complete",
+        "review complete",
+        "qa passed",
+        "looks good",
+        "all good",
+        "approved",
+        "accepted",
     ]
 
     def __init__(self, min_turns: int = 2, min_issues_to_flag: int = 1):
@@ -195,7 +266,14 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
             affected_turns.extend(issue.get("turns", []))
 
         # Require at least one strong evidence issue for detection
-        strong_types = {"bypass", "warning_ignore", "rush", "rubber_stamp", "absent_verification", "test_deploy_bypass"}
+        strong_types = {
+            "bypass",
+            "warning_ignore",
+            "rush",
+            "rubber_stamp",
+            "absent_verification",
+            "test_deploy_bypass",
+        }
         has_strong_evidence = any(
             issue.get("type") in strong_types and issue.get("method") != "semantic"
             for issue in issues
@@ -250,13 +328,15 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.BYPASS_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "bypass",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Quality bypass: '{indicator}'",
-                        "method": "keyword",
-                    })
+                    issues.append(
+                        {
+                            "type": "bypass",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Quality bypass: '{indicator}'",
+                            "method": "keyword",
+                        }
+                    )
                     break
 
         # Semantic detection (if embeddings available)
@@ -280,13 +360,15 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
                 if similarities:
                     max_sim = max(similarities)
                     if max_sim >= 0.80:  # High similarity = likely bypass (raised from 0.70)
-                        issues.append({
-                            "type": "bypass",
-                            "turns": [turn.turn_number],
-                            "similarity": max_sim,
-                            "description": f"Semantic bypass detected (similarity: {max_sim:.2f})",
-                            "method": "semantic",
-                        })
+                        issues.append(
+                            {
+                                "type": "bypass",
+                                "turns": [turn.turn_number],
+                                "similarity": max_sim,
+                                "description": f"Semantic bypass detected (similarity: {max_sim:.2f})",
+                                "method": "semantic",
+                            }
+                        )
 
         return issues[:3]
 
@@ -297,12 +379,14 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.WARNING_IGNORES:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "warning_ignore",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Warning ignored: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "warning_ignore",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Warning ignored: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -319,13 +403,15 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.MISSING_QUALITY:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "missing_quality",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Missing quality: '{indicator}'",
-                        "method": "keyword",
-                    })
+                    issues.append(
+                        {
+                            "type": "missing_quality",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Missing quality: '{indicator}'",
+                            "method": "keyword",
+                        }
+                    )
                     break
 
         # Semantic detection (augment keyword findings)
@@ -347,13 +433,15 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
                 if similarities:
                     max_sim = max(similarities)
                     if max_sim >= 0.85:  # Raised from 0.78 to further reduce FPs
-                        issues.append({
-                            "type": "missing_quality",
-                            "turns": [turn.turn_number],
-                            "similarity": max_sim,
-                            "description": f"Semantic missing quality detected (similarity: {max_sim:.2f})",
-                            "method": "semantic",
-                        })
+                        issues.append(
+                            {
+                                "type": "missing_quality",
+                                "turns": [turn.turn_number],
+                                "similarity": max_sim,
+                                "description": f"Semantic missing quality detected (similarity: {max_sim:.2f})",
+                                "method": "semantic",
+                            }
+                        )
 
         return issues[:2]
 
@@ -364,12 +452,14 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.RUSH_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "rush",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Rush indicator: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "rush",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Rush indicator: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -421,12 +511,14 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
                     has_substance = self._has_verification_substance(turn.content)
 
                     if not has_substance:
-                        issues.append({
-                            "type": "rubber_stamp",
-                            "turns": [turn.turn_number],
-                            "pattern": pattern,
-                            "description": f"Rubber-stamp verification: '{pattern}' without rigorous checking",
-                        })
+                        issues.append(
+                            {
+                                "type": "rubber_stamp",
+                                "turns": [turn.turn_number],
+                                "pattern": pattern,
+                                "description": f"Rubber-stamp verification: '{pattern}' without rigorous checking",
+                            }
+                        )
                         break  # One issue per turn
 
         # Also detect when verification is claimed but no evidence provided
@@ -442,12 +534,14 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
 
                     has_substance = self._has_verification_substance(turn.content)
                     if not has_substance:
-                        issues.append({
-                            "type": "weak_verification",
-                            "turns": [turn.turn_number],
-                            "phrase": phrase,
-                            "description": f"Weak verification claimed: '{phrase}' without evidence",
-                        })
+                        issues.append(
+                            {
+                                "type": "weak_verification",
+                                "turns": [turn.turn_number],
+                                "phrase": phrase,
+                                "description": f"Weak verification claimed: '{phrase}' without evidence",
+                            }
+                        )
                         break
 
         return issues[:3]  # Limit to avoid false positives
@@ -462,15 +556,30 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Check if there's a completion claim
         completion_patterns = [
-            "task complete", "done", "finished", "all done",
-            "solution_found", "final answer", "implementation complete",
-            "here's the solution", "problem solved", "mission accomplished",
+            "task complete",
+            "done",
+            "finished",
+            "all done",
+            "solution_found",
+            "final answer",
+            "implementation complete",
+            "here's the solution",
+            "problem solved",
+            "mission accomplished",
         ]
 
         # Verification-related keywords that should appear somewhere
         verification_keywords = [
-            "test", "verify", "validate", "check", "review",
-            "confirm", "ensure", "assert", "evaluate", "examine",
+            "test",
+            "verify",
+            "validate",
+            "check",
+            "review",
+            "confirm",
+            "ensure",
+            "assert",
+            "evaluate",
+            "examine",
         ]
 
         has_completion = False
@@ -493,11 +602,13 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
 
         # If completed without verification keywords, flag it
         if has_completion and not has_verification:
-            issues.append({
-                "type": "absent_verification",
-                "turns": [turns[-1].turn_number] if turns else [],
-                "description": "Task completed without any verification/testing mentioned",
-            })
+            issues.append(
+                {
+                    "type": "absent_verification",
+                    "turns": [turns[-1].turn_number] if turns else [],
+                    "description": "Task completed without any verification/testing mentioned",
+                }
+            )
 
         return issues
 
@@ -526,7 +637,11 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
                 deploy_turn_idx = i
 
         # If we have test → deploy sequence
-        if test_turn_idx is not None and deploy_turn_idx is not None and test_turn_idx < deploy_turn_idx:
+        if (
+            test_turn_idx is not None
+            and deploy_turn_idx is not None
+            and test_turn_idx < deploy_turn_idx
+        ):
             # Check if there are test results between test and deploy
             has_test_results = False
             for i in range(test_turn_idx, deploy_turn_idx):
@@ -537,11 +652,13 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
 
             # If no test results shown, flag it
             if not has_test_results:
-                issues.append({
-                    "type": "test_deploy_bypass",
-                    "turns": [test_turn_idx, deploy_turn_idx],
-                    "description": "Tests run but results not shown before deployment",
-                })
+                issues.append(
+                    {
+                        "type": "test_deploy_bypass",
+                        "turns": [test_turn_idx, deploy_turn_idx],
+                        "description": "Tests run but results not shown before deployment",
+                    }
+                )
 
         return issues
 
@@ -562,20 +679,45 @@ class TurnAwareQualityGateBypassDetector(EmbeddingMixin, TurnAwareDetector):
         # Indicators of substantive verification
         substance_indicators = [
             # Error detection
-            "error found", "bug detected", "issue identified", "problem found",
-            "incorrect", "wrong", "mistake", "flaw", "defect",
+            "error found",
+            "bug detected",
+            "issue identified",
+            "problem found",
+            "incorrect",
+            "wrong",
+            "mistake",
+            "flaw",
+            "defect",
             # Logical validation
-            "because", "since", "therefore", "thus", "hence",
-            "the reason is", "this is because", "due to",
+            "because",
+            "since",
+            "therefore",
+            "thus",
+            "hence",
+            "the reason is",
+            "this is because",
+            "due to",
             # Mathematical validation
-            "calculation shows", "computed as", "evaluates to",
-            "=", "equals", "results in",
+            "calculation shows",
+            "computed as",
+            "evaluates to",
+            "=",
+            "equals",
+            "results in",
             # Test execution
-            "test passed", "test failed", "execution result",
-            "output shows", "returns", "produces",
+            "test passed",
+            "test failed",
+            "execution result",
+            "output shows",
+            "returns",
+            "produces",
             # Specific issue identification
-            "specifically", "in particular", "notably",
-            "line ", "function ", "variable ",
+            "specifically",
+            "in particular",
+            "notably",
+            "line ",
+            "function ",
+            "variable ",
         ]
 
         substance_count = sum(1 for ind in substance_indicators if ind in content_lower)

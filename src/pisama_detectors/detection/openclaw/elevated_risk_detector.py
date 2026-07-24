@@ -16,8 +16,8 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -27,9 +27,18 @@ logger = logging.getLogger(__name__)
 # Exact tool name matches (OS-level risky tools) — these are tool *names*, not
 # verbs, so they stay local rather than living in the shared verb taxonomy.
 RISKY_TOOLS_EXACT: Set[str] = {
-    "read_file", "write_file", "delete_file", "list_dir",
-    "exec", "eval", "run_code",
-    "shell", "system", "os_command", "run_command", "subprocess",
+    "read_file",
+    "write_file",
+    "delete_file",
+    "list_dir",
+    "exec",
+    "eval",
+    "run_code",
+    "shell",
+    "system",
+    "os_command",
+    "run_command",
+    "subprocess",
 }
 
 # Keyword-based risky tool detection — sourced from the shared safety taxonomy.
@@ -84,23 +93,27 @@ class OpenClawElevatedRiskDetector(TurnAwareDetector):
             # Check for inherently risky tools (keyword/pattern match)
             risk = self._assess_tool_risk(tool_name, tool_input)
             if risk:
-                risky_calls.append({
-                    "index": i,
-                    "tool_name": evt.get("tool_name"),
-                    "category": risk["category"],
-                    "reason": risk["reason"],
-                    "tool_input": tool_input,
-                })
+                risky_calls.append(
+                    {
+                        "index": i,
+                        "tool_name": evt.get("tool_name"),
+                        "category": risk["category"],
+                        "reason": risk["reason"],
+                        "tool_input": tool_input,
+                    }
+                )
                 affected_turns.append(i)
             elif elevated_mode:
                 # In elevated mode, ANY tool call is potentially risky
-                risky_calls.append({
-                    "index": i,
-                    "tool_name": evt.get("tool_name"),
-                    "category": "elevated_operation",
-                    "reason": f"Tool '{tool_name}' called in elevated mode session",
-                    "tool_input": tool_input,
-                })
+                risky_calls.append(
+                    {
+                        "index": i,
+                        "tool_name": evt.get("tool_name"),
+                        "category": "elevated_operation",
+                        "reason": f"Tool '{tool_name}' called in elevated mode session",
+                        "tool_input": tool_input,
+                    }
+                )
                 affected_turns.append(i)
 
         if not risky_calls:
@@ -148,9 +161,7 @@ class OpenClawElevatedRiskDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def _assess_tool_risk(
-        self, tool_name: str, tool_input: Any
-    ) -> Optional[Dict[str, str]]:
+    def _assess_tool_risk(self, tool_name: str, tool_input: Any) -> Optional[Dict[str, str]]:
         """Assess whether a tool call is risky using exact match + keyword matching."""
         # Exact match against known OS-level risky tools
         if tool_name in RISKY_TOOLS_EXACT:

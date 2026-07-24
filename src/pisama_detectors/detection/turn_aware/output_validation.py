@@ -14,13 +14,13 @@ Based on MAST research (NeurIPS 2025): FM-3.3 Incorrect Verification (28%)
 
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -51,26 +51,51 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Validation failure indicators
     VALIDATION_FAILURES = [
-        "validation failed", "invalid output", "doesn't validate",
-        "failed to validate", "validation error", "schema error",
-        "type error", "format error", "malformed",
-        "doesn't match", "expected format", "invalid format",
-        "parsing error", "parse failed", "couldn't parse",
+        "validation failed",
+        "invalid output",
+        "doesn't validate",
+        "failed to validate",
+        "validation error",
+        "schema error",
+        "type error",
+        "format error",
+        "malformed",
+        "doesn't match",
+        "expected format",
+        "invalid format",
+        "parsing error",
+        "parse failed",
+        "couldn't parse",
     ]
 
     # Missing validation indicators
     MISSING_VALIDATION = [
-        "didn't check", "forgot to validate", "skipped validation",
-        "no validation", "without checking", "unchecked",
-        "assumed correct", "didn't verify", "unverified",
+        "didn't check",
+        "forgot to validate",
+        "skipped validation",
+        "no validation",
+        "without checking",
+        "unchecked",
+        "assumed correct",
+        "didn't verify",
+        "unverified",
     ]
 
     # Output error indicators
     OUTPUT_ERRORS = [
-        "output error", "result is wrong", "incorrect output",
-        "wrong result", "bad output", "output incorrect",
-        "doesn't work", "broken", "buggy", "syntax error",
-        "runtime error", "compile error", "execution failed",
+        "output error",
+        "result is wrong",
+        "incorrect output",
+        "wrong result",
+        "bad output",
+        "output incorrect",
+        "doesn't work",
+        "broken",
+        "buggy",
+        "syntax error",
+        "runtime error",
+        "compile error",
+        "execution failed",
     ]
 
     # Phase 1: Framework-specific completion signals (indicators of successful completion)
@@ -112,7 +137,9 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
         ],
     }
 
-    def __init__(self, min_turns: int = 2, min_issues_to_flag: int = 3, framework: Optional[str] = None):
+    def __init__(
+        self, min_turns: int = 2, min_issues_to_flag: int = 3, framework: Optional[str] = None
+    ):
         self.min_turns = min_turns
         self.min_issues_to_flag = min_issues_to_flag  # Raised to 3 to reduce FPs (17.8% FPR)
         self.framework = framework
@@ -213,7 +240,9 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
         # BUGFIX: Use list concatenation to avoid mutating class-level dictionary values
         # which caused unbounded list growth and exponential slowdown
         framework_key = self.framework if self.framework in self.COMPLETION_SIGNALS else "default"
-        patterns = self.COMPLETION_SIGNALS.get(framework_key, []) + self.COMPLETION_SIGNALS["default"]
+        patterns = (
+            self.COMPLETION_SIGNALS.get(framework_key, []) + self.COMPLETION_SIGNALS["default"]
+        )
 
         # Check last few agent turns for completion signals
         agent_turns = [t for t in turns if t.participant_type == "agent"]
@@ -232,24 +261,28 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
         for turn in turns:
             # Check for validation_failed flag in metadata
             if turn.turn_metadata.get("validation_failed"):
-                issues.append({
-                    "type": "validation_failure",
-                    "turns": [turn.turn_number],
-                    "indicator": "validation_failed_flag",
-                    "description": "Explicit validation failure flag set",
-                })
+                issues.append(
+                    {
+                        "type": "validation_failure",
+                        "turns": [turn.turn_number],
+                        "indicator": "validation_failed_flag",
+                        "description": "Explicit validation failure flag set",
+                    }
+                )
                 continue
 
             # Check for text indicators
             content_lower = turn.content.lower()
             for indicator in self.VALIDATION_FAILURES:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "validation_failure",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Validation failure: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "validation_failure",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Validation failure: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -260,12 +293,14 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.MISSING_VALIDATION:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "missing_validation",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Missing validation: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "missing_validation",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Missing validation: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -276,12 +311,14 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.OUTPUT_ERRORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "output_error",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Output error: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "output_error",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Output error: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -295,11 +332,16 @@ class TurnAwareOutputValidationDetector(EmbeddingMixin, TurnAwareDetector):
                 # Check next turns for error indicators
                 for j in range(i + 1, min(i + 3, len(agent_turns))):
                     next_content = agent_turns[j].content.lower()
-                    if any(err in next_content for err in ["error", "failed", "doesn't work", "bug", "fix"]):
-                        issues.append({
-                            "type": "broken_code",
-                            "turns": [turn.turn_number, agent_turns[j].turn_number],
-                            "description": "Code followed by error discussion",
-                        })
+                    if any(
+                        err in next_content
+                        for err in ["error", "failed", "doesn't work", "bug", "fix"]
+                    ):
+                        issues.append(
+                            {
+                                "type": "broken_code",
+                                "turns": [turn.turn_number, agent_turns[j].turn_number],
+                                "description": "Code followed by error discussion",
+                            }
+                        )
                         break
         return issues[:2]

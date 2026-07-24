@@ -14,12 +14,12 @@ These analyze OpenClaw session event streams for:
 All detectors consume the OpenClaw session format with typed events.
 """
 
-from .session_loop_detector import OpenClawSessionLoopDetector
-from .tool_abuse_detector import OpenClawToolAbuseDetector
-from .elevated_risk_detector import OpenClawElevatedRiskDetector
-from .spawn_chain_detector import OpenClawSpawnChainDetector
 from .channel_mismatch_detector import OpenClawChannelMismatchDetector
+from .elevated_risk_detector import OpenClawElevatedRiskDetector
 from .sandbox_escape_detector import OpenClawSandboxEscapeDetector
+from .session_loop_detector import OpenClawSessionLoopDetector
+from .spawn_chain_detector import OpenClawSpawnChainDetector
+from .tool_abuse_detector import OpenClawToolAbuseDetector
 
 __all__ = [
     "OpenClawSessionLoopDetector",

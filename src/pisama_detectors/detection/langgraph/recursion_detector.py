@@ -9,14 +9,13 @@ Detects recursion-related failures in LangGraph graph executions:
 """
 
 import logging
-from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,9 +60,7 @@ class LangGraphRecursionDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def detect_graph_execution(
-        self, graph_execution: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_graph_execution(self, graph_execution: Dict[str, Any]) -> TurnAwareDetectionResult:
         """Analyze a LangGraph execution for recursion failures."""
         status = graph_execution.get("status", "")
         total_supersteps = graph_execution.get("total_supersteps", 0)
@@ -75,30 +72,34 @@ class LangGraphRecursionDetector(TurnAwareDetector):
 
         # 1. Definitive recursion limit hit
         if status == "recursion_limit":
-            issues.append({
-                "type": "recursion_limit_hit",
-                "total_supersteps": total_supersteps,
-                "recursion_limit": recursion_limit,
-                "description": (
-                    f"Graph execution hit recursion limit "
-                    f"({total_supersteps}/{recursion_limit} supersteps)"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "recursion_limit_hit",
+                    "total_supersteps": total_supersteps,
+                    "recursion_limit": recursion_limit,
+                    "description": (
+                        f"Graph execution hit recursion limit "
+                        f"({total_supersteps}/{recursion_limit} supersteps)"
+                    ),
+                }
+            )
 
         # 2. Approaching recursion limit
         if recursion_limit > 0 and status != "recursion_limit":
             ratio = total_supersteps / recursion_limit
             if ratio > self.limit_ratio_threshold:
-                issues.append({
-                    "type": "approaching_limit",
-                    "ratio": round(ratio, 3),
-                    "total_supersteps": total_supersteps,
-                    "recursion_limit": recursion_limit,
-                    "description": (
-                        f"Graph used {ratio:.1%} of recursion limit "
-                        f"({total_supersteps}/{recursion_limit})"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "approaching_limit",
+                        "ratio": round(ratio, 3),
+                        "total_supersteps": total_supersteps,
+                        "recursion_limit": recursion_limit,
+                        "description": (
+                            f"Graph used {ratio:.1%} of recursion limit "
+                            f"({total_supersteps}/{recursion_limit})"
+                        ),
+                    }
+                )
 
         # 3. Node repetition patterns across supersteps
         node_repetition = self._detect_node_repetition(nodes)
@@ -159,9 +160,7 @@ class LangGraphRecursionDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def _detect_node_repetition(
-        self, nodes: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _detect_node_repetition(self, nodes: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Detect nodes that repeat across many supersteps (unbounded cycle signal)."""
         if not nodes:
             return None
@@ -184,11 +183,13 @@ class LangGraphRecursionDetector(TurnAwareDetector):
         for node_id, supersteps in node_supersteps.items():
             distinct = len(set(supersteps))
             if distinct >= self.node_repetition_threshold:
-                repeated_nodes.append({
-                    "node_id": node_id,
-                    "superstep_count": distinct,
-                    "supersteps": sorted(set(supersteps)),
-                })
+                repeated_nodes.append(
+                    {
+                        "node_id": node_id,
+                        "superstep_count": distinct,
+                        "supersteps": sorted(set(supersteps)),
+                    }
+                )
 
         if not repeated_nodes:
             return None
@@ -196,8 +197,7 @@ class LangGraphRecursionDetector(TurnAwareDetector):
         # Find affected node indices
         repeated_ids = {rn["node_id"] for rn in repeated_nodes}
         affected_indices = [
-            idx for idx, n in enumerate(nodes)
-            if n.get("node_id", "") in repeated_ids
+            idx for idx, n in enumerate(nodes) if n.get("node_id", "") in repeated_ids
         ]
 
         worst = max(repeated_nodes, key=lambda r: r["superstep_count"])

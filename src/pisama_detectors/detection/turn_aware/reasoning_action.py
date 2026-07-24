@@ -18,13 +18,13 @@ ReAct Framework: https://arxiv.org/abs/2210.03629
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,13 @@ class TurnAwareReasoningActionMismatchDetector(TurnAwareDetector):
 
     # Intent markers in reasoning
     INTENT_MARKERS = {
-        "search": ["will search", "going to search", "let me search", "searching for", "i'll look up"],
+        "search": [
+            "will search",
+            "going to search",
+            "let me search",
+            "searching for",
+            "i'll look up",
+        ],
         "write": ["will write", "going to create", "let me write", "i'll generate", "creating"],
         "read": ["will read", "going to read", "let me examine", "i'll review", "reading"],
         "calculate": ["will calculate", "going to compute", "let me figure", "computing"],
@@ -186,12 +192,14 @@ class TurnAwareReasoningActionMismatchDetector(TurnAwareDetector):
                     # If intent without action, might be mismatch
                     # But only flag if turn is substantial (not just planning)
                     if not has_action and len(turn.content) > 200:
-                        issues.append({
-                            "type": "intent_without_action",
-                            "turns": [turn.turn_number],
-                            "intent": action_type,
-                            "description": f"Expressed intent to '{action_type}' but no action taken",
-                        })
+                        issues.append(
+                            {
+                                "type": "intent_without_action",
+                                "turns": [turn.turn_number],
+                                "intent": action_type,
+                                "description": f"Expressed intent to '{action_type}' but no action taken",
+                            }
+                        )
 
         return issues[:2]
 
@@ -214,18 +222,28 @@ class TurnAwareReasoningActionMismatchDetector(TurnAwareDetector):
                     next_has_action = any(phrase in next_lower for phrase in action_phrases)
 
                     # Check if next turn abandons the intent
-                    abandons = any(phrase in next_lower for phrase in [
-                        "instead", "actually", "let me", "different approach",
-                        "skip", "ignore", "without"
-                    ])
+                    abandons = any(
+                        phrase in next_lower
+                        for phrase in [
+                            "instead",
+                            "actually",
+                            "let me",
+                            "different approach",
+                            "skip",
+                            "ignore",
+                            "without",
+                        ]
+                    )
 
                     if not next_has_action and abandons:
-                        issues.append({
-                            "type": "abandoned_intent",
-                            "turns": [current.turn_number, next_turn.turn_number],
-                            "intent": action_type,
-                            "description": f"Intent to '{action_type}' abandoned in next turn",
-                        })
+                        issues.append(
+                            {
+                                "type": "abandoned_intent",
+                                "turns": [current.turn_number, next_turn.turn_number],
+                                "intent": action_type,
+                                "description": f"Intent to '{action_type}' abandoned in next turn",
+                            }
+                        )
 
         return issues[:2]
 
@@ -238,13 +256,15 @@ class TurnAwareReasoningActionMismatchDetector(TurnAwareDetector):
 
             for intent_phrase, contradiction_phrase in self.CONTRADICTIONS:
                 if intent_phrase in content_lower and contradiction_phrase in content_lower:
-                    issues.append({
-                        "type": "explicit_contradiction",
-                        "turns": [turn.turn_number],
-                        "intent": intent_phrase,
-                        "contradiction": contradiction_phrase,
-                        "description": f"Contradiction: '{intent_phrase}' but '{contradiction_phrase}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "explicit_contradiction",
+                            "turns": [turn.turn_number],
+                            "intent": intent_phrase,
+                            "contradiction": contradiction_phrase,
+                            "description": f"Contradiction: '{intent_phrase}' but '{contradiction_phrase}'",
+                        }
+                    )
 
         return issues[:2]
 
@@ -268,17 +288,25 @@ class TurnAwareReasoningActionMismatchDetector(TurnAwareDetector):
                 if f"i {claim}" in content_lower or f"i have {claim}" in content_lower:
                     # Look for evidence of actual testing/verification
                     evidence_markers = [
-                        "output:", "result:", "returned", "shows",
-                        "passed", "failed", "error:", "success"
+                        "output:",
+                        "result:",
+                        "returned",
+                        "shows",
+                        "passed",
+                        "failed",
+                        "error:",
+                        "success",
                     ]
                     has_evidence = any(marker in content_lower for marker in evidence_markers)
 
                     if not has_evidence:
-                        issues.append({
-                            "type": "claim_without_evidence",
-                            "turns": [turn.turn_number],
-                            "claim": claim,
-                            "description": f"Claims to have {claim} but no evidence shown",
-                        })
+                        issues.append(
+                            {
+                                "type": "claim_without_evidence",
+                                "turns": [turn.turn_number],
+                                "claim": claim,
+                                "description": f"Claims to have {claim} but no evidence shown",
+                            }
+                        )
 
         return issues[:2]

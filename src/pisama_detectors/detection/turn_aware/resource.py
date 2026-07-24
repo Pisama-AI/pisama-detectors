@@ -12,13 +12,13 @@ Analyzes whether agents have appropriate resources:
 
 import logging
 from collections import Counter
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,27 +43,46 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
 
     # Resource complaint indicators - made more specific to reduce FPs
     RESOURCE_COMPLAINTS = [
-        "don't have access to", "no access to the", "cannot access the",
-        "missing required", "resource not available", "resource unavailable",
-        "need permission to", "not authorized to", "access denied for",
-        "tool not found:", "api error:", "api failure",
-        "resource missing", "not installed on", "import error:",
+        "don't have access to",
+        "no access to the",
+        "cannot access the",
+        "missing required",
+        "resource not available",
+        "resource unavailable",
+        "need permission to",
+        "not authorized to",
+        "access denied for",
+        "tool not found:",
+        "api error:",
+        "api failure",
+        "resource missing",
+        "not installed on",
+        "import error:",
     ]
 
     # Capability mismatch indicators - made more specific
     CAPABILITY_MISMATCH = [
-        "not my area of expertise", "outside my designated scope",
-        "i am not qualified to", "i don't know how to",
-        "beyond my capabilities as", "not designed for this",
-        "should be handled by another agent", "need a specialist for",
+        "not my area of expertise",
+        "outside my designated scope",
+        "i am not qualified to",
+        "i don't know how to",
+        "beyond my capabilities as",
+        "not designed for this",
+        "should be handled by another agent",
+        "need a specialist for",
     ]
 
     # Overload indicators - made more specific
     OVERLOAD_INDICATORS = [
-        "too many tasks assigned", "system is overloaded",
-        "can't handle all these", "workload is too high",
-        "queue is full", "rate limit exceeded", "being throttled",
-        "operation timed out", "request timed out",
+        "too many tasks assigned",
+        "system is overloaded",
+        "can't handle all these",
+        "workload is too high",
+        "queue is full",
+        "rate limit exceeded",
+        "being throttled",
+        "operation timed out",
+        "request timed out",
     ]
 
     def __init__(
@@ -176,12 +195,14 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.RESOURCE_COMPLAINTS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "resource_complaint",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Resource issue: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "resource_complaint",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Resource issue: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:4]
 
@@ -192,12 +213,14 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.CAPABILITY_MISMATCH:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "capability_mismatch",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Capability mismatch: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "capability_mismatch",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Capability mismatch: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -208,12 +231,14 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.OVERLOAD_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "overload",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Overload indicator: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "overload",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Overload indicator: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -222,22 +247,35 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
         issues = []
         # Made patterns more specific to reduce FPs - require error context
         failure_indicators = [
-            "error:", "error occurred", "error returned",
-            "failed to", "operation failed", "request failed",
-            "exception:", "traceback:", "stack trace",
-            "http 404", "http 500", "status 401", "status 403",
-            "connection refused", "connection failed", "timed out",
+            "error:",
+            "error occurred",
+            "error returned",
+            "failed to",
+            "operation failed",
+            "request failed",
+            "exception:",
+            "traceback:",
+            "stack trace",
+            "http 404",
+            "http 500",
+            "status 401",
+            "status 403",
+            "connection refused",
+            "connection failed",
+            "timed out",
         ]
         for turn in tool_turns:
             content_lower = turn.content.lower()
             for indicator in failure_indicators:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "tool_failure",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Tool failure: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "tool_failure",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Tool failure: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -257,13 +295,15 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
         if max_count >= 5 * min_count and max_count >= 8:
             most_active = max(agent_counts, key=agent_counts.get)
             least_active = min(agent_counts, key=agent_counts.get)
-            return [{
-                "type": "uneven_distribution",
-                "most_active": most_active,
-                "least_active": least_active,
-                "ratio": max_count / min_count if min_count > 0 else max_count,
-                "description": f"Uneven workload: {most_active} has {max_count} turns vs {min_count} for {least_active}",
-            }]
+            return [
+                {
+                    "type": "uneven_distribution",
+                    "most_active": most_active,
+                    "least_active": least_active,
+                    "ratio": max_count / min_count if min_count > 0 else max_count,
+                    "description": f"Uneven workload: {most_active} has {max_count} turns vs {min_count} for {least_active}",
+                }
+            ]
         return []
 
     def _detect_token_explosion(self, agent_turns: List[TurnSnapshot]) -> list:
@@ -272,21 +312,23 @@ class TurnAwareResourceMisallocationDetector(TurnAwareDetector):
 
         for turn in agent_turns:
             # Get token usage from turn_metadata
-            tokens_in = turn.turn_metadata.get('tokens_input', 0)
-            tokens_out = turn.turn_metadata.get('tokens_output', 0)
+            tokens_in = turn.turn_metadata.get("tokens_input", 0)
+            tokens_out = turn.turn_metadata.get("tokens_output", 0)
             total_tokens = tokens_in + tokens_out
 
             # Flag if total tokens exceed threshold
             if total_tokens > self.token_explosion_threshold:
-                issues.append({
-                    "type": "token_explosion",
-                    "turn_number": turn.turn_number,
-                    "participant": turn.participant_id,
-                    "tokens_input": tokens_in,
-                    "tokens_output": tokens_out,
-                    "total_tokens": total_tokens,
-                    "description": f"Excessive token usage: {total_tokens} tokens (threshold: {self.token_explosion_threshold})",
-                    "turns": [turn.turn_number],
-                })
+                issues.append(
+                    {
+                        "type": "token_explosion",
+                        "turn_number": turn.turn_number,
+                        "participant": turn.participant_id,
+                        "tokens_input": tokens_in,
+                        "tokens_output": tokens_out,
+                        "total_tokens": total_tokens,
+                        "description": f"Excessive token usage: {total_tokens} tokens (threshold: {self.token_explosion_threshold})",
+                        "turns": [turn.turn_number],
+                    }
+                )
 
         return issues

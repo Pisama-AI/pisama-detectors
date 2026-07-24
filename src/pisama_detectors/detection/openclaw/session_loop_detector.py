@@ -15,11 +15,11 @@ Mapped to failure mode F8 (Infinite Loop / Repetitive Behavior).
 import hashlib
 import json
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -139,9 +139,7 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
     def _detect_tool_call_loop(self, events: List[dict]) -> Dict[str, Any]:
         """Find runs of consecutive tool.call events with identical name+input."""
         tool_calls = [
-            (idx, evt)
-            for idx, evt in enumerate(events)
-            if evt.get("type") == "tool.call"
+            (idx, evt) for idx, evt in enumerate(events) if evt.get("type") == "tool.call"
         ]
 
         if len(tool_calls) < MIN_CONSECUTIVE_REPEATS:
@@ -194,9 +192,7 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
     def _detect_fuzzy_tool_loop(self, events: List[dict]) -> Dict[str, Any]:
         """Detect tool call loops where inputs have same keys but minor value changes."""
         tool_calls = [
-            (idx, evt)
-            for idx, evt in enumerate(events)
-            if evt.get("type") == "tool.call"
+            (idx, evt) for idx, evt in enumerate(events) if evt.get("type") == "tool.call"
         ]
 
         if len(tool_calls) < MIN_FUZZY_REPEATS:
@@ -215,7 +211,9 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             consecutive = cur_idx - prev_idx <= 4
 
             # Same structure (keys match, types match) even if values differ
-            same_structure = _structural_hash(prev.get("tool_input")) == _structural_hash(cur.get("tool_input"))
+            same_structure = _structural_hash(prev.get("tool_input")) == _structural_hash(
+                cur.get("tool_input")
+            )
 
             if same_name and same_structure and consecutive:
                 run_len += 1
@@ -302,8 +300,7 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
                 "target": best_target,
                 "turns": best_indices,
                 "description": (
-                    f"Spawn/send ping-pong: {best_count} events "
-                    f"targeting '{best_target}'"
+                    f"Spawn/send ping-pong: {best_count} events targeting '{best_target}'"
                 ),
             }
 
@@ -314,9 +311,7 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
 
         return {"detected": False}
 
-    def _detect_abab_pattern(
-        self, targets: List[Tuple[int, str]]
-    ) -> Optional[Dict[str, Any]]:
+    def _detect_abab_pattern(self, targets: List[Tuple[int, str]]) -> Optional[Dict[str, Any]]:
         """Detect A-B-A-B alternating pattern between two agents."""
         if len(targets) < 4:
             return None
@@ -374,18 +369,12 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
 
         def _msg_content(evt: dict) -> str:
             # Content can be top-level or in data dict
-            content = (
-                evt.get("content", "")
-                or evt.get("message", "")
-                or evt.get("text", "")
-            )
+            content = evt.get("content", "") or evt.get("message", "") or evt.get("text", "")
             if not content:
                 data = evt.get("data", {})
                 if isinstance(data, dict):
                     content = (
-                        data.get("content", "")
-                        or data.get("message", "")
-                        or data.get("text", "")
+                        data.get("content", "") or data.get("message", "") or data.get("text", "")
                     )
             return str(content).strip()
 
@@ -421,9 +410,7 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
                 "repeat_count": best_run_len,
                 "turns": affected,
                 "content_preview": sample_content[:100],
-                "description": (
-                    f"Message sent {best_run_len} times with identical content"
-                ),
+                "description": (f"Message sent {best_run_len} times with identical content"),
             }
 
         return {"detected": False}

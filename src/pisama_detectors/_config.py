@@ -15,7 +15,7 @@ should pass explicit thresholds to detector constructors; this shim
 intentionally does not read env vars.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Dict, Optional
 

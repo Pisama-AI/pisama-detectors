@@ -1,11 +1,12 @@
 """Context window overflow detection."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
 import tiktoken
 
-from .cost import cost_calculator, LLM_PRICING_2025
+from .cost import cost_calculator
 
 
 class OverflowSeverity(str, Enum):
@@ -62,7 +63,7 @@ class ContextOverflowDetector:
         self.overflow_threshold = overflow_threshold
         self.confidence_scaling = confidence_scaling
         self.small_model_warning_threshold = small_model_warning_threshold
-    
+
     def _get_tokenizer(self, model: str) -> tiktoken.Encoding:
         try:
             if "gpt-4" in model or "gpt-3.5" in model:
@@ -73,53 +74,58 @@ class ContextOverflowDetector:
                 return tiktoken.get_encoding("cl100k_base")
         except Exception:
             return tiktoken.get_encoding("cl100k_base")
-    
+
     def count_tokens(self, text: str, model: str = "gpt-4") -> int:
         if not text:
             return 0
         tokenizer = self._get_tokenizer(model)
         return len(tokenizer.encode(text))
-    
+
     def count_messages_tokens(
         self,
         messages: List[Dict[str, Any]],
         model: str = "gpt-4",
     ) -> TokenBreakdown:
         tokenizer = self._get_tokenizer(model)
-        
+
         system_tokens = 0
         message_tokens = 0
         tool_tokens = 0
-        
+
         for msg in messages:
             role = msg.get("role", "")
             content = msg.get("content", "")
-            
+
             if isinstance(content, str):
                 tokens = len(tokenizer.encode(content))
             elif isinstance(content, list):
                 tokens = sum(
                     len(tokenizer.encode(str(c.get("text", ""))))
-                    for c in content if isinstance(c, dict)
+                    for c in content
+                    if isinstance(c, dict)
                 )
             else:
                 tokens = 0
-            
+
             tokens += 4
-            
+
             if role == "system":
                 system_tokens += tokens
             elif role == "tool" or msg.get("tool_calls"):
                 tool_tokens += tokens
                 if msg.get("tool_calls"):
                     for tc in msg.get("tool_calls", []):
-                        tool_tokens += len(tokenizer.encode(str(tc.get("function", {}).get("arguments", ""))))
+                        tool_tokens += len(
+                            tokenizer.encode(str(tc.get("function", {}).get("arguments", "")))
+                        )
             else:
                 message_tokens += tokens
-        
+
         total = system_tokens + message_tokens + tool_tokens
-        per_turn = message_tokens / max(1, len([m for m in messages if m.get("role") in ["user", "assistant"]]))
-        
+        per_turn = message_tokens / max(
+            1, len([m for m in messages if m.get("role") in ["user", "assistant"]])
+        )
+
         return TokenBreakdown(
             system_tokens=system_tokens,
             message_tokens=message_tokens,
@@ -127,7 +133,7 @@ class ContextOverflowDetector:
             total_tokens=total,
             per_turn_average=per_turn,
         )
-    
+
     def detect_overflow(
         self,
         current_tokens: int,
@@ -170,7 +176,7 @@ class ContextOverflowDetector:
             warnings.append(f"Context window filling up: {usage_percent:.1%} used")
         else:
             severity = OverflowSeverity.SAFE
-        
+
         estimated_overflow_in = None
         if messages:
             breakdown = self.count_messages_tokens(messages, model)
@@ -180,28 +186,36 @@ class ContextOverflowDetector:
                 "tools": breakdown.tool_tokens,
                 "per_turn_avg": breakdown.per_turn_average,
             }
-            
+
             if breakdown.per_turn_average > 0:
                 estimated_overflow_in = int(remaining / breakdown.per_turn_average)
                 details["estimated_turns_remaining"] = estimated_overflow_in
-                
+
                 if estimated_overflow_in < 5:
                     warnings.append(f"Estimated overflow in {estimated_overflow_in} turns")
                     if severity == OverflowSeverity.SAFE:
                         severity = OverflowSeverity.WARNING
-            
+
             if breakdown.system_tokens > context_window * 0.3:
-                warnings.append(f"System prompt uses {breakdown.system_tokens / context_window:.1%} of context")
-            
+                warnings.append(
+                    f"System prompt uses {breakdown.system_tokens / context_window:.1%} of context"
+                )
+
             if breakdown.tool_tokens > context_window * 0.2:
-                warnings.append(f"Tool results using significant context: {breakdown.tool_tokens} tokens")
-        
+                warnings.append(
+                    f"Tool results using significant context: {breakdown.tool_tokens} tokens"
+                )
+
         details["context_window"] = context_window
         details["effective_limit"] = effective_limit
         details["expected_output"] = expected_output_tokens
         details["model"] = model
-        
-        detected = severity in (OverflowSeverity.WARNING, OverflowSeverity.CRITICAL, OverflowSeverity.OVERFLOW)
+
+        detected = severity in (
+            OverflowSeverity.WARNING,
+            OverflowSeverity.CRITICAL,
+            OverflowSeverity.OVERFLOW,
+        )
         raw_score = usage_percent
         confidence, calibration_info = self._calibrate_confidence(
             usage_percent=usage_percent,
@@ -209,7 +223,7 @@ class ContextOverflowDetector:
             warning_count=len(warnings),
             estimated_overflow_in=estimated_overflow_in,
         )
-        
+
         return OverflowResult(
             severity=severity,
             current_tokens=current_tokens,
@@ -224,7 +238,7 @@ class ContextOverflowDetector:
             raw_score=raw_score,
             calibration_info=calibration_info,
         )
-    
+
     def _calibrate_confidence(
         self,
         usage_percent: float,
@@ -239,11 +253,11 @@ class ContextOverflowDetector:
             OverflowSeverity.CRITICAL: 0.8,
             OverflowSeverity.OVERFLOW: 0.95,
         }.get(severity, 0.5)
-        
+
         usage_factor = min(1.0, usage_percent)
-        
+
         warning_factor = min(0.15, warning_count * 0.05)
-        
+
         overflow_urgency = 0.0
         if estimated_overflow_in is not None:
             if estimated_overflow_in <= 2:
@@ -252,16 +266,13 @@ class ContextOverflowDetector:
                 overflow_urgency = 0.1
             elif estimated_overflow_in <= 10:
                 overflow_urgency = 0.05
-        
+
         base_confidence = (
-            severity_weight * 0.40 +
-            usage_factor * 0.30 +
-            warning_factor +
-            overflow_urgency
+            severity_weight * 0.40 + usage_factor * 0.30 + warning_factor + overflow_urgency
         )
-        
+
         calibrated = min(0.99, base_confidence * self.confidence_scaling)
-        
+
         calibration_info = {
             "usage_percent": round(usage_percent, 4),
             "severity_weight": severity_weight,
@@ -271,9 +282,9 @@ class ContextOverflowDetector:
             "estimated_overflow_in": estimated_overflow_in,
             "confidence_scaling": self.confidence_scaling,
         }
-        
+
         return round(calibrated, 4), calibration_info
-    
+
     def detect_memory_leak(
         self,
         token_history: List[int],
@@ -281,31 +292,31 @@ class ContextOverflowDetector:
     ) -> Optional[Dict[str, Any]]:
         if len(token_history) < 5:
             return None
-        
+
         context_window = cost_calculator.get_context_window(model)
-        
+
         growth_rates = []
         for i in range(1, len(token_history)):
-            if token_history[i-1] > 0:
-                rate = (token_history[i] - token_history[i-1]) / token_history[i-1]
+            if token_history[i - 1] > 0:
+                rate = (token_history[i] - token_history[i - 1]) / token_history[i - 1]
                 growth_rates.append(rate)
-        
+
         if not growth_rates:
             return None
-        
+
         avg_growth = sum(growth_rates) / len(growth_rates)
-        
+
         expected_shrink = any(r < -0.1 for r in growth_rates)
-        
+
         if avg_growth > 0.05 and not expected_shrink:
             current = token_history[-1]
             turns_to_overflow = 0
             projected = current
-            
+
             while projected < context_window and turns_to_overflow < 100:
                 projected = projected * (1 + avg_growth)
                 turns_to_overflow += 1
-            
+
             return {
                 "leak_detected": True,
                 "avg_growth_rate": avg_growth,
@@ -313,32 +324,34 @@ class ContextOverflowDetector:
                 "projected_overflow_turns": turns_to_overflow,
                 "recommendation": "Implement conversation summarization or context pruning",
             }
-        
+
         return None
-    
+
     def suggest_remediation(self, result: OverflowResult) -> List[str]:
         suggestions = []
-        
+
         if result.severity == OverflowSeverity.OVERFLOW:
             suggestions.append("IMMEDIATE: Truncate or summarize conversation history")
             suggestions.append("Remove older messages, keeping only recent context")
-        
+
         if result.severity in [OverflowSeverity.CRITICAL, OverflowSeverity.OVERFLOW]:
             suggestions.append("Summarize tool results instead of including full output")
             suggestions.append("Consider using a model with larger context window")
-        
+
         breakdown = result.details.get("token_breakdown", {})
-        
+
         if breakdown.get("system", 0) > result.context_window * 0.2:
-            suggestions.append("Reduce system prompt size - consider dynamic loading of instructions")
-        
+            suggestions.append(
+                "Reduce system prompt size - consider dynamic loading of instructions"
+            )
+
         if breakdown.get("tools", 0) > result.context_window * 0.15:
             suggestions.append("Compress tool results - return summaries instead of full data")
-        
+
         if result.usage_percent > 0.5:
             suggestions.append("Implement sliding window for message history")
             suggestions.append("Add periodic conversation summarization")
-        
+
         return suggestions
 
 

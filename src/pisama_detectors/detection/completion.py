@@ -41,7 +41,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Dict, Any, Set
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -98,106 +98,141 @@ class CompletionMisjudgmentDetector:
 
     # Patterns indicating completion claims
     COMPLETION_CLAIM_PATTERNS = [
-        r'\b(?:task|work|job)\s+(?:is\s+)?(?:complete|completed|done|finished)\b',
-        r'\b(?:i have|i\'ve)\s+(?:completed|finished|done)\b',
-        r'\b(?:successfully|successfully)\s+(?:completed|finished|done)\b',
-        r'\b(?:all\s+)?(?:tasks?|steps?|items?)\s+(?:are\s+)?(?:complete|done)\b',
-        r'\b(?:mission\s+accomplished|job\s+done)\b',
-        r'\bhere(?:\'s| is)\s+the\s+(?:final|completed|finished)\b',
-        r'\b(?:that\'s|this\s+is)\s+everything\b',
-        r'\bnothing\s+(?:else|more)\s+(?:to\s+do|needed|required)\b',
+        r"\b(?:task|work|job)\s+(?:is\s+)?(?:complete|completed|done|finished)\b",
+        r"\b(?:i have|i\'ve)\s+(?:completed|finished|done)\b",
+        r"\b(?:successfully|successfully)\s+(?:completed|finished|done)\b",
+        r"\b(?:all\s+)?(?:tasks?|steps?|items?)\s+(?:are\s+)?(?:complete|done)\b",
+        r"\b(?:mission\s+accomplished|job\s+done)\b",
+        r"\bhere(?:\'s| is)\s+the\s+(?:final|completed|finished)\b",
+        r"\b(?:that\'s|this\s+is)\s+everything\b",
+        r"\bnothing\s+(?:else|more)\s+(?:to\s+do|needed|required)\b",
         # v1.7: Tightened subject patterns — only match task/work nouns, not any word
-        r'\b(?:migration|implementation|setup|integration|feature|system|module|service|component|api|app|application|build|deployment|test|testing|code|refactor|fix|update|upgrade)\s+(?:is\s+)?(?:complete|completed|done|ready|finished|implemented|working|set up|configured|live)\b',
-        r'\b(?:done|complete|completed|ready|finished|implemented)\s*[!.]',
+        r"\b(?:migration|implementation|setup|integration|feature|system|module|service|component|api|app|application|build|deployment|test|testing|code|refactor|fix|update|upgrade)\s+(?:is\s+)?(?:complete|completed|done|ready|finished|implemented|working|set up|configured|live)\b",
+        r"\b(?:done|complete|completed|ready|finished|implemented)\s*[!.]",
     ]
 
     # Patterns indicating incomplete work
     INCOMPLETE_PATTERNS = [
-        (r'\bTODO\b', "todo_marker"),
-        (r'\bFIXME\b', "fixme_marker"),
-        (r'\bHACK\b', "hack_marker"),
-        (r'\bXXX\b', "xxx_marker"),
-        (r'\b(?:not\s+yet|still\s+need|remaining|pending)\b', "pending_marker"),
-        (r'\b(?:placeholder|stub|dummy|mock)\b', "placeholder"),
-        (r'\b(?:will\s+be|to\s+be)\s+(?:implemented|added|done)\b', "future_work"),
-        (r'\.{3,}|etc\.', "ellipsis"),
-        (r'\b(?:part\s+\d|step\s+\d)\s+(?:of|/)\s+\d+', "partial_progress"),
-        (r'\b(?:partial|incomplete|unfinished)\b', "explicit_incomplete"),
+        (r"\bTODO\b", "todo_marker"),
+        (r"\bFIXME\b", "fixme_marker"),
+        (r"\bHACK\b", "hack_marker"),
+        (r"\bXXX\b", "xxx_marker"),
+        (r"\b(?:not\s+yet|still\s+need|remaining|pending)\b", "pending_marker"),
+        (r"\b(?:placeholder|stub|dummy|mock)\b", "placeholder"),
+        (r"\b(?:will\s+be|to\s+be)\s+(?:implemented|added|done)\b", "future_work"),
+        (r"\.{3,}|etc\.", "ellipsis"),
+        (r"\b(?:part\s+\d|step\s+\d)\s+(?:of|/)\s+\d+", "partial_progress"),
+        (r"\b(?:partial|incomplete|unfinished)\b", "explicit_incomplete"),
     ]
 
     # Patterns indicating errors or failures
     ERROR_PATTERNS = [
-        r'\b(?:error|exception|failure|failed)\b',
-        r'\b(?:could not|couldn\'t|unable to|cannot)\b',
-        r'\b(?:crash|crashed|crashing)\b',
-        r'\b(?:bug|broken|breaking)\b',
+        r"\b(?:error|exception|failure|failed)\b",
+        r"\b(?:could not|couldn\'t|unable to|cannot)\b",
+        r"\b(?:crash|crashed|crashing)\b",
+        r"\b(?:bug|broken|breaking)\b",
     ]
 
     # v1.1: Words in task that require 100% completion
     QUANTITATIVE_REQUIREMENTS = [
-        "all", "every", "each", "complete", "full", "entire",
-        "comprehensive", "thorough", "exhaustive", "total",
+        "all",
+        "every",
+        "each",
+        "complete",
+        "full",
+        "entire",
+        "comprehensive",
+        "thorough",
+        "exhaustive",
+        "total",
     ]
 
     # v1.1: Patterns indicating partial/incomplete work (hedges)
     PARTIAL_COMPLETION_PATTERNS = [
-        (r'\b(?:most|majority|mainly|primarily|largely)\b', "partial_scope"),
-        (r'\b(?:core|main|primary|key|essential)\s+(?:functionality|features?|parts?)\b', "core_only"),
-        (r'\b(?:basic|minimal|initial|preliminary)\b', "minimal_scope"),
-        (r'(?<!\.)\b\d{1,2}%', "percentage_incomplete"),  # v1.3/v1.7: skip decimal parts like "99.2%"
-        (r'\b(?:some|several|few|certain)\s+(?:of|aspects?|parts?|areas?)\b', "partial_coverage"),
-        (r'\b(?:focus(?:ed|ing)?|priorit(?:ized?|izing))\s+on\b', "selective_focus"),
-        (r'\b(?:for now|at this point|currently|at the moment)\b', "temporal_limitation"),
-        (r'\b(?:happy path|common case|typical scenario)\b', "limited_coverage"),
+        (r"\b(?:most|majority|mainly|primarily|largely)\b", "partial_scope"),
+        (
+            r"\b(?:core|main|primary|key|essential)\s+(?:functionality|features?|parts?)\b",
+            "core_only",
+        ),
+        (r"\b(?:basic|minimal|initial|preliminary)\b", "minimal_scope"),
+        (
+            r"(?<!\.)\b\d{1,2}%",
+            "percentage_incomplete",
+        ),  # v1.3/v1.7: skip decimal parts like "99.2%"
+        (r"\b(?:some|several|few|certain)\s+(?:of|aspects?|parts?|areas?)\b", "partial_coverage"),
+        (r"\b(?:focus(?:ed|ing)?|priorit(?:ized?|izing))\s+on\b", "selective_focus"),
+        (r"\b(?:for now|at this point|currently|at the moment)\b", "temporal_limitation"),
+        (r"\b(?:happy path|common case|typical scenario)\b", "limited_coverage"),
         # v1.3: Uncertainty language indicating incomplete
-        (r'\b(?:lingering|might have missed|could still|probably missed)\b', "uncertainty_incomplete"),
-        (r'\b(?:couple of|few more|some more)\s+(?:edge cases?|cases?|tests?|items?)\b', "acknowledged_gaps"),
+        (
+            r"\b(?:lingering|might have missed|could still|probably missed)\b",
+            "uncertainty_incomplete",
+        ),
+        (
+            r"\b(?:couple of|few more|some more)\s+(?:edge cases?|cases?|tests?|items?)\b",
+            "acknowledged_gaps",
+        ),
     ]
 
     # v1.1: Qualifier patterns that suggest uncertainty about completion
     QUALIFIER_PATTERNS = [
-        (r'\b(?:appears?|seems?|looks?)\s+(?:to be\s+)?(?:complete|done|finished|solid|good)\b', "appearance_qualifier"),
-        (r'\bon the surface\b', "surface_qualifier"),
-        (r'\b(?:should|might|could)\s+(?:be\s+)?(?:complete|working|functional)\b', "uncertainty_qualifier"),
-        (r'\b(?:believe|think|assume)\s+(?:it\'?s?|we\'?re?|this is)\b', "belief_qualifier"),
-        (r'\b(?:as far as|to the best of)\b', "limited_knowledge"),
+        (
+            r"\b(?:appears?|seems?|looks?)\s+(?:to be\s+)?(?:complete|done|finished|solid|good)\b",
+            "appearance_qualifier",
+        ),
+        (r"\bon the surface\b", "surface_qualifier"),
+        (
+            r"\b(?:should|might|could)\s+(?:be\s+)?(?:complete|working|functional)\b",
+            "uncertainty_qualifier",
+        ),
+        (r"\b(?:believe|think|assume)\s+(?:it\'?s?|we\'?re?|this is)\b", "belief_qualifier"),
+        (r"\b(?:as far as|to the best of)\b", "limited_knowledge"),
     ]
 
     # v1.1: Implicit completion indicators (confident delivery without caveats)
     CONFIDENT_DELIVERY_PATTERNS = [
-        r'\b(?:i\'ve|we\'ve|i have|we have)\s+(?:completed|finished|done|implemented)\b',
-        r'\b(?:successfully|thoroughly|fully)\s+(?:completed|implemented|deployed)\b',
-        r'\b(?:the|this)\s+(?:implementation|feature|system)\s+is\s+(?:ready|complete|done)\b',
-        r'\bjust wrapped up\b',
+        r"\b(?:i\'ve|we\'ve|i have|we have)\s+(?:completed|finished|done|implemented)\b",
+        r"\b(?:successfully|thoroughly|fully)\s+(?:completed|implemented|deployed)\b",
+        r"\b(?:the|this)\s+(?:implementation|feature|system)\s+is\s+(?:ready|complete|done)\b",
+        r"\bjust wrapped up\b",
         # v1.2: Additional implicit completion patterns
-        r'\bfully\s+covered\b',
-        r'\b(?:all|every)\s+(?:main|major|key|critical)\s+(?:modules?|components?|features?|endpoints?)\b',
-        r'\b(?:operational|ready)\s+(?:and\s+ready\s+)?for\s+(?:review|deployment|production)\b',
-        r'\b(?:we\'ve|i\'ve)\s+(?:pushed|deployed|shipped|released)\b',
-        r'\bin\s+place\b',  # "monitoring in place"
+        r"\bfully\s+covered\b",
+        r"\b(?:all|every)\s+(?:main|major|key|critical)\s+(?:modules?|components?|features?|endpoints?)\b",
+        r"\b(?:operational|ready)\s+(?:and\s+ready\s+)?for\s+(?:review|deployment|production)\b",
+        r"\b(?:we\'ve|i\'ve)\s+(?:pushed|deployed|shipped|released)\b",
+        r"\bin\s+place\b",  # "monitoring in place"
     ]
 
     # v1.2: Progress language that implies work is ongoing (NOT complete)
     # These are NOT completion claims - they indicate partial progress
     PROGRESS_NOT_COMPLETE_PATTERNS = [
-        r'\bgreat progress\b',
-        r'\bgood progress\b',
-        r'\bmaking progress\b',
-        r'\bprogressing\s+(?:well|nicely)\b',
-        r'\bcoming\s+along\b',
-        r'\bcomprehensive\s+(?:overview|coverage)\b',  # overview != complete
+        r"\bgreat progress\b",
+        r"\bgood progress\b",
+        r"\bmaking progress\b",
+        r"\bprogressing\s+(?:well|nicely)\b",
+        r"\bcoming\s+along\b",
+        r"\bcomprehensive\s+(?:overview|coverage)\b",  # overview != complete
     ]
 
     # v1.2: Patterns indicating planned/future work (not actually complete)
     # v1.6: Expanded verb list + contraction handling + deferred_work patterns
     PLANNED_WORK_PATTERNS = [
-        (r'\b(?:coverage|tests?|testing)\s+planned\b', "planned_tests"),
-        (r'\bwill\s+(?:be\s+)?(?:added|implemented|included|covered|optimized?|fixed|handled|addressed|resolved|completed|deployed|integrated|tested|updated|refactored)\b', "future_work"),
-        (r"\b(?:i'll|we'll|i\s+will|we\s+will)\s+(?:add|implement|include|cover|optimize|fix|handle|address|resolve|complete|deploy|integrate|test|update|refactor)\b", "future_work"),
-        (r'\b(?:next|later|future)\s+(?:phase|step|iteration|sprint|release|version)\b', "deferred_work"),
-        (r'\b(?:backlog|follow[- ]up|roadmap|post[- ]launch|post[- ]release)\b', "deferred_work"),
-        (r'\b(?:to\s+be|tbd|coming\s+soon)\b', "pending_work"),
-        (r'\b(?:placeholder|stub|mock)\s+(?:test|coverage|implementation)?\b', "stub_work"),
+        (r"\b(?:coverage|tests?|testing)\s+planned\b", "planned_tests"),
+        (
+            r"\bwill\s+(?:be\s+)?(?:added|implemented|included|covered|optimized?|fixed|handled|addressed|resolved|completed|deployed|integrated|tested|updated|refactored)\b",
+            "future_work",
+        ),
+        (
+            r"\b(?:i'll|we'll|i\s+will|we\s+will)\s+(?:add|implement|include|cover|optimize|fix|handle|address|resolve|complete|deploy|integrate|test|update|refactor)\b",
+            "future_work",
+        ),
+        (
+            r"\b(?:next|later|future)\s+(?:phase|step|iteration|sprint|release|version)\b",
+            "deferred_work",
+        ),
+        (r"\b(?:backlog|follow[- ]up|roadmap|post[- ]launch|post[- ]release)\b", "deferred_work"),
+        (r"\b(?:to\s+be|tbd|coming\s+soon)\b", "pending_work"),
+        (r"\b(?:placeholder|stub|mock)\s+(?:test|coverage|implementation)?\b", "stub_work"),
     ]
 
     # v2.2: Vague "readiness" phrases — agent implicitly claims the system
@@ -206,63 +241,66 @@ class CompletionMisjudgmentDetector:
     # implicit completion claim even though the COMPLETION_CLAIM patterns
     # don't match (they require task nouns like "migration is complete").
     VAGUE_READINESS_PATTERNS = [
-        r'\b(?:is|now)\s+(?:operational|working|running|active|live|deployed|up|functional)\b',
-        r'\b(?:is|now)\s+(?:set\s+up|configured|ready|in\s+place)\b',
-        r'\b(?:setup|configuration)\s+is\s+(?:complete|done|finished)\b',
-        r'\bready\s+to\s+use\b',
+        r"\b(?:is|now)\s+(?:operational|working|running|active|live|deployed|up|functional)\b",
+        r"\b(?:is|now)\s+(?:set\s+up|configured|ready|in\s+place)\b",
+        r"\b(?:setup|configuration)\s+is\s+(?:complete|done|finished)\b",
+        r"\bready\s+to\s+use\b",
         # v2.2b: "{noun phrase} completed successfully" / "is finished"
         # — broad completion statement without task-noun anchor.
-        r'\b(?:completed|finished)\s+successfully\b',
-        r'\bis\s+(?:finished|done|complete)\b',
-        r'\b(?:all|every)\s+\w+\s+(?:have\s+been|has\s+been)\s+(?:identified|documented|completed|addressed|resolved|processed|handled)\b',
+        r"\b(?:completed|finished)\s+successfully\b",
+        r"\bis\s+(?:finished|done|complete)\b",
+        r"\b(?:all|every)\s+\w+\s+(?:have\s+been|has\s+been)\s+(?:identified|documented|completed|addressed|resolved|processed|handled)\b",
     ]
 
     # v2.2c: Explicit failure admissions — agent literally says the work
     # failed. Strong standalone signal (no completion-claim required).
     EXPLICIT_FAILURE_PATTERNS = [
-        r'\bagent\s+failed\b',
-        r'\b(?:did\s+not|didn\'t)\s+(?:complete|finish|succeed|manage)\b',
-        r'\b(?:was\s+)?unable\s+to\s+(?:complete|finish|resolve|find|locate|identify)\b',
-        r'\btask\s+(?:has\s+)?(?:failed|not\s+completed|incomplete|unfinished)\b',
-        r'\b(?:goal|task)\s+(?:goal\s+)?(?:not|has\s+not)\s+(?:been\s+)?(?:completed|achieved|met)\b',
-        r'\bsearch\s+an?\s+non-?sensical\s+query\b',  # benchmark-specific failure marker
-        r'\baction\s+error\b',
-        r'\b(?:issue|problem|error)\s+at\s+step\s+\d+\b',
-        r'\bfailed\s+(?:repeatedly|multiple\s+times)\b',
+        r"\bagent\s+failed\b",
+        r"\b(?:did\s+not|didn\'t)\s+(?:complete|finish|succeed|manage)\b",
+        r"\b(?:was\s+)?unable\s+to\s+(?:complete|finish|resolve|find|locate|identify)\b",
+        r"\btask\s+(?:has\s+)?(?:failed|not\s+completed|incomplete|unfinished)\b",
+        r"\b(?:goal|task)\s+(?:goal\s+)?(?:not|has\s+not)\s+(?:been\s+)?(?:completed|achieved|met)\b",
+        r"\bsearch\s+an?\s+non-?sensical\s+query\b",  # benchmark-specific failure marker
+        r"\baction\s+error\b",
+        r"\b(?:issue|problem|error)\s+at\s+step\s+\d+\b",
+        r"\bfailed\s+(?:repeatedly|multiple\s+times)\b",
     ]
 
     # v2.2: Blocker / external-dependency phrases — agent explicitly defers
     # part of the work to another team or external action. Strong signal
     # that the task was not completed end-to-end.
     BLOCKER_PATTERNS = [
-        (r'\b(?:opened|filed|raised|created)\s+(?:a\s+)?(?:ticket|issue|request)\b', "blocker_ticket"),
-        (r'\bneeds?\s+(?:IT|admin|ops|devops|manager|team|approval)\b', "blocker_approval"),
-        (r'\b(?:waiting|blocked)\s+(?:for|on)\b', "blocker_waiting"),
-        (r'\b(?:requires|needs)\s+\w+\s+(?:access|configuration|permission)\b', "blocker_access"),
-        (r'\b(?:couldn\'t|could\s+not|unable\s+to)\s+(?:finish|complete)\b', "blocker_unable"),
+        (
+            r"\b(?:opened|filed|raised|created)\s+(?:a\s+)?(?:ticket|issue|request)\b",
+            "blocker_ticket",
+        ),
+        (r"\bneeds?\s+(?:IT|admin|ops|devops|manager|team|approval)\b", "blocker_approval"),
+        (r"\b(?:waiting|blocked)\s+(?:for|on)\b", "blocker_waiting"),
+        (r"\b(?:requires|needs)\s+\w+\s+(?:access|configuration|permission)\b", "blocker_access"),
+        (r"\b(?:couldn\'t|could\s+not|unable\s+to)\s+(?:finish|complete)\b", "blocker_unable"),
     ]
 
     # v1.8: Honest partial completion phrases — agent acknowledges work is incomplete.
     # These reduce false positives because the agent is NOT falsely claiming completion.
     HONEST_PARTIAL_PATTERNS = [
-        r'\bpartially done\b',
-        r'\b\w+\s+complete,?\s+\w+\s+remaining\b',
-        r'\bcompleted\s+\d+\s+of\s+\d+\b',
-        r'\bstill working on\b',
-        r'\bTODO:\b',
-        r'\bin progress\b',
-        r'\bnot yet (?:complete|finished|done)\b',
-        r'\bwork in progress\b',
-        r'\bremaining tasks?\b',
-        r'\b\d+\s+(?:tasks?|items?)\s+left\b',
+        r"\bpartially done\b",
+        r"\b\w+\s+complete,?\s+\w+\s+remaining\b",
+        r"\bcompleted\s+\d+\s+of\s+\d+\b",
+        r"\bstill working on\b",
+        r"\bTODO:\b",
+        r"\bin progress\b",
+        r"\bnot yet (?:complete|finished|done)\b",
+        r"\bwork in progress\b",
+        r"\bremaining tasks?\b",
+        r"\b\d+\s+(?:tasks?|items?)\s+left\b",
     ]
 
     # v1.2: Task types that are intentionally scoped (avoid false positives)
     SCOPED_TASK_PATTERNS = [
-        r'\b(?:prototype|mvp|poc|proof\s+of\s+concept)\b',
-        r'\b(?:quick|initial|rough|first)\s+(?:draft|version|pass|attempt)\b',
-        r'\b(?:minimal|basic)\s+(?:version|implementation)\b',
-        r'\bv0(?:\.\d+)?\b',  # v0.1, v0.2, etc.
+        r"\b(?:prototype|mvp|poc|proof\s+of\s+concept)\b",
+        r"\b(?:quick|initial|rough|first)\s+(?:draft|version|pass|attempt)\b",
+        r"\b(?:minimal|basic)\s+(?:version|implementation)\b",
+        r"\bv0(?:\.\d+)?\b",  # v0.1, v0.2, etc.
     ]
 
     # v1.3: JSON-specific completion claim patterns
@@ -274,7 +312,10 @@ class CompletionMisjudgmentDetector:
 
     # v1.3: JSON-specific incomplete indicator patterns
     JSON_INCOMPLETE_PATTERNS = [
-        (r'"(?:documented|hasExamples?|completed|done|tested|covered|implemented)"\s*:\s*false', "json_false_flag"),
+        (
+            r'"(?:documented|hasExamples?|completed|done|tested|covered|implemented)"\s*:\s*false',
+            "json_false_flag",
+        ),
         (r'"(?:missing|pending|todo|incomplete)"\s*:\s*\[', "json_missing_list"),
         (r'"(?:coverage|completion)"\s*:\s*"?\d{1,2}%"?', "json_partial_coverage"),
     ]
@@ -286,17 +327,23 @@ class CompletionMisjudgmentDetector:
     # e.g. "15,000 of 15,000" should not match "00 of 15" (the comma-only
     # lookbehind fails because "0" before the "00" has no comma).
     NUMERIC_RATIO_PATTERNS = [
-        (r'(?<![\d,])(\d+)\s*/\s*(?<![\d,])(\d+)(?![\d,])', "explicit_ratio"),  # 8/10
-        (r'(?<![\d,])(\d+)\s+(?:of|out of)\s+(?<![\d,])(\d+)(?![\d,])', "explicit_count"),  # 8 of 10
-        (r'"(?:documented|completed|done|tested)(?:Endpoints?|Items?|Tasks?)?"\s*:\s*(\d+).*?"(?:total)(?:Endpoints?|Items?|Tasks?)?"\s*:\s*(\d+)', "json_ratio"),
+        (r"(?<![\d,])(\d+)\s*/\s*(?<![\d,])(\d+)(?![\d,])", "explicit_ratio"),  # 8/10
+        (
+            r"(?<![\d,])(\d+)\s+(?:of|out of)\s+(?<![\d,])(\d+)(?![\d,])",
+            "explicit_count",
+        ),  # 8 of 10
+        (
+            r'"(?:documented|completed|done|tested)(?:Endpoints?|Items?|Tasks?)?"\s*:\s*(\d+).*?"(?:total)(?:Endpoints?|Items?|Tasks?)?"\s*:\s*(\d+)',
+            "json_ratio",
+        ),
     ]
 
     # Success criteria extraction patterns
     CRITERIA_PATTERNS = [
-        r'(?:should|must|need to|required to)\s+(.+?)(?:\.|$)',
-        r'(?:criteria|requirement|goal):\s*(.+?)(?:\.|$)',
-        r'(?:success|completion)\s+(?:means?|requires?):\s*(.+?)(?:\.|$)',
-        r'\d+\.\s+(.+?)(?:\n|$)',  # Numbered list items
+        r"(?:should|must|need to|required to)\s+(.+?)(?:\.|$)",
+        r"(?:criteria|requirement|goal):\s*(.+?)(?:\.|$)",
+        r"(?:success|completion)\s+(?:means?|requires?):\s*(.+?)(?:\.|$)",
+        r"\d+\.\s+(.+?)(?:\n|$)",  # Numbered list items
     ]
 
     def __init__(
@@ -318,9 +365,9 @@ class CompletionMisjudgmentDetector:
     # separators or timestamp prefixes and should NOT trigger completion claims.
     # Only match pure separator lines (not log-level prefixed content).
     _LOG_PATTERNS = [
-        re.compile(r'^={5,}$'),     # ===== separator lines (full line)
-        re.compile(r'^-{5,}$'),     # ----- separator lines (full line)
-        re.compile(r'^\[?\d{4}-\d{2}-\d{2}[T ]'),  # ISO timestamp prefix
+        re.compile(r"^={5,}$"),  # ===== separator lines (full line)
+        re.compile(r"^-{5,}$"),  # ----- separator lines (full line)
+        re.compile(r"^\[?\d{4}-\d{2}-\d{2}[T ]"),  # ISO timestamp prefix
     ]
 
     def _detect_completion_claim(self, text: str) -> bool:
@@ -334,8 +381,8 @@ class CompletionMisjudgmentDetector:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 # v1.9: Check if match is on a log/test line — skip if so
-                line_start = text.rfind('\n', 0, match.start()) + 1
-                line_end = text.find('\n', match.end())
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                line_end = text.find("\n", match.end())
                 if line_end == -1:
                     line_end = len(text)
                 line = text[line_start:line_end].strip()
@@ -367,8 +414,8 @@ class CompletionMisjudgmentDetector:
                 # v1.7: Skip "etc." inside parenthetical examples
                 if marker_type == "ellipsis" and "etc" in match.group().lower():
                     # Check if preceded by an opening paren or comma+items
-                    before = text[max(0, match.start() - 60):match.start()]
-                    if "(" in before and ")" not in before[before.rfind("("):]:
+                    before = text[max(0, match.start() - 60) : match.start()]
+                    if "(" in before and ")" not in before[before.rfind("(") :]:
                         continue  # Inside parentheses — skip
 
                 start = max(0, match.start() - 30)
@@ -381,19 +428,19 @@ class CompletionMisjudgmentDetector:
     # v1.6: Context phrases that neutralize error/failure matches
     # v1.7: Added "flagged", "reported", "logged" as post-match neutralizers
     _ERROR_NEUTRALIZERS = re.compile(
-        r'\b(?:fixed|resolved|addressed|handled|corrected|recovered|cleared|eliminated)\b',
+        r"\b(?:fixed|resolved|addressed|handled|corrected|recovered|cleared|eliminated)\b",
         re.IGNORECASE,
     )
     _ERROR_SUFFIX_NEUTRALIZERS = re.compile(
-        r'\b(?:flagged|reported|logged|noted|documented|skipped|excluded)\b',
+        r"\b(?:flagged|reported|logged|noted|documented|skipped|excluded)\b",
         re.IGNORECASE,
     )
     # v1.6: Compound terms where "error"/"failure" is a domain concept, not an actual error
     _ERROR_COMPOUND_SKIP = re.compile(
-        r'\berror\s+(?:codes?|handling|messages?|types?|classes?|logging|recovery|pages?|boundaries?|rates?)\b'
-        r'|\bfailure\s+(?:modes?|types?|handling|recovery|rates?|conditions?)\b'
-        r'|\bsuccess\s*/\s*failure\b'
-        r'|\bfail(?:ed)?\s+(?:gracefully|safely|over)\b',
+        r"\berror\s+(?:codes?|handling|messages?|types?|classes?|logging|recovery|pages?|boundaries?|rates?)\b"
+        r"|\bfailure\s+(?:modes?|types?|handling|recovery|rates?|conditions?)\b"
+        r"|\bsuccess\s*/\s*failure\b"
+        r"|\bfail(?:ed)?\s+(?:gracefully|safely|over)\b",
         re.IGNORECASE,
     )
 
@@ -420,12 +467,12 @@ class CompletionMisjudgmentDetector:
                     continue
                 # v1.6: Skip if preceded by resolution language
                 prefix_start = max(0, match.start() - 50)
-                prefix = text[prefix_start:match.start()]
+                prefix = text[prefix_start : match.start()]
                 if self._ERROR_NEUTRALIZERS.search(prefix):
                     continue
                 # v1.7: Skip if followed by exception-handling language
                 suffix_end = min(len(text), match.end() + 60)
-                suffix = text[match.end():suffix_end]
+                suffix = text[match.end() : suffix_end]
                 if self._ERROR_SUFFIX_NEUTRALIZERS.search(suffix):
                     continue
                 errors.append(context)
@@ -471,8 +518,8 @@ class CompletionMisjudgmentDetector:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 # v1.9: Skip log/test lines
-                line_start = text.rfind('\n', 0, match.start()) + 1
-                line_end = text.find('\n', match.end())
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                line_end = text.find("\n", match.end())
                 if line_end == -1:
                     line_end = len(text)
                 line = text[line_start:line_end].strip()
@@ -527,9 +574,9 @@ class CompletionMisjudgmentDetector:
         those are evidence of incompleteness, not status updates.
         """
         # Strip code blocks before checking patterns
-        text_no_code = re.sub(r'```[\s\S]*?```', '', text)
+        text_no_code = re.sub(r"```[\s\S]*?```", "", text)
         # Also strip inline code
-        text_no_code = re.sub(r'`[^`]+`', '', text_no_code)
+        text_no_code = re.sub(r"`[^`]+`", "", text_no_code)
 
         for pattern in self.HONEST_PARTIAL_PATTERNS:
             if re.search(pattern, text_no_code, re.IGNORECASE):
@@ -619,15 +666,34 @@ class CompletionMisjudgmentDetector:
 
     # v1.7: Suffix list for criteria stemming (shared with _stem)
     _CRITERIA_STEM_SUFFIXES = (
-        "ation", "tion", "sion", "ment", "ness", "ity", "ance", "ence",
-        "ing", "ed", "er", "es", "ly", "al", "ous", "ive", "ful",
-        "ize", "ise", "able", "ible",
+        "ation",
+        "tion",
+        "sion",
+        "ment",
+        "ness",
+        "ity",
+        "ance",
+        "ence",
+        "ing",
+        "ed",
+        "er",
+        "es",
+        "ly",
+        "al",
+        "ous",
+        "ive",
+        "ful",
+        "ize",
+        "ise",
+        "able",
+        "ible",
     )
 
     @staticmethod
     def _criteria_stem(word: str) -> str:
         """Minimal suffix strip for criteria keyword matching."""
         from pisama_detectors.detection.text_utils import strip_suffix
+
         if word.endswith("s") and len(word) >= 4:
             word = word[:-1]
         return strip_suffix(word, CompletionMisjudgmentDetector._CRITERIA_STEM_SUFFIXES)
@@ -647,17 +713,38 @@ class CompletionMisjudgmentDetector:
 
         output_lower = output.lower()
         # Pre-compute output stems for faster matching
-        output_words = set(re.findall(r'[a-z]{3,}', output_lower))
+        output_words = set(re.findall(r"[a-z]{3,}", output_lower))
         output_stems = {self._criteria_stem(w) for w in output_words}
 
         for criterion in criteria:
             # Extract key terms from criterion
-            words = re.findall(r'\b\w{3,}\b', criterion.lower())
-            key_words = [w for w in words if w not in {
-                'should', 'must', 'need', 'required', 'that', 'this',
-                'will', 'have', 'been', 'with', 'from', 'into',
-                'the', 'and', 'for', 'are', 'all', 'not', 'can',
-            }]
+            words = re.findall(r"\b\w{3,}\b", criterion.lower())
+            key_words = [
+                w
+                for w in words
+                if w
+                not in {
+                    "should",
+                    "must",
+                    "need",
+                    "required",
+                    "that",
+                    "this",
+                    "will",
+                    "have",
+                    "been",
+                    "with",
+                    "from",
+                    "into",
+                    "the",
+                    "and",
+                    "for",
+                    "are",
+                    "all",
+                    "not",
+                    "can",
+                }
+            ]
 
             if not key_words:
                 continue
@@ -726,9 +813,9 @@ class CompletionMisjudgmentDetector:
 
         # Check for requested list item count
         count_patterns = [
-            r'(?:list|provide|give|name|identify|enumerate)\s+(\d+)',
-            r'(\d+)\s+(?:items|examples|points|reasons|steps|features|recommendations)',
-            r'top\s+(\d+)',
+            r"(?:list|provide|give|name|identify|enumerate)\s+(\d+)",
+            r"(\d+)\s+(?:items|examples|points|reasons|steps|features|recommendations)",
+            r"top\s+(\d+)",
         ]
 
         requested_count = None
@@ -740,26 +827,30 @@ class CompletionMisjudgmentDetector:
 
         if requested_count and requested_count > 1:
             # Count actual list items in output
-            bullet_pattern = r'(?:^|\n)\s*(?:\d+[\.\/\)]\s|[-*\u2022]\s)'
+            bullet_pattern = r"(?:^|\n)\s*(?:\d+[\.\/\)]\s|[-*\u2022]\s)"
             actual_items = len(re.findall(bullet_pattern, output))
 
             if actual_items > 0 and actual_items < requested_count:
                 ratio = actual_items / requested_count
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Task requests {requested_count} items but output contains only {actual_items}",
-                    severity=CompletionSeverity.MODERATE if ratio >= 0.5 else CompletionSeverity.SEVERE,
-                    evidence=f"requested={requested_count}, actual={actual_items}, ratio={ratio:.2f}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Task requests {requested_count} items but output contains only {actual_items}",
+                        severity=CompletionSeverity.MODERATE
+                        if ratio >= 0.5
+                        else CompletionSeverity.SEVERE,
+                        evidence=f"requested={requested_count}, actual={actual_items}, ratio={ratio:.2f}",
+                    )
+                )
 
         # v1.5: Check for missing sections mentioned in the task
         # Look for explicit section names the task requires (e.g., "include
         # introduction, methodology, results, and conclusion")
         section_patterns = [
             # "include X, Y, and Z sections"
-            r'(?:include|cover|write|add|provide|create)\s+(?:a\s+)?(?:sections?\s+(?:on|for|about)\s+)?(.+?)(?:\s+section[s]?)?(?:\.|$)',
+            r"(?:include|cover|write|add|provide|create)\s+(?:a\s+)?(?:sections?\s+(?:on|for|about)\s+)?(.+?)(?:\s+section[s]?)?(?:\.|$)",
             # "sections: X, Y, Z"
-            r'sections?\s*:\s*(.+?)(?:\.|$)',
+            r"sections?\s*:\s*(.+?)(?:\.|$)",
         ]
 
         task_lower = task.lower()
@@ -771,26 +862,25 @@ class CompletionMisjudgmentDetector:
                 # Extract potential section names from comma/and-separated list
                 section_text = match.group(1)
                 # Split on commas and "and"
-                parts = re.split(r',\s*|\s+and\s+', section_text)
+                parts = re.split(r",\s*|\s+and\s+", section_text)
                 # Filter to reasonable section names (2-40 chars, no full sentences)
                 section_names = [
-                    p.strip().strip('"\'')
+                    p.strip().strip("\"'")
                     for p in parts
-                    if 2 <= len(p.strip()) <= 40 and ' is ' not in p and ' are ' not in p
+                    if 2 <= len(p.strip()) <= 40 and " is " not in p and " are " not in p
                 ]
                 if len(section_names) >= 2:
-                    missing = [
-                        s for s in section_names
-                        if s not in output_lower
-                    ]
+                    missing = [s for s in section_names if s not in output_lower]
                     if missing and len(missing) < len(section_names):
                         # Some sections present, some missing — partial delivery
-                        issues.append(CompletionIssue(
-                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                            description=f"Task mentions sections but {len(missing)} missing from output: {', '.join(missing[:3])}",
-                            severity=CompletionSeverity.MODERATE,
-                            evidence=f"required={len(section_names)}, missing={len(missing)}",
-                        ))
+                        issues.append(
+                            CompletionIssue(
+                                issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                                description=f"Task mentions sections but {len(missing)} missing from output: {', '.join(missing[:3])}",
+                                severity=CompletionSeverity.MODERATE,
+                                evidence=f"required={len(section_names)}, missing={len(missing)}",
+                            )
+                        )
                     break  # Only use the first matching pattern
 
         return issues
@@ -805,8 +895,8 @@ class CompletionMisjudgmentDetector:
         #   "including login, logout, and token refresh"
         #   "for CSV, JSON, and PDF formats"
         enum_patterns = [
-            r'(?:with|including|for|supporting|using|like)\s+(.+?)(?:\.|$)',
-            r'(?:implement|build|create|add|set up)\s+(.+?)(?:\.|$)',
+            r"(?:with|including|for|supporting|using|like)\s+(.+?)(?:\.|$)",
+            r"(?:implement|build|create|add|set up)\s+(.+?)(?:\.|$)",
         ]
 
         task_lower = task.lower()
@@ -818,20 +908,29 @@ class CompletionMisjudgmentDetector:
                 continue
             fragment = match.group(1)
             # Split on commas and "and"/"or"
-            parts = re.split(r',\s*|\s+(?:and|or)\s+', fragment)
+            parts = re.split(r",\s*|\s+(?:and|or)\s+", fragment)
             # v2.2: Strip residual leading "and "/"or " conjunctions that
             # survive comma-first splits (e.g. "disk, and request metrics"
             # → ["disk", "and request metrics"] → ["disk", "request metrics"]).
             cleaned = []
             for p in parts:
                 s = p.strip()
-                s = re.sub(r'^(?:and|or)\s+', '', s)
+                s = re.sub(r"^(?:and|or)\s+", "", s)
                 cleaned.append(s)
             # Filter to meaningful items (2+ chars, not common filler words)
             items = [
-                s for s in cleaned
-                if len(s) >= 2 and s not in (
-                    'the', 'a', 'an', 'all', 'each', 'every', 'other',
+                s
+                for s in cleaned
+                if len(s) >= 2
+                and s
+                not in (
+                    "the",
+                    "a",
+                    "an",
+                    "all",
+                    "each",
+                    "every",
+                    "other",
                 )
             ]
             if len(items) >= 3:
@@ -839,18 +938,19 @@ class CompletionMisjudgmentDetector:
                 if found < len(items):
                     missing = [i for i in items if i not in output_lower]
                     severity = (
-                        CompletionSeverity.SEVERE if found == 0
-                        else CompletionSeverity.MODERATE
+                        CompletionSeverity.SEVERE if found == 0 else CompletionSeverity.MODERATE
                     )
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                        description=(
-                            f"Task enumerates {len(items)} items but output "
-                            f"only covers {found}: missing {', '.join(missing[:3])}"
-                        ),
-                        severity=severity,
-                        evidence=f"items={items}, found={found}",
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                            description=(
+                                f"Task enumerates {len(items)} items but output "
+                                f"only covers {found}: missing {', '.join(missing[:3])}"
+                            ),
+                            severity=severity,
+                            evidence=f"items={items}, found={found}",
+                        )
+                    )
                     break  # One match is enough
 
         return issues
@@ -859,14 +959,28 @@ class CompletionMisjudgmentDetector:
     # Subtask name → status inference
     # -----------------------------------------------------------------
     _STEM_SUFFIXES = (
-        "tion", "ing", "ment", "ness", "ity", "ed", "er",
-        "es", "ly", "al", "ous", "ive", "ful", "ize", "ise",
+        "tion",
+        "ing",
+        "ment",
+        "ness",
+        "ity",
+        "ed",
+        "er",
+        "es",
+        "ly",
+        "al",
+        "ous",
+        "ive",
+        "ful",
+        "ize",
+        "ise",
     )
 
     @staticmethod
     def _stem_word(word: str) -> str:
         """Minimal suffix strip for subtask inference matching."""
         from pisama_detectors.detection.text_utils import strip_suffix
+
         if word.endswith("s") and len(word) >= 4:
             word = word[:-1]
         return strip_suffix(word, CompletionMisjudgmentDetector._STEM_SUFFIXES)
@@ -890,18 +1004,15 @@ class CompletionMisjudgmentDetector:
             List of ``{"name": ..., "status": "completed"|"pending"}`` dicts.
         """
         output_lower = agent_output.lower()
-        output_words = set(re.findall(r'[a-z]{3,}', output_lower))
+        output_words = set(re.findall(r"[a-z]{3,}", output_lower))
         stem = CompletionMisjudgmentDetector._stem_word
         output_stems = {stem(w) for w in output_words}
 
         result: List[Dict[str, Any]] = []
         for name in subtask_names:
-            parts = re.split(r'[_\s\-]+', name.lower())
+            parts = re.split(r"[_\s\-]+", name.lower())
             name_words = {w for w in parts if len(w) >= 3}
-            overlap = sum(
-                1 for w in name_words
-                if w in output_lower or stem(w) in output_stems
-            )
+            overlap = sum(1 for w in name_words if w in output_lower or stem(w) in output_stems)
             ratio = overlap / max(len(name_words), 1)
             status = "completed" if ratio >= 0.5 else "pending"
             # Check for negation near matched words
@@ -909,8 +1020,8 @@ class CompletionMisjudgmentDetector:
                 for w in name_words:
                     pos = output_lower.find(w)
                     if pos >= 0:
-                        ctx = output_lower[max(0, pos - 20):pos]
-                        if re.search(r'\bnot\s+(?:yet|currently)?\b', ctx):
+                        ctx = output_lower[max(0, pos - 20) : pos]
+                        if re.search(r"\bnot\s+(?:yet|currently)?\b", ctx):
                             status = "pending"
                             break
             result.append({"name": name, "status": status})
@@ -1043,7 +1154,9 @@ class CompletionMisjudgmentDetector:
         incomplete_subtasks = []
 
         if subtasks:
-            subtasks_completed, subtasks_total, incomplete_subtasks = self._analyze_subtasks(subtasks)
+            subtasks_completed, subtasks_total, incomplete_subtasks = self._analyze_subtasks(
+                subtasks
+            )
             if subtasks_total > 0:
                 subtask_ratio = subtasks_completed / subtasks_total
                 # v2.2: When statuses are inferred from names, clip the
@@ -1072,7 +1185,9 @@ class CompletionMisjudgmentDetector:
         unmet_criteria = []
 
         if criteria:
-            criteria_met, criteria_total, unmet_criteria = self._check_criteria_met(criteria, agent_output)
+            criteria_met, criteria_total, unmet_criteria = self._check_criteria_met(
+                criteria, agent_output
+            )
             if criteria_total > 0:
                 criteria_ratio = criteria_met / criteria_total
                 completion_ratio = min(completion_ratio, criteria_ratio)
@@ -1087,12 +1202,14 @@ class CompletionMisjudgmentDetector:
                 if found_outputs < len(expected_outputs):
                     missing = [e for e in expected_outputs if e.lower() not in output_lower]
                     for m in missing[:3]:  # Top 3 missing
-                        issues.append(CompletionIssue(
-                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                            description=f"Expected output missing: {m}",
-                            severity=CompletionSeverity.MODERATE,
-                            missing_element=m,
-                        ))
+                        issues.append(
+                            CompletionIssue(
+                                issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                                description=f"Expected output missing: {m}",
+                                severity=CompletionSeverity.MODERATE,
+                                missing_element=m,
+                            )
+                        )
 
         # Detect misjudgment
         # v2.3: When subtask completion was computed from name-inference
@@ -1111,31 +1228,37 @@ class CompletionMisjudgmentDetector:
                 and not qualifiers
             ):
                 premature_severity = CompletionSeverity.MODERATE
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.PREMATURE_COMPLETION,
-                description=f"Agent claimed completion at {completion_ratio:.0%} actual progress",
-                severity=premature_severity,
-                evidence=f"Completion ratio: {completion_ratio:.2f}",
-            ))
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.PREMATURE_COMPLETION,
+                    description=f"Agent claimed completion at {completion_ratio:.0%} actual progress",
+                    severity=premature_severity,
+                    evidence=f"Completion ratio: {completion_ratio:.2f}",
+                )
+            )
 
         # Check for incomplete markers with completion claim
         if completion_claimed and incomplete_markers:
             for marker, marker_type, context in incomplete_markers[:3]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
-                    description=f"Incomplete marker found despite completion claim: {marker}",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
+                        description=f"Incomplete marker found despite completion claim: {marker}",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # Check for errors with completion claim
         if completion_claimed and errors:
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.FALSE_SUCCESS_CLAIM,
-                description=f"Errors detected despite completion claim ({len(errors)} error mentions)",
-                severity=CompletionSeverity.SEVERE,
-                evidence=errors[0] if errors else None,
-            ))
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.FALSE_SUCCESS_CLAIM,
+                    description=f"Errors detected despite completion claim ({len(errors)} error mentions)",
+                    severity=CompletionSeverity.SEVERE,
+                    evidence=errors[0] if errors else None,
+                )
+            )
 
         # Check for incomplete subtasks with completion claim.
         # v2.2: When subtask statuses are inferred from names (heuristic
@@ -1153,51 +1276,61 @@ class CompletionMisjudgmentDetector:
                 if len(incomplete_subtasks) < 2 and pending_ratio < 0.4:
                     fire_ignored = False
             if fire_ignored:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.IGNORED_SUBTASKS,
-                    description=f"{len(incomplete_subtasks)} subtasks incomplete despite completion claim",
-                    severity=CompletionSeverity.SEVERE,
-                    missing_element=", ".join(incomplete_subtasks[:3]),
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.IGNORED_SUBTASKS,
+                        description=f"{len(incomplete_subtasks)} subtasks incomplete despite completion claim",
+                        severity=CompletionSeverity.SEVERE,
+                        missing_element=", ".join(incomplete_subtasks[:3]),
+                    )
+                )
 
         # Check for unmet criteria with completion claim
         if completion_claimed and unmet_criteria:
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.MISSED_CRITERIA,
-                description=f"{len(unmet_criteria)} success criteria not met",
-                severity=CompletionSeverity.MODERATE,
-                missing_element=unmet_criteria[0] if unmet_criteria else None,
-            ))
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.MISSED_CRITERIA,
+                    description=f"{len(unmet_criteria)} success criteria not met",
+                    severity=CompletionSeverity.MODERATE,
+                    missing_element=unmet_criteria[0] if unmet_criteria else None,
+                )
+            )
 
         # v1.1: Check for partial completion with quantitative requirement
         if has_quant_req and partial_indicators and completion_claimed:
             for indicator, indicator_type, context in partial_indicators[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Task requires 100% but output indicates partial: '{indicator}'",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Task requires 100% but output indicates partial: '{indicator}'",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # v1.1: Check for uncertainty qualifiers with completion claim
         if qualifiers and completion_claimed:
             for qualifier, qualifier_type, context in qualifiers[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
-                    description=f"Uncertainty qualifier suggests incomplete: '{qualifier}'",
-                    severity=CompletionSeverity.MINOR,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
+                        description=f"Uncertainty qualifier suggests incomplete: '{qualifier}'",
+                        severity=CompletionSeverity.MINOR,
+                        evidence=context,
+                    )
+                )
 
         # v1.2: Check for planned/future work (indicates incomplete even with completion claim)
         if planned_work and completion_claimed:
             for indicator, indicator_type, context in planned_work[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PREMATURE_COMPLETION,
-                    description=f"Work marked as planned/future but completion claimed: '{indicator}'",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PREMATURE_COMPLETION,
+                        description=f"Work marked as planned/future but completion claimed: '{indicator}'",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # v1.2: For quantitative requirements, detect failure even without explicit claim
         # If task requires "all" and output shows partial work, that's a failure
@@ -1205,59 +1338,71 @@ class CompletionMisjudgmentDetector:
             # Check if there are partial indicators or qualifiers
             if partial_indicators:
                 for indicator, indicator_type, context in partial_indicators[:2]:
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                        description=f"Task requires 100% completion but partial work indicated: '{indicator}'",
-                        severity=CompletionSeverity.MODERATE,
-                        evidence=context,
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                            description=f"Task requires 100% completion but partial work indicated: '{indicator}'",
+                            severity=CompletionSeverity.MODERATE,
+                            evidence=context,
+                        )
+                    )
             if qualifiers:
                 for qualifier, qualifier_type, context in qualifiers[:2]:
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
-                        description=f"Task requires certainty but uncertainty expressed: '{qualifier}'",
-                        severity=CompletionSeverity.MODERATE,
-                        evidence=context,
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
+                            description=f"Task requires certainty but uncertainty expressed: '{qualifier}'",
+                            severity=CompletionSeverity.MODERATE,
+                            evidence=context,
+                        )
+                    )
             # v1.2: Progress language without completion = not done
             if has_progress_language:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PREMATURE_COMPLETION,
-                    description="Task requires 100% but uses progress language (implies ongoing work)",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence="Progress language detected without explicit completion claim",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PREMATURE_COMPLETION,
+                        description="Task requires 100% but uses progress language (implies ongoing work)",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence="Progress language detected without explicit completion claim",
+                    )
+                )
 
         # v1.3: Check for JSON incomplete indicators with completion claim
         if completion_claimed and json_incomplete:
             for indicator, indicator_type, context in json_incomplete[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"JSON output shows incomplete items: '{indicator}'",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"JSON output shows incomplete items: '{indicator}'",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # v1.3: Check for numeric ratios showing incomplete (with or without completion claim)
         if numeric_ratio and has_quant_req and not is_scoped_task:
             completed, total, ratio = numeric_ratio
             if ratio < 1.0:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Task requires 100% but output shows {completed}/{total} ({ratio*100:.0f}%)",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=f"Numeric ratio detected: {completed}/{total}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Task requires 100% but output shows {completed}/{total} ({ratio * 100:.0f}%)",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=f"Numeric ratio detected: {completed}/{total}",
+                    )
+                )
 
         # v1.3: JSON incomplete without explicit claim but with quantitative requirement
         if json_incomplete and has_quant_req and not is_scoped_task and not completion_claimed:
             for indicator, indicator_type, context in json_incomplete[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Task requires 100% but JSON shows incomplete: '{indicator}'",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Task requires 100% but JSON shows incomplete: '{indicator}'",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # v1.7: Detect deferred/incomplete work without explicit completion claim
         # Agents that say "X is on the backlog" or "not yet configured" are
@@ -1267,20 +1412,24 @@ class CompletionMisjudgmentDetector:
             if planned_work and any(p[1] == "deferred_work" for p in planned_work):
                 deferred = [p for p in planned_work if p[1] == "deferred_work"]
                 for indicator, _, context in deferred[:2]:
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                        description=f"Work explicitly deferred: '{indicator}'",
-                        severity=CompletionSeverity.MODERATE,
-                        evidence=context,
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                            description=f"Work explicitly deferred: '{indicator}'",
+                            severity=CompletionSeverity.MODERATE,
+                            evidence=context,
+                        )
+                    )
             if incomplete_markers and (partial_indicators or planned_work):
                 for marker, marker_type, context in incomplete_markers[:2]:
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
-                        description=f"Incomplete marker without completion claim: '{marker}'",
-                        severity=CompletionSeverity.MINOR,
-                        evidence=context,
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.INCOMPLETE_VERIFICATION,
+                            description=f"Incomplete marker without completion claim: '{marker}'",
+                            severity=CompletionSeverity.MINOR,
+                            evidence=context,
+                        )
+                    )
 
         # v2.0: Detect truncated output — output that ends mid-code or mid-sentence
         # is clearly incomplete. This is a strong signal (SEVERE) because the
@@ -1288,51 +1437,60 @@ class CompletionMisjudgmentDetector:
         if len(agent_output) > 500:
             tail = agent_output[-30:].rstrip()
             # Truncated if ends with "..." (explicit truncation marker)
-            is_truncated = tail.endswith('...')
+            is_truncated = tail.endswith("...")
             if is_truncated:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description="Output appears truncated (ends with ellipsis)",
-                    severity=CompletionSeverity.SEVERE,
-                    evidence=f"Output tail: ...{tail}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description="Output appears truncated (ends with ellipsis)",
+                        severity=CompletionSeverity.SEVERE,
+                        evidence=f"Output tail: ...{tail}",
+                    )
+                )
 
         # v2.1: Task complexity vs output brevity — complex multi-requirement
         # tasks with suspiciously short outputs suggest incomplete delivery
         if completion_claimed and not is_scoped_task:
-            task_requirements = sum(1 for kw in [
-                "and", "also", "additionally", "furthermore", "plus",
-            ] if kw in task.lower())
+            task_requirements = sum(
+                1
+                for kw in [
+                    "and",
+                    "also",
+                    "additionally",
+                    "furthermore",
+                    "plus",
+                ]
+                if kw in task.lower()
+            )
             task_requirement_count = max(1, task_requirements + 1)
             output_word_count = len(agent_output.split())
             # Expect ~50 words per requirement minimum
             if task_requirement_count >= 3 and output_word_count < task_requirement_count * 40:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Task has {task_requirement_count} requirements but output is only {output_word_count} words",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=f"requirements~={task_requirement_count}, words={output_word_count}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Task has {task_requirement_count} requirements but output is only {output_word_count} words",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=f"requirements~={task_requirement_count}, words={output_word_count}",
+                    )
+                )
 
         # v2.2b: Short output claiming readiness for a multi-subtask task —
         # agent says "X is ready / completed successfully" in < 40 words for a
         # task with 3+ subtasks. This is an implicit false-completion signal
         # because the output can't plausibly cover the subtask set.
-        if (
-            vague_readiness
-            and subtask_count >= 3
-            and output_word_count < 40
-            and not is_scoped_task
-        ):
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.PREMATURE_COMPLETION,
-                description=(
-                    f"Vague readiness claim in {output_word_count}-word output "
-                    f"for task with {subtask_count} subtasks"
-                ),
-                severity=CompletionSeverity.MODERATE,
-                evidence="vague_readiness + short_output",
-            ))
+        if vague_readiness and subtask_count >= 3 and output_word_count < 40 and not is_scoped_task:
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.PREMATURE_COMPLETION,
+                    description=(
+                        f"Vague readiness claim in {output_word_count}-word output "
+                        f"for task with {subtask_count} subtasks"
+                    ),
+                    severity=CompletionSeverity.MODERATE,
+                    evidence="vague_readiness + short_output",
+                )
+            )
 
         # v2.2d: External-grader criteria — entries from benchmark datasets
         # (ALFRED/ARB/SWE-bench) use "Complete: <task>" or "Agent resolves..."
@@ -1345,7 +1503,9 @@ class CompletionMisjudgmentDetector:
         if success_criteria and len(success_criteria) == 1:
             single = success_criteria[0].lower()
             if single.startswith("complete:") or single.strip() in (
-                "completed", "complete", "success"
+                "completed",
+                "complete",
+                "success",
             ):
                 is_external_grader = True
             elif single.startswith("agent resolves"):
@@ -1362,43 +1522,73 @@ class CompletionMisjudgmentDetector:
             # the agent the benefit of the doubt on direct answers). If
             # overlap is very low, treat as incomplete.
             task_nouns = set(
-                w for w in re.findall(r'[a-z]{4,}', task.lower())
-                if w not in {
-                    'task', 'from', 'with', 'that', 'this', 'have', 'been',
-                    'agent', 'complete', 'completed', 'needs', 'should', 'must',
-                    'would', 'could', 'could', 'will', 'when', 'where', 'what',
-                    'conduct', 'create', 'build', 'implement', 'setup', 'set',
-                    'using', 'based', 'there', 'their', 'about', 'these', 'those',
+                w
+                for w in re.findall(r"[a-z]{4,}", task.lower())
+                if w
+                not in {
+                    "task",
+                    "from",
+                    "with",
+                    "that",
+                    "this",
+                    "have",
+                    "been",
+                    "agent",
+                    "complete",
+                    "completed",
+                    "needs",
+                    "should",
+                    "must",
+                    "would",
+                    "could",
+                    "could",
+                    "will",
+                    "when",
+                    "where",
+                    "what",
+                    "conduct",
+                    "create",
+                    "build",
+                    "implement",
+                    "setup",
+                    "set",
+                    "using",
+                    "based",
+                    "there",
+                    "their",
+                    "about",
+                    "these",
+                    "those",
                 }
             )
-            output_tokens = set(re.findall(r'[a-z]{4,}', agent_output.lower()))
+            output_tokens = set(re.findall(r"[a-z]{4,}", agent_output.lower()))
             if task_nouns:
                 overlap = len(task_nouns & output_tokens) / len(task_nouns)
                 if overlap < 0.25:
-                    issues.append(CompletionIssue(
-                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                        description=f"External-grader task but output has low task-noun overlap ({overlap:.0%})",
-                        severity=CompletionSeverity.MODERATE,
-                        evidence=f"overlap={overlap:.2f}",
-                    ))
+                    issues.append(
+                        CompletionIssue(
+                            issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                            description=f"External-grader task but output has low task-noun overlap ({overlap:.0%})",
+                            severity=CompletionSeverity.MODERATE,
+                            evidence=f"overlap={overlap:.2f}",
+                        )
+                    )
 
         # v2.2d: ARB grader — successful runs are short (median 4 steps);
         # failed runs exhaust many steps (median 29). Fire when step count
         # is high and no completion claim.
-        if (
-            is_arb_grader
-            and not completion_claimed
-            and not is_scoped_task
-        ):
-            step_nums = [int(m.group(1)) for m in re.finditer(r'Step\s+(\d+)', agent_output)]
+        if is_arb_grader and not completion_claimed and not is_scoped_task:
+            step_nums = [int(m.group(1)) for m in re.finditer(r"Step\s+(\d+)", agent_output)]
             max_step = max(step_nums) if step_nums else 0
             if max_step >= 15:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"ARB task exhausted {max_step} steps without completion",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=f"max_step={max_step}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"ARB task exhausted {max_step} steps without completion",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=f"max_step={max_step}",
+                    )
+                )
 
         # v2.2d: SWE-bench grader — successful runs include a final "submit"
         # action. Only fire when there's NO submit AND explicit problem/error
@@ -1417,38 +1607,48 @@ class CompletionMisjudgmentDetector:
             # any error/issue mention (swe_comp outputs frequently mention
             # "error" even in successful fixes while referring to the bug).
             has_blocking_tail = any(
-                p in tail_lower for p in (
-                    "cannot", "unable to", "still need", "not sure",
-                    "doesn't seem", "does not seem",
+                p in tail_lower
+                for p in (
+                    "cannot",
+                    "unable to",
+                    "still need",
+                    "not sure",
+                    "doesn't seem",
+                    "does not seem",
                 )
             )
             if not has_submit and has_blocking_tail:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description="SWE-bench task without submit action",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence="no_submit_action",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description="SWE-bench task without submit action",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence="no_submit_action",
+                    )
+                )
 
         # v2.2c: Explicit failure signal — agent admits failure
         if explicit_failure and not is_scoped_task:
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.FALSE_SUCCESS_CLAIM,
-                description="Agent explicitly admits failure/incomplete work",
-                severity=CompletionSeverity.SEVERE,
-                evidence="explicit_failure pattern matched",
-            ))
-
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.FALSE_SUCCESS_CLAIM,
+                    description="Agent explicitly admits failure/incomplete work",
+                    severity=CompletionSeverity.SEVERE,
+                    evidence="explicit_failure pattern matched",
+                )
+            )
 
         # v2.2: Blocker signal — partial delivery with external dependency
         if blockers and not is_scoped_task:
             for indicator, btype, context in blockers[:2]:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.PARTIAL_DELIVERY,
-                    description=f"Agent deferred work via blocker: '{indicator}'",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=context,
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.PARTIAL_DELIVERY,
+                        description=f"Agent deferred work via blocker: '{indicator}'",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=context,
+                    )
+                )
 
         # v1.5: Detect structural incompleteness (e.g., fewer list items than requested)
         structural_issues = self._detect_structural_incompleteness(task, agent_output)
@@ -1469,35 +1669,31 @@ class CompletionMisjudgmentDetector:
         # check entirely when subtasks were name-inferred AND the analyzer
         # already saw them all as "completed" — that's strong signal of
         # coverage and the raw-substring check adds FPs via tokenization.
-        if (
-            subtasks and len(subtasks) > 1 and completion_claimed
-            and not incomplete_subtasks
-        ):
+        if subtasks and len(subtasks) > 1 and completion_claimed and not incomplete_subtasks:
             subtask_names = [
                 s.get("name", s.get("description", "")) if isinstance(s, dict) else str(s)
                 for s in subtasks
             ]
             output_lower = agent_output.lower()
-            output_words = set(re.findall(r'[a-z]{3,}', output_lower))
+            output_words = set(re.findall(r"[a-z]{3,}", output_lower))
             output_stems = {self._stem_word(w) for w in output_words}
             mentioned = 0
             for st in subtask_names:
-                words = [w for w in re.split(r'[_\s\-]+', st.lower()) if len(w) >= 3]
+                words = [w for w in re.split(r"[_\s\-]+", st.lower()) if len(w) >= 3]
                 if not words:
                     continue
-                if any(
-                    w in output_lower or self._stem_word(w) in output_stems
-                    for w in words
-                ):
+                if any(w in output_lower or self._stem_word(w) in output_stems for w in words):
                     mentioned += 1
             coverage = mentioned / len(subtask_names) if subtask_names else 1.0
             if coverage < 0.4:
-                issues.append(CompletionIssue(
-                    issue_type=CompletionIssueType.IGNORED_SUBTASKS,
-                    description=f"Agent claims completion but only mentions {mentioned}/{len(subtask_names)} subtasks ({coverage:.0%} coverage)",
-                    severity=CompletionSeverity.MODERATE,
-                    evidence=f"subtask_coverage={coverage:.2f}",
-                ))
+                issues.append(
+                    CompletionIssue(
+                        issue_type=CompletionIssueType.IGNORED_SUBTASKS,
+                        description=f"Agent claims completion but only mentions {mentioned}/{len(subtask_names)} subtasks ({coverage:.0%} coverage)",
+                        severity=CompletionSeverity.MODERATE,
+                        evidence=f"subtask_coverage={coverage:.2f}",
+                    )
+                )
 
         # v1.6: Completion by absence — if task has explicit criteria
         # and output addresses fewer than a third, flag even without claim.
@@ -1506,35 +1702,34 @@ class CompletionMisjudgmentDetector:
         # is noisy; firing on 49% coverage with 2 criteria (i.e. 1/2 missing)
         # produced many FPs on narrative outputs that implicitly cover
         # criteria using synonyms.
-        if (
-            criteria_total >= 3
-            and criteria_met < criteria_total * 0.34
-            and not is_scoped_task
-        ):
-            issues.append(CompletionIssue(
-                issue_type=CompletionIssueType.MISSED_CRITERIA,
-                description=f"Output addresses only {criteria_met}/{criteria_total} success criteria",
-                severity=CompletionSeverity.MODERATE,
-                evidence=f"Unmet: {', '.join(unmet_criteria[:3])}",
-            ))
+        if criteria_total >= 3 and criteria_met < criteria_total * 0.34 and not is_scoped_task:
+            issues.append(
+                CompletionIssue(
+                    issue_type=CompletionIssueType.MISSED_CRITERIA,
+                    description=f"Output addresses only {criteria_met}/{criteria_total} success criteria",
+                    severity=CompletionSeverity.MODERATE,
+                    evidence=f"Unmet: {', '.join(unmet_criteria[:3])}",
+                )
+            )
 
         # v1.2: Reduce false positives for scoped tasks
         if is_scoped_task and issues:
             # Filter out minor issues for intentionally scoped tasks
-            issues = [i for i in issues if i.severity in [
-                CompletionSeverity.SEVERE, CompletionSeverity.CRITICAL
-            ]]
+            issues = [
+                i
+                for i in issues
+                if i.severity in [CompletionSeverity.SEVERE, CompletionSeverity.CRITICAL]
+            ]
 
         # v1.4: Ensemble voting — require 2+ distinct signal categories
         # to trigger detection for non-critical issues.  A single signal
         # category (e.g., only "partial_indicators" without a completion
         # claim) produces too many false positives.
-        distinct_issue_types = set(i.issue_type for i in issues)
-        max_issue_severity = max(
-            (i.severity for i in issues), default=CompletionSeverity.NONE
-        )
+        set(i.issue_type for i in issues)
+        max_issue_severity = max((i.severity for i in issues), default=CompletionSeverity.NONE)
         if issues and max_issue_severity not in [
-            CompletionSeverity.SEVERE, CompletionSeverity.CRITICAL
+            CompletionSeverity.SEVERE,
+            CompletionSeverity.CRITICAL,
         ]:
             # Count distinct signal categories (not just issue types)
             signal_categories = set()
@@ -1566,17 +1761,11 @@ class CompletionMisjudgmentDetector:
                 signal_categories.add("vague_short_output")
             if explicit_failure:
                 signal_categories.add("explicit_failure")
-            if is_external_grader and any(
-                "External-grader" in i.description for i in issues
-            ):
+            if is_external_grader and any("External-grader" in i.description for i in issues):
                 signal_categories.add("external_grader_mismatch")
-            if is_swe_bench_grader and any(
-                "SWE-bench" in i.description for i in issues
-            ):
+            if is_swe_bench_grader and any("SWE-bench" in i.description for i in issues):
                 signal_categories.add("swe_bench_no_submit")
-            if is_arb_grader and any(
-                "ARB task exhausted" in i.description for i in issues
-            ):
+            if is_arb_grader and any("ARB task exhausted" in i.description for i in issues):
                 signal_categories.add("arb_step_exhaustion")
 
             # v1.5: Exempt quantitative-requirement cases: a single strong signal
@@ -1590,7 +1779,10 @@ class CompletionMisjudgmentDetector:
                 or "enumerated_coverage" in signal_categories
             )
             # Enumerated coverage + completion claim is always strong enough
-            if "enumerated_coverage" in signal_categories and "completion_claim" in signal_categories:
+            if (
+                "enumerated_coverage" in signal_categories
+                and "completion_claim" in signal_categories
+            ):
                 has_quant_exemption = True
             # v1.6: Completion claim + any incompleteness signal is strong
             if "completion_claim" in signal_categories and (
@@ -1601,7 +1793,10 @@ class CompletionMisjudgmentDetector:
             ):
                 has_quant_exemption = True
             # v1.6: Structural or enumerated coverage alone is strong evidence
-            if "structural_incompleteness" in signal_categories or "enumerated_coverage" in signal_categories:
+            if (
+                "structural_incompleteness" in signal_categories
+                or "enumerated_coverage" in signal_categories
+            ):
                 has_quant_exemption = True
             # v1.7: Deferred work (backlog, next sprint) alone is strong evidence
             if planned_work and any(p[1] == "deferred_work" for p in planned_work):
@@ -1664,18 +1859,20 @@ class CompletionMisjudgmentDetector:
             severity = CompletionSeverity.MINOR
 
         # Calculate confidence based on evidence strength and signal diversity
-        signal_count = sum([
-            bool(completion_claimed),
-            bool(incomplete_markers),
-            bool(errors),
-            bool(incomplete_subtasks),
-            bool(partial_indicators),
-            bool(planned_work),
-            bool(structural_issues),
-            bool(enum_issues),
-            bool(numeric_ratio and numeric_ratio[2] < 1.0),
-            bool(json_incomplete),
-        ])
+        signal_count = sum(
+            [
+                bool(completion_claimed),
+                bool(incomplete_markers),
+                bool(errors),
+                bool(incomplete_subtasks),
+                bool(partial_indicators),
+                bool(planned_work),
+                bool(structural_issues),
+                bool(enum_issues),
+                bool(numeric_ratio and numeric_ratio[2] < 1.0),
+                bool(json_incomplete),
+            ]
+        )
         if signal_count >= 4:
             base_confidence = 0.85
         elif signal_count >= 3:
@@ -1685,7 +1882,9 @@ class CompletionMisjudgmentDetector:
         else:
             base_confidence = 0.55
         # Boost for severe issues
-        if any(i.severity in (CompletionSeverity.SEVERE, CompletionSeverity.CRITICAL) for i in issues):
+        if any(
+            i.severity in (CompletionSeverity.SEVERE, CompletionSeverity.CRITICAL) for i in issues
+        ):
             base_confidence = max(base_confidence, 0.75)
         confidence = min(0.95, base_confidence)
 
@@ -1698,7 +1897,9 @@ class CompletionMisjudgmentDetector:
 
         # Suggest fix
         if any(i.issue_type == CompletionIssueType.IGNORED_SUBTASKS for i in issues):
-            suggested_fix = "Ensure agent tracks and completes all subtasks before claiming completion"
+            suggested_fix = (
+                "Ensure agent tracks and completes all subtasks before claiming completion"
+            )
         elif any(i.issue_type == CompletionIssueType.MISSED_CRITERIA for i in issues):
             suggested_fix = "Implement success criteria verification before completion"
         elif any(i.issue_type == CompletionIssueType.FALSE_SUCCESS_CLAIM for i in issues):

@@ -22,7 +22,7 @@ DETECTOR_NAME = "ConvergenceDetector"
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,10 @@ class ConvergenceDetector:
             return ConvergenceResult(
                 detected=False,
                 confidence=0.0,
-                evidence={"reason": "insufficient_data", "num_steps": len(metrics) if metrics else 0},
+                evidence={
+                    "reason": "insufficient_data",
+                    "num_steps": len(metrics) if metrics else 0,
+                },
             )
 
         values = [m["value"] for m in metrics]
@@ -124,18 +127,23 @@ class ConvergenceDetector:
         if direction == "minimize":
             best_value = min(values)
             best_idx = values.index(best_value)
-            is_better = lambda a, b: a < b
+
+            def is_better(a, b):
+                return a < b
         else:
             best_value = max(values)
             best_idx = values.index(best_value)
-            is_better = lambda a, b: a > b
 
         current_value = values[-1]
         steps_since_best = len(values) - 1 - best_idx
 
         # --- Check 1: Regression ---
         regression_issue = self._check_regression(
-            values, best_value, current_value, direction, steps_since_best,
+            values,
+            best_value,
+            current_value,
+            direction,
+            steps_since_best,
         )
         if regression_issue:
             issues.append(regression_issue)
@@ -156,12 +164,16 @@ class ConvergenceDetector:
             issues.append(divergence_issue)
 
         # Compute improvement rate over recent window
-        recent = values[-min(window, len(values)):]
+        recent = values[-min(window, len(values)) :]
         if len(recent) >= 2:
             if direction == "minimize":
-                improvement_rate = (recent[0] - recent[-1]) / max(abs(recent[0]), 1e-10) / len(recent)
+                improvement_rate = (
+                    (recent[0] - recent[-1]) / max(abs(recent[0]), 1e-10) / len(recent)
+                )
             else:
-                improvement_rate = (recent[-1] - recent[0]) / max(abs(recent[0]), 1e-10) / len(recent)
+                improvement_rate = (
+                    (recent[-1] - recent[0]) / max(abs(recent[0]), 1e-10) / len(recent)
+                )
         else:
             improvement_rate = 0.0
 
@@ -180,21 +192,25 @@ class ConvergenceDetector:
         # If more than 50% of steps reverse direction, the series oscillates
         # and the "improvement" is just lucky start/end alignment.
         reversals = sum(
-            1 for i in range(2, len(values))
-            if (values[i] - values[i-1]) * (values[i-1] - values[i-2]) < 0
+            1
+            for i in range(2, len(values))
+            if (values[i] - values[i - 1]) * (values[i - 1] - values[i - 2]) < 0
         )
         max_reversals = max(1, len(values) - 2)
         is_smooth = (reversals / max_reversals) < 0.60
         if overall_improvement > 0.30 and is_smooth:
             issues = [
-                i for i in issues
-                if i.failure_type not in (ConvergenceFailureType.REGRESSION, ConvergenceFailureType.THRASHING)
+                i
+                for i in issues
+                if i.failure_type
+                not in (ConvergenceFailureType.REGRESSION, ConvergenceFailureType.THRASHING)
             ]
         # When improvement is very high, tail-end plateau is expected
         # (metric has converged, further improvement diminishes)
         if overall_improvement > 0.50:
             issues = [
-                i for i in issues
+                i
+                for i in issues
                 if i.failure_type != ConvergenceFailureType.PLATEAU
                 or i.severity not in (ConvergenceSeverity.MINOR, ConvergenceSeverity.MODERATE)
             ]
@@ -300,8 +316,11 @@ class ConvergenceDetector:
                 f"{steps_since_best} steps after best."
             ),
             severity=severity,
-            evidence={"confidence": confidence, "regression_frac": regression_frac,
-                      "steps_since_best": steps_since_best},
+            evidence={
+                "confidence": confidence,
+                "regression_frac": regression_frac,
+                "steps_since_best": steps_since_best,
+            },
         )
 
     def _check_plateau(
@@ -311,7 +330,7 @@ class ConvergenceDetector:
         window: int,
     ) -> Optional[ConvergenceIssue]:
         """Check if metric has plateaued (no meaningful improvement)."""
-        recent = values[-min(window, len(values)):]
+        recent = values[-min(window, len(values)) :]
         if len(recent) < 2:
             return None
 
@@ -353,8 +372,12 @@ class ConvergenceDetector:
                 f"{stalled_steps}/{len(normalized_improvements)} steps showed no meaningful progress."
             ),
             severity=severity,
-            evidence={"confidence": confidence, "avg_improvement": avg_improvement,
-                      "stalled_steps": stalled_steps, "stall_ratio": stall_ratio},
+            evidence={
+                "confidence": confidence,
+                "avg_improvement": avg_improvement,
+                "stalled_steps": stalled_steps,
+                "stall_ratio": stall_ratio,
+            },
         )
 
     def _check_thrashing(
@@ -363,7 +386,7 @@ class ConvergenceDetector:
         window: int,
     ) -> Optional[ConvergenceIssue]:
         """Check if metric is oscillating (frequent direction changes)."""
-        recent = values[-min(window, len(values)):]
+        recent = values[-min(window, len(values)) :]
         if len(recent) < 3:
             return None
 
@@ -400,9 +423,12 @@ class ConvergenceDetector:
                 f"No consistent trend detected."
             ),
             severity=severity,
-            evidence={"confidence": confidence, "reversals": reversals,
-                      "reversal_ratio": reversal_ratio,
-                      "max_possible_reversals": max_possible_reversals},
+            evidence={
+                "confidence": confidence,
+                "reversals": reversals,
+                "reversal_ratio": reversal_ratio,
+                "max_possible_reversals": max_possible_reversals,
+            },
         )
 
     def _check_divergence(
@@ -412,7 +438,7 @@ class ConvergenceDetector:
         window: int,
     ) -> Optional[ConvergenceIssue]:
         """Check if metric is consistently moving in the wrong direction."""
-        recent = values[-min(window, len(values)):]
+        recent = values[-min(window, len(values)) :]
         if len(recent) < 3:
             return None
 
@@ -464,8 +490,12 @@ class ConvergenceDetector:
                 f"Total change: {total_change:.4f} ({normalized_change:.1%} of scale)."
             ),
             severity=severity,
-            evidence={"confidence": confidence, "wrong_ratio": wrong_ratio,
-                      "total_change": total_change, "normalized_change": normalized_change},
+            evidence={
+                "confidence": confidence,
+                "wrong_ratio": wrong_ratio,
+                "total_change": total_change,
+                "normalized_change": normalized_change,
+            },
         )
 
 

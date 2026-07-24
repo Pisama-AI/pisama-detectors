@@ -30,14 +30,14 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Dict, Any, Set
+from typing import List, Optional, Set
 
 # v1.6: Reasoning trace markers — if internal_state shows deliberate reasoning
 # process, the agent is meant to expose its thinking, not forward it verbatim.
 REASONING_MARKERS = [
-    r'\b(?:thinking|plan|approach|reasoning|strategy|analysis)\s*:',
-    r'\b(?:step \d|first|then|next|finally)\b.*\b(?:step \d|then|next|finally)\b',
-    r'\blet me (?:think|consider|analyze|plan)\b',
+    r"\b(?:thinking|plan|approach|reasoning|strategy|analysis)\s*:",
+    r"\b(?:step \d|first|then|next|finally)\b.*\b(?:step \d|then|next|finally)\b",
+    r"\blet me (?:think|consider|analyze|plan)\b",
 ]
 
 logger = logging.getLogger(__name__)
@@ -90,58 +90,58 @@ class InformationWithholdingDetector:
 
     # Critical information patterns that should be passed on
     CRITICAL_PATTERNS = [
-        (r'\b(error|failure|exception|bug|issue|problem)\b', "error_condition"),
-        (r'\b(warning|caution|alert|risk|danger)\b', "warning"),
-        (r'\b(critical|urgent|important|essential|crucial)\b', "priority_marker"),
-        (r'\b(security|vulnerability|exploit|breach)\b', "security_issue"),
-        (r'\b(deadline|due date|expires?|timeout)\b', "time_constraint"),
-        (r'\b(cost|price|fee|charge|expense)\s*[:=]?\s*\$?\d+', "financial_info"),
-        (r'\b(blocked|blocker|impediment|obstacle)\b', "blocker"),
-        (r'\b(deprecated|obsolete|outdated|legacy)\b', "deprecation"),
-        (r'\bnot\s+(?:working|functional|available|supported)\b', "unavailability"),
-        (r'\b(failed|unsuccessful|unable|cannot)\b', "failure_indicator"),
+        (r"\b(error|failure|exception|bug|issue|problem)\b", "error_condition"),
+        (r"\b(warning|caution|alert|risk|danger)\b", "warning"),
+        (r"\b(critical|urgent|important|essential|crucial)\b", "priority_marker"),
+        (r"\b(security|vulnerability|exploit|breach)\b", "security_issue"),
+        (r"\b(deadline|due date|expires?|timeout)\b", "time_constraint"),
+        (r"\b(cost|price|fee|charge|expense)\s*[:=]?\s*\$?\d+", "financial_info"),
+        (r"\b(blocked|blocker|impediment|obstacle)\b", "blocker"),
+        (r"\b(deprecated|obsolete|outdated|legacy)\b", "deprecation"),
+        (r"\bnot\s+(?:working|functional|available|supported)\b", "unavailability"),
+        (r"\b(failed|unsuccessful|unable|cannot)\b", "failure_indicator"),
     ]
 
     # v1.2: Importance weights for critical patterns (1.0 = critical, 0.0 = informational)
     CRITICAL_PATTERNS_WEIGHTED = [
-        (r'\b(error|failure|exception|bug)\b', "error_condition", 1.0),       # Critical
-        (r'\b(security|vulnerability|exploit|breach)\b', "security_issue", 1.0),  # Critical
-        (r'\b(blocked|blocker|impediment)\b', "blocker", 0.9),                # High
-        (r'\b(issue|problem)\b', "issue", 0.8),                               # High
-        (r'\b(warning|caution|alert|risk|danger)\b', "warning", 0.7),         # Medium
-        (r'\b(critical|urgent|important)\b', "priority_marker", 0.6),         # Context-dependent
-        (r'\b(deadline|due date|expires?|timeout)\b', "time_constraint", 0.5),  # Medium-low
-        (r'\b(cost|price|fee|charge|expense)\s*[:=]?\s*\$?\d+', "financial_info", 0.5),
-        (r'\b(deprecated|obsolete|outdated|legacy)\b', "deprecation", 0.4),   # Low
-        (r'\bnot\s+(?:working|functional|available|supported)\b', "unavailability", 0.6),
-        (r'\b(failed|unsuccessful|unable|cannot)\b', "failure_indicator", 0.7),
+        (r"\b(error|failure|exception|bug)\b", "error_condition", 1.0),  # Critical
+        (r"\b(security|vulnerability|exploit|breach)\b", "security_issue", 1.0),  # Critical
+        (r"\b(blocked|blocker|impediment)\b", "blocker", 0.9),  # High
+        (r"\b(issue|problem)\b", "issue", 0.8),  # High
+        (r"\b(warning|caution|alert|risk|danger)\b", "warning", 0.7),  # Medium
+        (r"\b(critical|urgent|important)\b", "priority_marker", 0.6),  # Context-dependent
+        (r"\b(deadline|due date|expires?|timeout)\b", "time_constraint", 0.5),  # Medium-low
+        (r"\b(cost|price|fee|charge|expense)\s*[:=]?\s*\$?\d+", "financial_info", 0.5),
+        (r"\b(deprecated|obsolete|outdated|legacy)\b", "deprecation", 0.4),  # Low
+        (r"\bnot\s+(?:working|functional|available|supported)\b", "unavailability", 0.6),
+        (r"\b(failed|unsuccessful|unable|cannot)\b", "failure_indicator", 0.7),
     ]
 
     # Patterns indicating negative findings
     NEGATIVE_FINDING_PATTERNS = [
-        r'\b(no|not|none|neither|never)\s+\w+',
-        r'\b(missing|absent|lacking|without)\b',
-        r'\b(incorrect|wrong|invalid|bad)\b',
-        r'\b(rejected|denied|refused|declined)\b',
-        r'\b(insufficient|inadequate|incomplete)\b',
+        r"\b(no|not|none|neither|never)\s+\w+",
+        r"\b(missing|absent|lacking|without)\b",
+        r"\b(incorrect|wrong|invalid|bad)\b",
+        r"\b(rejected|denied|refused|declined)\b",
+        r"\b(insufficient|inadequate|incomplete)\b",
     ]
 
     # Patterns indicating summarization/reduction
     SUMMARY_PATTERNS = [
-        r'\b(in summary|to summarize|in brief|briefly)\b',
-        r'\b(the main point|key takeaway|bottom line)\b',
-        r'\b(essentially|basically|simply put)\b',
-        r'\b(overall|in general|generally speaking)\b',
+        r"\b(in summary|to summarize|in brief|briefly)\b",
+        r"\b(the main point|key takeaway|bottom line)\b",
+        r"\b(essentially|basically|simply put)\b",
+        r"\b(overall|in general|generally speaking)\b",
     ]
 
     # v1.1: Tasks that explicitly request summary/list format (not withholding)
     SUMMARY_TASK_PATTERNS = [
-        r'\bsummar(?:y|ize|ise)\b',
-        r'\bbrief(?:ly)?\b',
-        r'\boverview\b',
-        r'\bkey\s+(?:points?|findings?|takeaways?)\b',
-        r'\bhighlights?\b',
-        r'\blist\b',
+        r"\bsummar(?:y|ize|ise)\b",
+        r"\bbrief(?:ly)?\b",
+        r"\boverview\b",
+        r"\bkey\s+(?:points?|findings?|takeaways?)\b",
+        r"\bhighlights?\b",
+        r"\blist\b",
     ]
 
     # v1.2: Expanded patterns for condensed output tasks
@@ -162,28 +162,36 @@ class InformationWithholdingDetector:
 
     # v1.2: Roles that are expected to summarize (not withholding)
     SUMMARIZING_ROLES = [
-        "manager", "coordinator", "reporter", "summarizer", "summary",
-        "lead", "pm", "director", "executive", "supervisor",
+        "manager",
+        "coordinator",
+        "reporter",
+        "summarizer",
+        "summary",
+        "lead",
+        "pm",
+        "director",
+        "executive",
+        "supervisor",
     ]
 
     # v1.1: Patterns indicating full information is accessible (not withholding)
     FULL_ACCESS_PATTERNS = [
-        r'\bsee\s+(?:full|complete|detailed)\b',
-        r'\bfull\s+(?:details?|report|analysis)\s+(?:at|in|available)\b',
-        r'\bmore\s+(?:details?|information)\s+(?:at|in|available)\b',
-        r'\blink(?:s|ed)?\s+(?:to|below|above)\b',
-        r'\b(?:attached|appendix|supplement)\b',
-        r'\brefer(?:ence)?\s+to\b',
-        r'\bfor\s+(?:more|additional|complete)\s+(?:details?|information)\b',
+        r"\bsee\s+(?:full|complete|detailed)\b",
+        r"\bfull\s+(?:details?|report|analysis)\s+(?:at|in|available)\b",
+        r"\bmore\s+(?:details?|information)\s+(?:at|in|available)\b",
+        r"\blink(?:s|ed)?\s+(?:to|below|above)\b",
+        r"\b(?:attached|appendix|supplement)\b",
+        r"\brefer(?:ence)?\s+to\b",
+        r"\bfor\s+(?:more|additional|complete)\s+(?:details?|information)\b",
     ]
 
     # v1.1: Patterns indicating organized/structured output
     STRUCTURED_OUTPUT_PATTERNS = [
-        r'(?:^|\n)\s*[-•*]\s+',  # Bullet points
-        r'(?:^|\n)\s*\d+[.)]\s+',  # Numbered list
-        r'(?:^|\n)\s*#{1,6}\s+',  # Markdown headers
+        r"(?:^|\n)\s*[-•*]\s+",  # Bullet points
+        r"(?:^|\n)\s*\d+[.)]\s+",  # Numbered list
+        r"(?:^|\n)\s*#{1,6}\s+",  # Markdown headers
         r'"[^"]+":\s*[{\[]',  # JSON structure
-        r'\n\s+\w+:\s+',  # Key-value pairs
+        r"\n\s+\w+:\s+",  # Key-value pairs
     ]
 
     def __init__(
@@ -265,7 +273,9 @@ class InformationWithholdingDetector:
             return True  # Can't determine, assume retained
 
         try:
-            from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+            from pisama_detectors.detection.shared_embedder import (
+                get_shared_embedder as get_embedder,
+            )
 
             embedder = get_embedder()
             if not embedder:
@@ -306,18 +316,101 @@ class InformationWithholdingDetector:
             return 0.0
 
         # Count substantive words (not stopwords)
-        stopwords = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-                     'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-                     'would', 'could', 'should', 'may', 'might', 'must', 'shall',
-                     'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by',
-                     'from', 'as', 'into', 'through', 'during', 'before', 'after',
-                     'above', 'below', 'between', 'under', 'again', 'further',
-                     'then', 'once', 'here', 'there', 'when', 'where', 'why',
-                     'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some',
-                     'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so',
-                     'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or',
-                     'because', 'until', 'while', 'this', 'that', 'these', 'those',
-                     'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which'}
+        stopwords = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "can",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "between",
+            "under",
+            "again",
+            "further",
+            "then",
+            "once",
+            "here",
+            "there",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "each",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "nor",
+            "not",
+            "only",
+            "own",
+            "same",
+            "so",
+            "than",
+            "too",
+            "very",
+            "just",
+            "and",
+            "but",
+            "if",
+            "or",
+            "because",
+            "until",
+            "while",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "what",
+            "which",
+        }
 
         substantive = sum(1 for w in words if w.lower() not in stopwords and len(w) > 2)
         return substantive / len(words)
@@ -327,15 +420,22 @@ class InformationWithholdingDetector:
         entities = set()
 
         # Numbers with units
-        numbers = re.findall(r'\b\d+(?:\.\d+)?(?:\s*(?:%|dollars?|USD|EUR|GB|MB|KB|ms|seconds?|minutes?|hours?|days?))?', text)
+        numbers = re.findall(
+            r"\b\d+(?:\.\d+)?(?:\s*(?:%|dollars?|USD|EUR|GB|MB|KB|ms|seconds?|minutes?|hours?|days?))?",
+            text,
+        )
         entities.update(numbers)
 
         # Capitalized terms (potential names/entities)
-        caps = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+        caps = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
         entities.update(caps)
 
         # Technical terms
-        tech = re.findall(r'\b(?:API|URL|HTTP|JSON|XML|SQL|SDK|REST|OAuth|JWT|AWS|GCP|Azure)\b', text, re.IGNORECASE)
+        tech = re.findall(
+            r"\b(?:API|URL|HTTP|JSON|XML|SQL|SDK|REST|OAuth|JWT|AWS|GCP|Azure)\b",
+            text,
+            re.IGNORECASE,
+        )
         entities.update(e.upper() for e in tech)
 
         # Quoted strings
@@ -360,7 +460,9 @@ class InformationWithholdingDetector:
             # Check if item or its context appears in output
             item_found = item.lower() in output_lower
             context_words = set(context.lower().split())
-            context_overlap = len(context_words & set(output_lower.split())) / max(len(context_words), 1)
+            context_overlap = len(context_words & set(output_lower.split())) / max(
+                len(context_words), 1
+            )
 
             if item_found or context_overlap > 0.5:
                 retained += 1
@@ -410,9 +512,7 @@ class InformationWithholdingDetector:
             task_context or "", internal_state
         )
         is_summarizing_role = self._is_summarizing_role(agent_role)
-        is_semantically_retained = self._semantic_information_retained(
-            internal_state, agent_output
-        )
+        is_semantically_retained = self._semantic_information_retained(internal_state, agent_output)
 
         # v1.2: More lenient thresholds for summarizing contexts
         effective_critical_threshold = self.critical_retention_threshold
@@ -420,21 +520,22 @@ class InformationWithholdingDetector:
 
         if is_summarizing_role or is_condensed_expected:
             effective_critical_threshold = 0.6  # Was 0.8
-            effective_detail_threshold = 0.4   # Was 0.6
+            effective_detail_threshold = 0.4  # Was 0.6
 
         # v1.6: Reasoning trace detection — if internal_state contains
         # deliberate reasoning markers, the agent is showing its process.
         # Reasoning traces are not meant to be forwarded verbatim.
         reasoning_marker_count = sum(
-            1 for pattern in REASONING_MARKERS
-            if re.search(pattern, internal_state, re.IGNORECASE)
+            1 for pattern in REASONING_MARKERS if re.search(pattern, internal_state, re.IGNORECASE)
         )
         if reasoning_marker_count >= 2:
             effective_critical_threshold *= 0.7  # More lenient
 
         # Extract critical items from internal state
         internal_critical = self._extract_critical_items(internal_state)
-        found, retained, missing_critical = self._check_item_retention(internal_critical, agent_output)
+        found, retained, missing_critical = self._check_item_retention(
+            internal_critical, agent_output
+        )
 
         # Check critical item retention
         if found > 0:
@@ -450,12 +551,14 @@ class InformationWithholdingDetector:
                 logger.debug("Critical items not keyword-matched but semantically retained")
             else:
                 for missed in missing_critical[:5]:  # Top 5 missing
-                    issues.append(WithholdingIssue(
-                        issue_type=WithholdingType.CRITICAL_OMISSION,
-                        withheld_info=missed,
-                        severity=WithholdingSeverity.SEVERE,
-                        description=f"Critical information not passed on: {missed}",
-                    ))
+                    issues.append(
+                        WithholdingIssue(
+                            issue_type=WithholdingType.CRITICAL_OMISSION,
+                            withheld_info=missed,
+                            severity=WithholdingSeverity.SEVERE,
+                            description=f"Critical information not passed on: {missed}",
+                        )
+                    )
 
         # Check for negative finding suppression
         internal_negatives = self._extract_negative_findings(internal_state)
@@ -464,12 +567,14 @@ class InformationWithholdingDetector:
         # v1.4: Reverted buffer to +2 — MINOR confidence fix handles FP/TP separation
         if len(internal_negatives) > len(output_negatives) + 2:
             suppressed_count = len(internal_negatives) - len(output_negatives)
-            issues.append(WithholdingIssue(
-                issue_type=WithholdingType.NEGATIVE_SUPPRESSION,
-                withheld_info=f"{suppressed_count} negative findings",
-                severity=WithholdingSeverity.MODERATE,
-                description=f"Agent suppressed {suppressed_count} negative findings from output",
-            ))
+            issues.append(
+                WithholdingIssue(
+                    issue_type=WithholdingType.NEGATIVE_SUPPRESSION,
+                    withheld_info=f"{suppressed_count} negative findings",
+                    severity=WithholdingSeverity.MODERATE,
+                    description=f"Agent suppressed {suppressed_count} negative findings from output",
+                )
+            )
 
         # Check entity retention
         internal_entities = self._extract_entities(internal_state)
@@ -480,42 +585,56 @@ class InformationWithholdingDetector:
             # v1.2: Use effective threshold
             if entity_retention < effective_detail_threshold:
                 lost_entities = internal_entities - output_entities
-                issues.append(WithholdingIssue(
-                    issue_type=WithholdingType.DETAIL_LOSS,
-                    withheld_info=f"{len(lost_entities)} entities/details",
-                    severity=WithholdingSeverity.MINOR,
-                    description=f"Lost {len(lost_entities)} specific details in output",
-                ))
+                issues.append(
+                    WithholdingIssue(
+                        issue_type=WithholdingType.DETAIL_LOSS,
+                        withheld_info=f"{len(lost_entities)} entities/details",
+                        severity=WithholdingSeverity.MINOR,
+                        description=f"Lost {len(lost_entities)} specific details in output",
+                    )
+                )
 
         # Check for over-summarization
         internal_density = self._calculate_information_density(internal_state)
         output_density = self._calculate_information_density(agent_output)
 
         if internal_density > 0 and output_density < internal_density * 0.5:
-            if re.search(r'|'.join(p for p in self.SUMMARY_PATTERNS), agent_output, re.IGNORECASE):
-                issues.append(WithholdingIssue(
-                    issue_type=WithholdingType.CONTEXT_STRIPPING,
-                    withheld_info="excessive summarization",
-                    severity=WithholdingSeverity.MINOR,
-                    description="Output significantly less detailed than internal state",
-                ))
+            if re.search(r"|".join(p for p in self.SUMMARY_PATTERNS), agent_output, re.IGNORECASE):
+                issues.append(
+                    WithholdingIssue(
+                        issue_type=WithholdingType.CONTEXT_STRIPPING,
+                        withheld_info="excessive summarization",
+                        severity=WithholdingSeverity.MINOR,
+                        description="Output significantly less detailed than internal state",
+                    )
+                )
 
         # v1.1: Reduce false positives based on task type and output characteristics
         if issues:
             # If task explicitly asks for summary/list, don't flag summarization as withholding
             # v1.2: Also check condensed output expectations and summarizing roles
             if is_summary_task or is_condensed_expected or is_summarizing_role:
-                issues = [i for i in issues if i.issue_type not in [
-                    WithholdingType.CONTEXT_STRIPPING,
-                    WithholdingType.DETAIL_LOSS,
-                ]]
+                issues = [
+                    i
+                    for i in issues
+                    if i.issue_type
+                    not in [
+                        WithholdingType.CONTEXT_STRIPPING,
+                        WithholdingType.DETAIL_LOSS,
+                    ]
+                ]
 
             # If output provides links/references to full info, don't flag as withholding
             if has_full_access:
-                issues = [i for i in issues if i.severity in [
-                    WithholdingSeverity.SEVERE,
-                    WithholdingSeverity.CRITICAL,
-                ]]  # Only keep critical issues
+                issues = [
+                    i
+                    for i in issues
+                    if i.severity
+                    in [
+                        WithholdingSeverity.SEVERE,
+                        WithholdingSeverity.CRITICAL,
+                    ]
+                ]  # Only keep critical issues
 
             # If output is well-structured, reduce severity of detail loss
             if is_structured:

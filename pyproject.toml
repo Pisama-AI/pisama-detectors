@@ -46,6 +46,7 @@ full = [
 ]
 dev = [
     "pytest>=7.0.0",
+    "ruff>=0.4.0",
 ]
 
 [project.urls]
@@ -57,3 +58,23 @@ Changelog = "https://github.com/Pisama-AI/pisama-detectors/blob/main/CHANGELOG.m
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pisama_detectors"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/pisama_detectors/detection/completion.py" = ["E402"]
+"src/pisama_detectors/detection/context_pressure.py" = ["E402"]
+"src/pisama_detectors/detection/convergence.py" = ["E402"]
+"src/pisama_detectors/detection/corruption.py" = ["E402"]
+"src/pisama_detectors/detection/openclaw/elevated_risk_detector.py" = ["E402"]
+"src/pisama_detectors/detection/specification.py" = ["E402"]
+"src/pisama_detectors/detection/withholding.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

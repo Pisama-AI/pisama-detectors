@@ -17,13 +17,13 @@ Detects:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,33 +53,59 @@ class TurnAwareConversationHistoryDetector(TurnAwareDetector):
 
     # Context loss indicators - phrases suggesting forgotten context
     CONTEXT_LOSS_INDICATORS = [
-        "what programming language", "what technology should",
-        "what did we decide", "remind me what",
-        "what was the original", "forgot you said",
-        "what framework", "which database",
-        "what approach", "what method should",
-        "didn't know you wanted", "wasn't aware",
+        "what programming language",
+        "what technology should",
+        "what did we decide",
+        "remind me what",
+        "what was the original",
+        "forgot you said",
+        "what framework",
+        "which database",
+        "what approach",
+        "what method should",
+        "didn't know you wanted",
+        "wasn't aware",
     ]
 
     # Contradiction indicators - phrases suggesting reversal
     CONTRADICTION_INDICATORS = [
-        "changed my mind", "override that",
-        "actually, not that", "ignore what i said",
-        "let me correct", "wait, no",
-        "scratch that", "forget what i said",
-        "disregard the previous", "ignore my earlier",
+        "changed my mind",
+        "override that",
+        "actually, not that",
+        "ignore what i said",
+        "let me correct",
+        "wait, no",
+        "scratch that",
+        "forget what i said",
+        "disregard the previous",
+        "ignore my earlier",
     ]
 
     # Reset indicators - phrases suggesting fresh start
     RESET_PATTERNS = [
-        "let's start over", "from the beginning",
-        "as if we just started", "fresh start",
-        "start from scratch", "begin again",
-        "reset everything", "clear the slate",
+        "let's start over",
+        "from the beginning",
+        "as if we just started",
+        "fresh start",
+        "start from scratch",
+        "begin again",
+        "reset everything",
+        "clear the slate",
     ]
 
     # Question words for detecting repeated questions
-    QUESTION_WORDS = ["what", "how", "when", "where", "why", "which", "who", "can", "could", "should"]
+    QUESTION_WORDS = [
+        "what",
+        "how",
+        "when",
+        "where",
+        "why",
+        "which",
+        "who",
+        "can",
+        "could",
+        "should",
+    ]
 
     def __init__(self, min_turns: int = 3, min_issues_to_flag: int = 2):
         self.min_turns = min_turns
@@ -176,12 +202,14 @@ class TurnAwareConversationHistoryDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.CONTEXT_LOSS_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "context_loss",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Context loss indicator: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "context_loss",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Context loss indicator: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:3]
 
@@ -192,12 +220,14 @@ class TurnAwareConversationHistoryDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.CONTRADICTION_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "contradiction",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Decision contradicted: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "contradiction",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Decision contradicted: '{indicator}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -212,12 +242,14 @@ class TurnAwareConversationHistoryDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for pattern in self.RESET_PATTERNS:
                 if pattern in content_lower:
-                    issues.append({
-                        "type": "context_reset",
-                        "turns": [turn.turn_number],
-                        "pattern": pattern,
-                        "description": f"Conversation reset: '{pattern}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "context_reset",
+                            "turns": [turn.turn_number],
+                            "pattern": pattern,
+                            "description": f"Conversation reset: '{pattern}'",
+                        }
+                    )
                     break
         return issues[:2]
 
@@ -238,18 +270,20 @@ class TurnAwareConversationHistoryDetector(TurnAwareDetector):
                 if word in content_lower:
                     # Use first 50 chars after question word as topic signature
                     idx = content_lower.find(word)
-                    topic = content_lower[idx:idx+50]
+                    topic = content_lower[idx : idx + 50]
 
                     if topic in question_topics:
                         # Found repeated question
                         first_turn = question_topics[topic]
                         if turn.turn_number - first_turn > 2:  # At least 2 turns apart
-                            issues.append({
-                                "type": "repeated_question",
-                                "turns": [turn.turn_number],
-                                "first_asked": first_turn,
-                                "description": f"Question repeated (first asked at turn {first_turn})",
-                            })
+                            issues.append(
+                                {
+                                    "type": "repeated_question",
+                                    "turns": [turn.turn_number],
+                                    "first_asked": first_turn,
+                                    "description": f"Question repeated (first asked at turn {first_turn})",
+                                }
+                            )
                     else:
                         question_topics[topic] = turn.turn_number
                     break

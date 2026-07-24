@@ -11,13 +11,13 @@ Analyzes multi-agent conversations for:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,25 +43,53 @@ class TurnAwareCoordinationFailureDetector(TurnAwareDetector):
     # Conflict indicators - stronger signals of inter-agent disagreement
     # Tuned to reduce FP from common words like "however", "error"
     CONFLICT_INDICATORS = [
-        "i disagree", "that's wrong", "you made a mistake",
-        "let me correct", "that's not correct", "should not have",
-        "you shouldn't", "incorrect approach", "wrong approach",
-        "redo this", "start over", "conflicting with", "contradicts",
-        "not what i asked", "misunderstood", "that's incorrect",
+        "i disagree",
+        "that's wrong",
+        "you made a mistake",
+        "let me correct",
+        "that's not correct",
+        "should not have",
+        "you shouldn't",
+        "incorrect approach",
+        "wrong approach",
+        "redo this",
+        "start over",
+        "conflicting with",
+        "contradicts",
+        "not what i asked",
+        "misunderstood",
+        "that's incorrect",
     ]
 
     # Redundancy indicators - signs of duplicate work
     REDUNDANCY_INDICATORS = [
-        "already done", "already completed", "duplicate", "same as",
-        "just did that", "already implemented", "implemented earlier",
-        "was done by", "redundant", "again?", "repeated",
+        "already done",
+        "already completed",
+        "duplicate",
+        "same as",
+        "just did that",
+        "already implemented",
+        "implemented earlier",
+        "was done by",
+        "redundant",
+        "again?",
+        "repeated",
     ]
 
     # Handoff phrases - expecting input from others
     HANDOFF_PHRASES = [
-        "waiting for", "need input from", "once you", "after you",
-        "please provide", "send me", "pass to", "hand off",
-        "your turn", "over to you", "expecting", "depends on",
+        "waiting for",
+        "need input from",
+        "once you",
+        "after you",
+        "please provide",
+        "send me",
+        "pass to",
+        "hand off",
+        "your turn",
+        "over to you",
+        "expecting",
+        "depends on",
     ]
 
     def __init__(
@@ -189,13 +217,15 @@ class TurnAwareCoordinationFailureDetector(TurnAwareDetector):
                     for j in range(max(0, i - 3), i):
                         prev_turn = agent_turns[j]
                         if prev_turn.participant_id != turn.participant_id:
-                            issues.append({
-                                "type": "conflict",
-                                "turns": [prev_turn.turn_number, turn.turn_number],
-                                "indicator": indicator,
-                                "agents": [prev_turn.participant_id, turn.participant_id],
-                                "description": f"Potential conflict: agent uses '{indicator}'",
-                            })
+                            issues.append(
+                                {
+                                    "type": "conflict",
+                                    "turns": [prev_turn.turn_number, turn.turn_number],
+                                    "indicator": indicator,
+                                    "agents": [prev_turn.participant_id, turn.participant_id],
+                                    "description": f"Potential conflict: agent uses '{indicator}'",
+                                }
+                            )
                             break
                     break  # Only one issue per turn
         return issues[:3]  # Limit to first 3
@@ -209,35 +239,37 @@ class TurnAwareCoordinationFailureDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.REDUNDANCY_INDICATORS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "redundancy",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Redundancy indicator: '{indicator}'",
-                    })
+                    issues.append(
+                        {
+                            "type": "redundancy",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Redundancy indicator: '{indicator}'",
+                        }
+                    )
                     break
 
         # Check for similar content from different agents
         for i, turn1 in enumerate(agent_turns):
-            for j, turn2 in enumerate(agent_turns[i + 1:], i + 1):
+            for j, turn2 in enumerate(agent_turns[i + 1 :], i + 1):
                 if turn1.participant_id != turn2.participant_id:
                     similarity = self._content_similarity(turn1.content, turn2.content)
                     if similarity > self.redundancy_threshold:
-                        issues.append({
-                            "type": "redundant_work",
-                            "turns": [turn1.turn_number, turn2.turn_number],
-                            "similarity": similarity,
-                            "agents": [turn1.participant_id, turn2.participant_id],
-                            "description": f"Similar work by different agents ({similarity:.0%} overlap)",
-                        })
+                        issues.append(
+                            {
+                                "type": "redundant_work",
+                                "turns": [turn1.turn_number, turn2.turn_number],
+                                "similarity": similarity,
+                                "agents": [turn1.participant_id, turn2.participant_id],
+                                "description": f"Similar work by different agents ({similarity:.0%} overlap)",
+                            }
+                        )
                         if len(issues) >= 3:
                             return issues
 
         return issues[:3]
 
-    def _detect_missed_handoffs(
-        self, agent_turns: List[TurnSnapshot], agents: set
-    ) -> List[Dict]:
+    def _detect_missed_handoffs(self, agent_turns: List[TurnSnapshot], agents: set) -> List[Dict]:
         """Detect missed handoffs where expected input never comes."""
         issues = []
 
@@ -254,19 +286,19 @@ class TurnAwareCoordinationFailureDetector(TurnAwareDetector):
                             break
 
                     if not handoff_addressed:
-                        issues.append({
-                            "type": "missed_handoff",
-                            "turns": [turn.turn_number],
-                            "phrase": phrase,
-                            "description": f"Handoff expected ('{phrase}') but not addressed",
-                        })
+                        issues.append(
+                            {
+                                "type": "missed_handoff",
+                                "turns": [turn.turn_number],
+                                "phrase": phrase,
+                                "description": f"Handoff expected ('{phrase}') but not addressed",
+                            }
+                        )
                         break
 
         return issues[:2]
 
-    def _detect_role_confusion(
-        self, agent_turns: List[TurnSnapshot], agents: set
-    ) -> List[Dict]:
+    def _detect_role_confusion(self, agent_turns: List[TurnSnapshot], agents: set) -> List[Dict]:
         """Detect role confusion where agents step outside their roles."""
         # Extract role names from agent IDs
         role_keywords = {}
@@ -288,28 +320,42 @@ class TurnAwareCoordinationFailureDetector(TurnAwareDetector):
 
             # CEO/Manager shouldn't write code
             if agent_role in ["ceo", "manager", "productmanager", "pm"]:
-                if "def " in content_lower or "class " in content_lower or "```python" in content_lower:
-                    issues.append({
-                        "type": "role_confusion",
-                        "turns": [turn.turn_number],
-                        "agent": turn.participant_id,
-                        "expected_role": agent_role,
-                        "description": f"Manager/CEO agent writing code (role confusion)",
-                    })
+                if (
+                    "def " in content_lower
+                    or "class " in content_lower
+                    or "```python" in content_lower
+                ):
+                    issues.append(
+                        {
+                            "type": "role_confusion",
+                            "turns": [turn.turn_number],
+                            "agent": turn.participant_id,
+                            "expected_role": agent_role,
+                            "description": "Manager/CEO agent writing code (role confusion)",
+                        }
+                    )
 
             # Coder/Programmer shouldn't be making product decisions
             if agent_role in ["programmer", "coder", "developer", "engineer"]:
-                if any(phrase in content_lower for phrase in [
-                    "product decision", "user story", "requirement is",
-                    "we should pivot", "market analysis"
-                ]):
-                    issues.append({
-                        "type": "role_confusion",
-                        "turns": [turn.turn_number],
-                        "agent": turn.participant_id,
-                        "expected_role": agent_role,
-                        "description": f"Developer making product decisions (role confusion)",
-                    })
+                if any(
+                    phrase in content_lower
+                    for phrase in [
+                        "product decision",
+                        "user story",
+                        "requirement is",
+                        "we should pivot",
+                        "market analysis",
+                    ]
+                ):
+                    issues.append(
+                        {
+                            "type": "role_confusion",
+                            "turns": [turn.turn_number],
+                            "agent": turn.participant_id,
+                            "expected_role": agent_role,
+                            "description": "Developer making product decisions (role confusion)",
+                        }
+                    )
 
         return issues[:2]
 

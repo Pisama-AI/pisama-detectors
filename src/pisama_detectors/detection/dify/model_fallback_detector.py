@@ -15,8 +15,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -86,8 +86,7 @@ class DifyModelFallbackDetector(TurnAwareDetector):
         has_mismatch = any(i["type"] == "model_mismatch" for i in issues)
         has_chain = any(i["type"] == "fallback_chain" for i in issues)
         has_metadata_reason = any(
-            i.get("fallback_reason") for i in issues
-            if i["type"] == "model_mismatch"
+            i.get("fallback_reason") for i in issues if i["type"] == "model_mismatch"
         )
         if has_chain:
             confidence = 0.85
@@ -111,10 +110,7 @@ class DifyModelFallbackDetector(TurnAwareDetector):
             severity=severity,
             confidence=confidence,
             failure_mode="F15",
-            explanation=(
-                f"Model fallback: {len(issues)} issue(s) in "
-                f"{len(llm_nodes)} LLM node(s)"
-            ),
+            explanation=(f"Model fallback: {len(issues)} issue(s) in {len(llm_nodes)} LLM node(s)"),
             affected_turns=list(range(len(set(affected_node_ids)))),
             evidence={
                 "issues": issues,
@@ -162,9 +158,7 @@ class DifyModelFallbackDetector(TurnAwareDetector):
             return result
         return None
 
-    def _check_fallback_chain(
-        self, llm_nodes: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _check_fallback_chain(self, llm_nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Detect fallback chains: failed or degraded LLM followed by success with different model."""
         issues = []
         for i in range(len(llm_nodes) - 1):
@@ -176,43 +170,42 @@ class DifyModelFallbackDetector(TurnAwareDetector):
 
             # Check for explicit failure or for metadata indicating fallback
             curr_failed = curr_status == "failed"
-            curr_has_fallback = bool(
-                curr.get("metadata", {}).get("model_fallback_reason")
-            )
+            curr_has_fallback = bool(curr.get("metadata", {}).get("model_fallback_reason"))
 
             if (curr_failed or curr_has_fallback) and nxt_status in ("succeeded", "completed"):
                 curr_model = self._extract_model_name(curr.get("inputs", {}), "model")
                 nxt_model = self._extract_model_name(nxt.get("inputs", {}), "model")
 
                 if curr_model and nxt_model and curr_model != nxt_model:
-                    issues.append({
-                        "type": "fallback_chain",
-                        "failed_node_id": curr.get("node_id", ""),
-                        "failed_title": curr.get("title", ""),
-                        "failed_model": curr_model,
-                        "fallback_node_id": nxt.get("node_id", ""),
-                        "fallback_title": nxt.get("title", ""),
-                        "fallback_model": nxt_model,
-                        "node_ids": [
-                            curr.get("node_id", ""),
-                            nxt.get("node_id", ""),
-                        ],
-                    })
+                    issues.append(
+                        {
+                            "type": "fallback_chain",
+                            "failed_node_id": curr.get("node_id", ""),
+                            "failed_title": curr.get("title", ""),
+                            "failed_model": curr_model,
+                            "fallback_node_id": nxt.get("node_id", ""),
+                            "fallback_title": nxt.get("title", ""),
+                            "fallback_model": nxt_model,
+                            "node_ids": [
+                                curr.get("node_id", ""),
+                                nxt.get("node_id", ""),
+                            ],
+                        }
+                    )
         return issues
 
-    def _check_fallback_references(
-        self, node: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _check_fallback_references(self, node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Check if outputs or metadata contain fallback/alternative model references."""
         # Check both outputs AND metadata for fallback indicators
         check_str = (
-            str(node.get("outputs", {})).lower()
-            + " "
-            + str(node.get("metadata", {})).lower()
+            str(node.get("outputs", {})).lower() + " " + str(node.get("metadata", {})).lower()
         )
         fallback_keywords = [
-            "fallback", "alternative model", "backup model",
-            "degraded", "model_fallback_reason",
+            "fallback",
+            "alternative model",
+            "backup model",
+            "degraded",
+            "model_fallback_reason",
         ]
         found = [kw for kw in fallback_keywords if kw in check_str]
         if found:
@@ -224,9 +217,7 @@ class DifyModelFallbackDetector(TurnAwareDetector):
             }
         return None
 
-    def _extract_model_name(
-        self, data: Dict[str, Any], key: str = "model"
-    ) -> Optional[str]:
+    def _extract_model_name(self, data: Dict[str, Any], key: str = "model") -> Optional[str]:
         """Extract model name from a dict, handling nested structures."""
         if not isinstance(data, dict):
             return None

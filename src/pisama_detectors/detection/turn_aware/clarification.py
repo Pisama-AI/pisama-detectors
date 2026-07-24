@@ -17,13 +17,13 @@ Reference: https://arxiv.org/abs/2503.13657
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,28 +50,59 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
 
     # Ambiguity indicators in user/task messages
     AMBIGUITY_MARKERS = [
-        "maybe", "perhaps", "could be", "either", "or",
-        "not sure", "unclear", "ambiguous", "vague",
-        "depending", "depends on", "if needed",
-        "something like", "kind of", "sort of",
-        "whatever", "anything", "some", "any",
+        "maybe",
+        "perhaps",
+        "could be",
+        "either",
+        "or",
+        "not sure",
+        "unclear",
+        "ambiguous",
+        "vague",
+        "depending",
+        "depends on",
+        "if needed",
+        "something like",
+        "kind of",
+        "sort of",
+        "whatever",
+        "anything",
+        "some",
+        "any",
     ]
 
     # Assumption indicators without clarification
     ASSUMPTION_WITHOUT_CLARIFICATION = [
-        "i'll assume", "assuming", "i assume",
-        "let me assume", "i'm assuming", "assuming that",
-        "i'll go with", "i'll use", "defaulting to",
-        "probably means", "likely means", "must mean",
-        "interpreting as", "taking this to mean",
+        "i'll assume",
+        "assuming",
+        "i assume",
+        "let me assume",
+        "i'm assuming",
+        "assuming that",
+        "i'll go with",
+        "i'll use",
+        "defaulting to",
+        "probably means",
+        "likely means",
+        "must mean",
+        "interpreting as",
+        "taking this to mean",
     ]
 
     # Proper clarification request indicators
     CLARIFICATION_REQUESTS = [
-        "could you clarify", "can you clarify", "please clarify",
-        "what do you mean", "could you explain", "can you specify",
-        "which one", "do you mean", "are you referring to",
-        "to clarify", "just to confirm", "to make sure",
+        "could you clarify",
+        "can you clarify",
+        "please clarify",
+        "what do you mean",
+        "could you explain",
+        "can you specify",
+        "which one",
+        "do you mean",
+        "are you referring to",
+        "to clarify",
+        "just to confirm",
+        "to make sure",
         "?",  # Questions in general
     ]
 
@@ -159,7 +190,9 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
             content_lower = turn.content.lower()
 
             # Check for assumption markers
-            has_assumption = any(marker in content_lower for marker in self.ASSUMPTION_WITHOUT_CLARIFICATION)
+            has_assumption = any(
+                marker in content_lower for marker in self.ASSUMPTION_WITHOUT_CLARIFICATION
+            )
 
             if has_assumption:
                 # Check if there was a prior clarification request
@@ -171,11 +204,13 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
                 )
 
                 if not asked_clarification:
-                    issues.append({
-                        "type": "assumption_without_clarification",
-                        "turns": [turn.turn_number],
-                        "description": "Made assumption without asking for clarification",
-                    })
+                    issues.append(
+                        {
+                            "type": "assumption_without_clarification",
+                            "turns": [turn.turn_number],
+                            "description": "Made assumption without asking for clarification",
+                        }
+                    )
 
         return issues[:2]
 
@@ -191,10 +226,9 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
 
                 if has_ambiguity:
                     # Check if next agent turn asks for clarification
-                    next_agent_turns = [
-                        t for t in turns[i+1:]
-                        if t.participant_type == "agent"
-                    ][:2]
+                    next_agent_turns = [t for t in turns[i + 1 :] if t.participant_type == "agent"][
+                        :2
+                    ]
 
                     asks_clarification = any(
                         any(req in t.content.lower() for req in self.CLARIFICATION_REQUESTS)
@@ -202,11 +236,13 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
                     )
 
                     if not asks_clarification and next_agent_turns:
-                        issues.append({
-                            "type": "proceeding_with_ambiguity",
-                            "turns": [turn.turn_number, next_agent_turns[0].turn_number],
-                            "description": "Proceeded with ambiguous input without clarification",
-                        })
+                        issues.append(
+                            {
+                                "type": "proceeding_with_ambiguity",
+                                "turns": [turn.turn_number, next_agent_turns[0].turn_number],
+                                "description": "Proceeded with ambiguous input without clarification",
+                            }
+                        )
 
         return issues[:2]
 
@@ -222,9 +258,18 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
 
                 # Indicators of complex/multi-part task
                 complex_indicators = [
-                    " and ", " then ", " also ", " additionally ",
-                    "1.", "2.", "first", "second", "multiple",
-                    "several", "various", "different",
+                    " and ",
+                    " then ",
+                    " also ",
+                    " additionally ",
+                    "1.",
+                    "2.",
+                    "first",
+                    "second",
+                    "multiple",
+                    "several",
+                    "various",
+                    "different",
                 ]
 
                 has_complexity = sum(1 for ind in complex_indicators if ind in content.lower())
@@ -232,16 +277,15 @@ class TurnAwareClarificationRequestDetector(TurnAwareDetector):
                 if has_complexity >= 2 and len(content) > 200:
                     # Check if agent asks clarifying questions
                     next_agent_turns = [t for t in turns if t.participant_type == "agent"][:2]
-                    asks_questions = any(
-                        "?" in t.content
-                        for t in next_agent_turns
-                    )
+                    asks_questions = any("?" in t.content for t in next_agent_turns)
 
                     if not asks_questions:
-                        issues.append({
-                            "type": "complex_task_no_clarification",
-                            "turns": [turn.turn_number],
-                            "description": "Complex multi-part task without clarifying questions",
-                        })
+                        issues.append(
+                            {
+                                "type": "complex_task_no_clarification",
+                                "turns": [turn.turn_number],
+                                "description": "Complex multi-part task without clarifying questions",
+                            }
+                        )
 
         return issues[:1]

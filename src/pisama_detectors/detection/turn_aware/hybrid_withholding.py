@@ -8,13 +8,13 @@ LLM-based and hybrid detectors for F8 (Information Withholding):
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
+    MODULE_VERSION,
     TurnAwareDetectionResult,
     TurnAwareSeverity,
-    MODULE_VERSION,
+    TurnSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +54,7 @@ class LLMInformationWithholdingDetector:
         """Lazy-load the LLM judge."""
         if self._judge is None:
             from ..llm_judge import MASTLLMJudge
+
             self._judge = MASTLLMJudge(api_key=self.api_key)
         return self._judge
 
@@ -66,12 +67,14 @@ class LLMInformationWithholdingDetector:
 
         turns = []
         for snapshot in snapshots:
-            turns.append(ConversationTurn(
-                role=snapshot.participant_type,
-                content=snapshot.content,
-                participant_id=snapshot.participant_id,
-                metadata=snapshot.turn_metadata or {},
-            ))
+            turns.append(
+                ConversationTurn(
+                    role=snapshot.participant_type,
+                    content=snapshot.content,
+                    participant_id=snapshot.participant_id,
+                    metadata=snapshot.turn_metadata or {},
+                )
+            )
         return turns
 
     def _extract_question_answer_pairs(self, turns: List[TurnSnapshot]) -> str:
@@ -84,7 +87,9 @@ class LLMInformationWithholdingDetector:
             pid = turn.participant_id or turn.participant_type
 
             # Identify questions
-            if "?" in turn.content or any(q in content_lower for q in ["what", "how", "why", "where", "when"]):
+            if "?" in turn.content or any(
+                q in content_lower for q in ["what", "how", "why", "where", "when"]
+            ):
                 qa_info.append(f"Turn {i} [{pid}] QUESTION: {turn.content[:200]}...")
 
                 # Look for response
@@ -92,7 +97,9 @@ class LLMInformationWithholdingDetector:
                     next_turn = turns[i + 1]
                     next_pid = next_turn.participant_id or next_turn.participant_type
                     if next_pid != pid:
-                        qa_info.append(f"Turn {i+1} [{next_pid}] RESPONSE: {next_turn.content[:200]}...")
+                        qa_info.append(
+                            f"Turn {i + 1} [{next_pid}] RESPONSE: {next_turn.content[:200]}..."
+                        )
 
         return "\n".join(qa_info[:20])  # Limit for token budget
 
@@ -129,6 +136,7 @@ class LLMInformationWithholdingDetector:
 
         try:
             from ..task_extractors import extract_task
+
             extraction = extract_task(conv_turns, metadata)
         except Exception as e:
             logger.warning(f"Task extraction failed: {e}")
@@ -193,8 +201,12 @@ class LLMInformationWithholdingDetector:
             severity=severity,
             confidence=result.confidence,
             failure_mode="F8" if detected else None,
-            explanation=result.reasoning if result.reasoning else (
-                "LLM detected information withholding" if detected else "LLM found no information withholding"
+            explanation=result.reasoning
+            if result.reasoning
+            else (
+                "LLM detected information withholding"
+                if detected
+                else "LLM found no information withholding"
             ),
             evidence={
                 "llm_verdict": result.verdict,
@@ -251,6 +263,7 @@ class HybridInformationWithholdingDetector:
         """Lazy-load pattern detector."""
         if self._pattern_detector is None:
             from .withholding import TurnAwareInformationWithholdingDetector
+
             self._pattern_detector = TurnAwareInformationWithholdingDetector(
                 min_turns=2,
                 min_issues_to_flag=2,  # Balanced for precision
@@ -301,9 +314,8 @@ class HybridInformationWithholdingDetector:
         pattern_result = self.pattern_detector.detect(turns, conversation_metadata)
 
         # Step 2: Decide if we need LLM escalation
-        should_escalate = (
-            pattern_result.confidence < self.escalation_threshold
-            or (pattern_result.detected and pattern_result.confidence < 0.8)
+        should_escalate = pattern_result.confidence < self.escalation_threshold or (
+            pattern_result.detected and pattern_result.confidence < 0.8
         )
 
         if not should_escalate:

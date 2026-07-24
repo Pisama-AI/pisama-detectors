@@ -8,13 +8,13 @@ LLM-based and hybrid detectors for F13 (Quality Gate Bypass):
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
+    MODULE_VERSION,
     TurnAwareDetectionResult,
     TurnAwareSeverity,
-    MODULE_VERSION,
+    TurnSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +54,7 @@ class LLMQualityGateBypassDetector:
         """Lazy-load the LLM judge."""
         if self._judge is None:
             from ..llm_judge import MASTLLMJudge
+
             self._judge = MASTLLMJudge(api_key=self.api_key)
         return self._judge
 
@@ -66,12 +67,14 @@ class LLMQualityGateBypassDetector:
 
         turns = []
         for snapshot in snapshots:
-            turns.append(ConversationTurn(
-                role=snapshot.participant_type,
-                content=snapshot.content,
-                participant_id=snapshot.participant_id,
-                metadata=snapshot.turn_metadata or {},
-            ))
+            turns.append(
+                ConversationTurn(
+                    role=snapshot.participant_type,
+                    content=snapshot.content,
+                    participant_id=snapshot.participant_id,
+                    metadata=snapshot.turn_metadata or {},
+                )
+            )
         return turns
 
     def _extract_verification_context(self, turns: List[TurnSnapshot]) -> str:
@@ -129,6 +132,7 @@ class LLMQualityGateBypassDetector:
 
         try:
             from ..task_extractors import extract_task
+
             extraction = extract_task(conv_turns, metadata)
         except Exception as e:
             logger.warning(f"Task extraction failed: {e}")
@@ -151,7 +155,9 @@ class LLMQualityGateBypassDetector:
             pid = t.participant_id or t.participant_type
             agent_actions.append(f"[{pid}]: {t.content[:250]}")
 
-        trace_summary = f"{verification_context}\n\n## Full Trace:\n" + "\n---\n".join(agent_actions[:10])
+        trace_summary = f"{verification_context}\n\n## Full Trace:\n" + "\n---\n".join(
+            agent_actions[:10]
+        )
 
         # Call LLM judge for F13
         try:
@@ -193,8 +199,12 @@ class LLMQualityGateBypassDetector:
             severity=severity,
             confidence=result.confidence,
             failure_mode="F13" if detected else None,
-            explanation=result.reasoning if result.reasoning else (
-                "LLM detected quality gate bypass" if detected else "LLM found no quality gate bypass"
+            explanation=result.reasoning
+            if result.reasoning
+            else (
+                "LLM detected quality gate bypass"
+                if detected
+                else "LLM found no quality gate bypass"
             ),
             evidence={
                 "llm_verdict": result.verdict,
@@ -251,6 +261,7 @@ class HybridQualityGateBypassDetector:
         """Lazy-load pattern detector."""
         if self._pattern_detector is None:
             from .quality_gate import TurnAwareQualityGateBypassDetector
+
             self._pattern_detector = TurnAwareQualityGateBypassDetector(
                 min_turns=2,
                 min_issues_to_flag=1,  # Sensitive for recall
@@ -301,9 +312,8 @@ class HybridQualityGateBypassDetector:
         pattern_result = self.pattern_detector.detect(turns, conversation_metadata)
 
         # Step 2: Decide if we need LLM escalation
-        should_escalate = (
-            pattern_result.confidence < self.escalation_threshold
-            or (pattern_result.detected and pattern_result.confidence < 0.8)
+        should_escalate = pattern_result.confidence < self.escalation_threshold or (
+            pattern_result.detected and pattern_result.confidence < 0.8
         )
 
         if not should_escalate:

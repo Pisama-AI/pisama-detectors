@@ -10,13 +10,13 @@ Analyzes conversation for:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -100,57 +100,67 @@ class TurnAwareLoopDetector(EmbeddingMixin, TurnAwareDetector):
 
         for h, turn_numbers in hash_counts.items():
             if len(turn_numbers) >= self.min_repetitions:
-                loop_issues.append({
-                    "type": "exact_repetition",
-                    "turns": turn_numbers,
-                    "repetition_count": len(turn_numbers),
-                    "description": f"Exact same response repeated {len(turn_numbers)} times",
-                })
+                loop_issues.append(
+                    {
+                        "type": "exact_repetition",
+                        "turns": turn_numbers,
+                        "repetition_count": len(turn_numbers),
+                        "description": f"Exact same response repeated {len(turn_numbers)} times",
+                    }
+                )
                 affected_turns.extend(turn_numbers)
 
         # Check for cyclic patterns (A -> B -> A -> B)
         cyclic_pattern = self._detect_cyclic_pattern(agent_turns)
         if cyclic_pattern["detected"]:
-            loop_issues.append({
-                "type": "cyclic_pattern",
-                "cycle_length": cyclic_pattern["cycle_length"],
-                "turns": cyclic_pattern["turns"],
-                "description": f"Cyclic pattern detected with length {cyclic_pattern['cycle_length']}",
-            })
+            loop_issues.append(
+                {
+                    "type": "cyclic_pattern",
+                    "cycle_length": cyclic_pattern["cycle_length"],
+                    "turns": cyclic_pattern["turns"],
+                    "description": f"Cyclic pattern detected with length {cyclic_pattern['cycle_length']}",
+                }
+            )
             affected_turns.extend(cyclic_pattern["turns"])
 
         # Phase 2: Check for coordination loops (A→B→A→B in multi-agent)
         coord_loop = self._detect_coordination_loop(agent_turns)
         if coord_loop["detected"]:
-            loop_issues.append({
-                "type": "coordination_loop",
-                "agent_sequence": coord_loop["sequence"],
-                "turns": coord_loop["turns"],
-                "description": f"Coordination loop: agents alternating without progress",
-            })
+            loop_issues.append(
+                {
+                    "type": "coordination_loop",
+                    "agent_sequence": coord_loop["sequence"],
+                    "turns": coord_loop["turns"],
+                    "description": "Coordination loop: agents alternating without progress",
+                }
+            )
             affected_turns.extend(coord_loop["turns"])
 
         # Phase 2: Check for semantic loops (paraphrased repetition)
         semantic_loop = self._detect_semantic_loop(agent_turns)
         if semantic_loop["detected"]:
-            loop_issues.append({
-                "type": "semantic_loop",
-                "turns": semantic_loop["turns"],
-                "description": f"Semantic loop: {semantic_loop['count']} semantically similar responses",
-            })
+            loop_issues.append(
+                {
+                    "type": "semantic_loop",
+                    "turns": semantic_loop["turns"],
+                    "description": f"Semantic loop: {semantic_loop['count']} semantically similar responses",
+                }
+            )
             affected_turns.extend(semantic_loop["turns"])
 
         # n8n-specific: Detect repeated node executions (workflow loops)
         if "n8n" in framework:
             n8n_loop = self._detect_n8n_workflow_loop(agent_turns)
             if n8n_loop["detected"]:
-                loop_issues.append({
-                    "type": "n8n_workflow_loop",
-                    "node": n8n_loop["node"],
-                    "turns": n8n_loop["turns"],
-                    "repetition_count": n8n_loop["count"],
-                    "description": f"n8n workflow loop: node '{n8n_loop['node']}' executed {n8n_loop['count']} times",
-                })
+                loop_issues.append(
+                    {
+                        "type": "n8n_workflow_loop",
+                        "node": n8n_loop["node"],
+                        "turns": n8n_loop["turns"],
+                        "repetition_count": n8n_loop["count"],
+                        "description": f"n8n workflow loop: node '{n8n_loop['node']}' executed {n8n_loop['count']} times",
+                    }
+                )
                 affected_turns.extend(n8n_loop["turns"])
 
         if not loop_issues:
@@ -164,10 +174,7 @@ class TurnAwareLoopDetector(EmbeddingMixin, TurnAwareDetector):
             )
 
         # Determine severity
-        max_repetitions = max(
-            (i.get("repetition_count", 0) for i in loop_issues),
-            default=0
-        )
+        max_repetitions = max((i.get("repetition_count", 0) for i in loop_issues), default=0)
         if max_repetitions >= 4 or any(i["type"] == "cyclic_pattern" for i in loop_issues):
             severity = TurnAwareSeverity.SEVERE
         elif max_repetitions >= 3:
@@ -209,8 +216,8 @@ class TurnAwareLoopDetector(EmbeddingMixin, TurnAwareDetector):
         for cycle_len in [2, 3]:
             if len(hashes) >= cycle_len * 2:
                 for start in range(len(hashes) - cycle_len * 2 + 1):
-                    pattern = hashes[start:start + cycle_len]
-                    next_seq = hashes[start + cycle_len:start + cycle_len * 2]
+                    pattern = hashes[start : start + cycle_len]
+                    next_seq = hashes[start + cycle_len : start + cycle_len * 2]
                     if pattern == next_seq:
                         affected_turns = [
                             agent_turns[i].turn_number
@@ -247,26 +254,30 @@ class TurnAwareLoopDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Check for A→B→A→B pattern (2-agent loop)
         for i in range(len(agent_sequence) - 3):
-            if (agent_sequence[i] == agent_sequence[i + 2] and
-                agent_sequence[i + 1] == agent_sequence[i + 3] and
-                agent_sequence[i] != agent_sequence[i + 1]):
+            if (
+                agent_sequence[i] == agent_sequence[i + 2]
+                and agent_sequence[i + 1] == agent_sequence[i + 3]
+                and agent_sequence[i] != agent_sequence[i + 1]
+            ):
                 # Found A→B→A→B loop
                 return {
                     "detected": True,
-                    "sequence": agent_sequence[i:i + 4],
+                    "sequence": agent_sequence[i : i + 4],
                     "turns": [agent_turns[i + j].turn_number for j in range(4)],
                 }
 
         # Check for A→B→C→A→B→C pattern (3-agent loop)
         for i in range(len(agent_sequence) - 5):
-            if (agent_sequence[i] == agent_sequence[i + 3] and
-                agent_sequence[i + 1] == agent_sequence[i + 4] and
-                agent_sequence[i + 2] == agent_sequence[i + 5] and
-                len(set(agent_sequence[i:i + 3])) == 3):
+            if (
+                agent_sequence[i] == agent_sequence[i + 3]
+                and agent_sequence[i + 1] == agent_sequence[i + 4]
+                and agent_sequence[i + 2] == agent_sequence[i + 5]
+                and len(set(agent_sequence[i : i + 3])) == 3
+            ):
                 # Found A→B→C→A→B→C loop
                 return {
                     "detected": True,
-                    "sequence": agent_sequence[i:i + 6],
+                    "sequence": agent_sequence[i : i + 6],
                     "turns": [agent_turns[i + j].turn_number for j in range(6)],
                 }
 
@@ -310,7 +321,9 @@ class TurnAwareLoopDetector(EmbeddingMixin, TurnAwareDetector):
                     affected_turn_indices.add(i)
                     affected_turn_indices.add(j)
 
-                affected_turn_numbers = [agent_turns[i].turn_number for i in sorted(affected_turn_indices)]
+                affected_turn_numbers = [
+                    agent_turns[i].turn_number for i in sorted(affected_turn_indices)
+                ]
 
                 return {
                     "detected": True,

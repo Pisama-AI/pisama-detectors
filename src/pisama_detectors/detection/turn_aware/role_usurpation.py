@@ -13,13 +13,13 @@ Based on MAST research (NeurIPS 2025): FM-2.5 Role Usurpation (3%)
 
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -72,38 +72,87 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
     ROLE_DEFINITIONS = {
         "coordinator": {
             "description": "Orchestrates workflow, delegates tasks, manages communication between agents",
-            "indicators": ["i will assign", "let me delegate", "i'll coordinate", "as coordinator",
-                         "orchestrating", "managing the team", "distributing work"],
-            "actions": ["assign", "delegate", "coordinate", "organize", "manage team", "distribute"],
+            "indicators": [
+                "i will assign",
+                "let me delegate",
+                "i'll coordinate",
+                "as coordinator",
+                "orchestrating",
+                "managing the team",
+                "distributing work",
+            ],
+            "actions": [
+                "assign",
+                "delegate",
+                "coordinate",
+                "organize",
+                "manage team",
+                "distribute",
+            ],
         },
         "executor": {
             "description": "Implements solutions, executes code, performs concrete actions",
-            "indicators": ["executing now", "i will implement", "implementing the", "as executor",
-                         "running the code", "performing the task", "making changes"],
+            "indicators": [
+                "executing now",
+                "i will implement",
+                "implementing the",
+                "as executor",
+                "running the code",
+                "performing the task",
+                "making changes",
+            ],
             "actions": ["execute", "implement", "run", "perform", "build", "create", "modify"],
         },
         "reviewer": {
             "description": "Evaluates work quality, provides feedback, validates outputs",
-            "indicators": ["reviewing your", "let me review", "my review shows", "as reviewer",
-                         "upon review", "checking the quality", "validating output"],
+            "indicators": [
+                "reviewing your",
+                "let me review",
+                "my review shows",
+                "as reviewer",
+                "upon review",
+                "checking the quality",
+                "validating output",
+            ],
             "actions": ["review", "evaluate", "validate", "check quality", "assess", "critique"],
         },
         "researcher": {
             "description": "Gathers information, investigates problems, analyzes data",
-            "indicators": ["researching this", "my research shows", "investigating the", "as researcher",
-                         "analyzing the data", "gathering information", "exploring options"],
+            "indicators": [
+                "researching this",
+                "my research shows",
+                "investigating the",
+                "as researcher",
+                "analyzing the data",
+                "gathering information",
+                "exploring options",
+            ],
             "actions": ["research", "investigate", "analyze", "gather info", "explore", "study"],
         },
         "planner": {
             "description": "Designs strategies, creates plans, outlines approaches",
-            "indicators": ["planning the approach", "let me plan", "my plan is", "as planner",
-                         "designing the strategy", "outlining steps", "creating roadmap"],
+            "indicators": [
+                "planning the approach",
+                "let me plan",
+                "my plan is",
+                "as planner",
+                "designing the strategy",
+                "outlining steps",
+                "creating roadmap",
+            ],
             "actions": ["plan", "design", "strategize", "outline", "architect", "blueprint"],
         },
         "tester": {
             "description": "Tests functionality, verifies correctness, finds bugs",
-            "indicators": ["testing this", "let me test", "my tests show", "as tester",
-                         "verifying functionality", "checking for bugs", "running tests"],
+            "indicators": [
+                "testing this",
+                "let me test",
+                "my tests show",
+                "as tester",
+                "verifying functionality",
+                "checking for bugs",
+                "running tests",
+            ],
             "actions": ["test", "verify", "debug", "check", "validate functionality", "qa"],
         },
     }
@@ -112,34 +161,74 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
     # Maps agent name patterns to role categories
     # NOTE: CTO excluded - they legitimately review/handle code
     EXECUTIVE_PATTERNS = [
-        "chief executive", "ceo", "chief product", "cpo",
-        "chief human resources", "human resources officer", "chief creative", "cco",
+        "chief executive",
+        "ceo",
+        "chief product",
+        "cpo",
+        "chief human resources",
+        "human resources officer",
+        "chief creative",
+        "cco",
     ]
     IMPLEMENTER_PATTERNS = [
-        "programmer", "developer", "engineer", "coder", "simplecoder",
+        "programmer",
+        "developer",
+        "engineer",
+        "coder",
+        "simplecoder",
     ]
     REVIEWER_PATTERNS = [
-        "code reviewer", "reviewer", "tester", "qa ",
+        "code reviewer",
+        "reviewer",
+        "tester",
+        "qa ",
     ]
 
     # Code patterns that indicate implementation work
     CODE_PATTERNS = [
-        "def ", "class ", "import ", "from ", "```python", "```java", "```js",
-        "function ", "const ", "let ", "var ", "public class", "private ",
-        "if __name__", "async def", "await ", "return ", "self.", "this.",
+        "def ",
+        "class ",
+        "import ",
+        "from ",
+        "```python",
+        "```java",
+        "```js",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "public class",
+        "private ",
+        "if __name__",
+        "async def",
+        "await ",
+        "return ",
+        "self.",
+        "this.",
     ]
 
     # AG2-specific execution markers (code was run)
     AG2_EXECUTION_MARKERS = [
-        "exitcode:", "code output:", ">>> ", "executed successfully",
-        "output:", "result:", "execution result",
+        "exitcode:",
+        "code output:",
+        ">>> ",
+        "executed successfully",
+        "output:",
+        "result:",
+        "execution result",
     ]
 
     # Explicit verbal patterns indicating role usurpation
     USURPATION_PATTERNS = [
         (r"(?:tak|assum)(?:ing|e)\s+(?:over|control|charge)", "task_hijacking"),
-        (r"(?:skip|bypass|ignore)(?:ping|ed)?\s+(?:the\s+)?(?:review|approval)", "authority_bypass"),
-        (r"I(?:'ll|\s+will)\s+(?:decide|determine)\s+(?:to\s+|the\s+|which\s+)", "decision_overreach"),
+        (
+            r"(?:skip|bypass|ignore)(?:ping|ed)?\s+(?:the\s+)?(?:review|approval)",
+            "authority_bypass",
+        ),
+        (
+            r"I(?:'ll|\s+will)\s+(?:decide|determine)\s+(?:to\s+|the\s+|which\s+)",
+            "decision_overreach",
+        ),
     ]
 
     def __init__(self, min_turns: int = 2, strict_mode: bool = False, min_violations: int = 1):
@@ -182,7 +271,6 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
         # NOTE: Disabled - semantic similarity approach has high FP rate
         # The similarity between roles (e.g., reviewer/tester) causes false triggers
         # boundary_violations = self._detect_boundary_violations(turns, agent_roles)
-        boundary_violations = []
 
         # 2. Role conflicts (multiple agents claiming same role)
         role_conflicts = self._detect_role_conflicts(turns, agent_roles)
@@ -331,7 +419,9 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
             # Get best matching role
             best_role = max(role_similarities, key=role_similarities.get)
             best_score = role_similarities[best_role]
-            logger.debug(f"F9 semantic role: best={best_role} score={best_score:.3f}, all={role_similarities}")
+            logger.debug(
+                f"F9 semantic role: best={best_role} score={best_score:.3f}, all={role_similarities}"
+            )
 
             # Require reasonable confidence threshold
             if best_score >= 0.50:  # Semantic similarity threshold
@@ -416,21 +506,21 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
             # Executives writing code is a role usurpation
             # Threshold: 3+ code patterns indicates actual implementation
             if code_matches >= 3:
-                violations.append({
-                    "type": "executive_coding",
-                    "turns": [turn.turn_number],
-                    "agent": agent_id,
-                    "code_patterns": code_matches,
-                    "severity": "critical",
-                    "description": f"Executive {agent_id} writing implementation code ({code_matches} code patterns)",
-                })
+                violations.append(
+                    {
+                        "type": "executive_coding",
+                        "turns": [turn.turn_number],
+                        "agent": agent_id,
+                        "code_patterns": code_matches,
+                        "severity": "critical",
+                        "description": f"Executive {agent_id} writing implementation code ({code_matches} code patterns)",
+                    }
+                )
 
         return violations[:5]  # Limit to top 5
 
     def _detect_boundary_violations(
-        self,
-        turns: List[TurnSnapshot],
-        agent_roles: Dict[str, Dict[str, Any]]
+        self, turns: List[TurnSnapshot], agent_roles: Dict[str, Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Detect agents acting outside their role boundaries.
 
@@ -456,60 +546,72 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
                 # Semantic boundary check (if embeddings available)
                 if self.embedder:
                     # Check similarity to other role's description
-                    other_similarity = self.semantic_similarity(content[:300], role_def["description"])
+                    other_similarity = self.semantic_similarity(
+                        content[:300], role_def["description"]
+                    )
 
                     # Also check similarity to OWN role for comparison
                     own_role_def = self.ROLE_DEFINITIONS.get(assigned_role, {})
-                    own_similarity = self.semantic_similarity(
-                        content[:300], own_role_def.get("description", "")
-                    ) if own_role_def else 0.0
+                    own_similarity = (
+                        self.semantic_similarity(content[:300], own_role_def.get("description", ""))
+                        if own_role_def
+                        else 0.0
+                    )
 
-                    logger.debug(f"F9 boundary: {agent_id}({assigned_role}) vs {other_role}: other={other_similarity:.3f}, own={own_similarity:.3f}")
+                    logger.debug(
+                        f"F9 boundary: {agent_id}({assigned_role}) vs {other_role}: other={other_similarity:.3f}, own={own_similarity:.3f}"
+                    )
 
                     # Role boundary violation detection:
                     # Balanced thresholds - reduce FPs while maintaining recall
                     # 1. Moderate similarity to other role (>= 0.48)
                     # 2. Clear margin over own role (0.12)
                     # 3. Not strong fit to own role (< 0.55)
-                    if (other_similarity >= 0.48 and
-                        other_similarity > own_similarity + 0.12 and
-                        own_similarity < 0.55):
-                        violations.append({
-                            "type": "boundary_violation",
-                            "turns": [turn.turn_number],
-                            "agent": agent_id,
-                            "assigned_role": assigned_role,
-                            "violated_role": other_role,
-                            "similarity": other_similarity,
-                            "own_similarity": own_similarity,
-                            "severity": "moderate",
-                            "description": f"{agent_id} ({assigned_role}) acting as {other_role}",
-                        })
+                    if (
+                        other_similarity >= 0.48
+                        and other_similarity > own_similarity + 0.12
+                        and own_similarity < 0.55
+                    ):
+                        violations.append(
+                            {
+                                "type": "boundary_violation",
+                                "turns": [turn.turn_number],
+                                "agent": agent_id,
+                                "assigned_role": assigned_role,
+                                "violated_role": other_role,
+                                "similarity": other_similarity,
+                                "own_similarity": own_similarity,
+                                "severity": "moderate",
+                                "description": f"{agent_id} ({assigned_role}) acting as {other_role}",
+                            }
+                        )
                         break  # Only report first violation per turn
 
                 # Keyword fallback
                 else:
                     content_lower = content.lower()
-                    matches = sum(1 for indicator in role_def["indicators"] if indicator in content_lower)
+                    matches = sum(
+                        1 for indicator in role_def["indicators"] if indicator in content_lower
+                    )
                     if matches >= 2:  # Multiple indicators = likely violation
-                        violations.append({
-                            "type": "boundary_violation",
-                            "turns": [turn.turn_number],
-                            "agent": agent_id,
-                            "assigned_role": assigned_role,
-                            "violated_role": other_role,
-                            "matches": matches,
-                            "severity": "moderate",
-                            "description": f"{agent_id} ({assigned_role}) using {other_role} patterns",
-                        })
+                        violations.append(
+                            {
+                                "type": "boundary_violation",
+                                "turns": [turn.turn_number],
+                                "agent": agent_id,
+                                "assigned_role": assigned_role,
+                                "violated_role": other_role,
+                                "matches": matches,
+                                "severity": "moderate",
+                                "description": f"{agent_id} ({assigned_role}) using {other_role} patterns",
+                            }
+                        )
                         break
 
         return violations[:5]  # Limit to top 5
 
     def _detect_role_conflicts(
-        self,
-        turns: List[TurnSnapshot],
-        agent_roles: Dict[str, Dict[str, Any]]
+        self, turns: List[TurnSnapshot], agent_roles: Dict[str, Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Detect multiple agents claiming or performing the same role."""
         conflicts = []
@@ -535,21 +637,21 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
                         conflict_turns.append(turn.turn_number)
 
                 if len(conflict_turns) >= 2:  # Actual conflict (both agents active)
-                    conflicts.append({
-                        "type": "role_conflict",
-                        "turns": conflict_turns[:3],  # Sample turns
-                        "role": role,
-                        "agents": agents,
-                        "severity": "critical",  # Role conflicts are serious
-                        "description": f"Multiple agents ({', '.join(agents)}) assigned {role} role",
-                    })
+                    conflicts.append(
+                        {
+                            "type": "role_conflict",
+                            "turns": conflict_turns[:3],  # Sample turns
+                            "role": role,
+                            "agents": agents,
+                            "severity": "critical",  # Role conflicts are serious
+                            "description": f"Multiple agents ({', '.join(agents)}) assigned {role} role",
+                        }
+                    )
 
         return conflicts
 
     def _detect_unauthorized_actions(
-        self,
-        turns: List[TurnSnapshot],
-        agent_roles: Dict[str, Dict[str, Any]]
+        self, turns: List[TurnSnapshot], agent_roles: Dict[str, Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Detect agents performing actions outside their permission scope.
 
@@ -585,16 +687,18 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
             # Check for sensitive actions
             for action, allowed_roles in sensitive_actions.items():
                 if action in content_lower and assigned_role not in allowed_roles:
-                    unauthorized.append({
-                        "type": "unauthorized_action",
-                        "turns": [turn.turn_number],
-                        "agent": agent_id,
-                        "assigned_role": assigned_role,
-                        "action": action,
-                        "allowed_roles": allowed_roles,
-                        "severity": "critical",
-                        "description": f"{agent_id} ({assigned_role}) attempted '{action}' (requires {allowed_roles})",
-                    })
+                    unauthorized.append(
+                        {
+                            "type": "unauthorized_action",
+                            "turns": [turn.turn_number],
+                            "agent": agent_id,
+                            "assigned_role": assigned_role,
+                            "action": action,
+                            "allowed_roles": allowed_roles,
+                            "severity": "critical",
+                            "description": f"{agent_id} ({assigned_role}) attempted '{action}' (requires {allowed_roles})",
+                        }
+                    )
 
         return unauthorized[:3]  # Limit to top 3
 
@@ -625,12 +729,12 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
             return []
 
         # Known human/user identifiers
-        USER_IDENTIFIERS = ["user", "human", "person", "customer"]
+        user_identifiers = ["user", "human", "person", "customer"]
 
         def is_likely_user(participant_id: str) -> bool:
             """Check if participant_id looks like a real user."""
             pid_lower = (participant_id or "").lower()
-            return any(uid in pid_lower for uid in USER_IDENTIFIERS)
+            return any(uid in pid_lower for uid in user_identifiers)
 
         # Pattern: Many consecutive turns from same participant without user
         # Threshold of 3+ consecutive turns indicates agent proceeding autonomously
@@ -646,13 +750,15 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
                 consecutive_count += 1
                 # Require 3+ consecutive turns (stricter threshold)
                 if consecutive_count >= 3:
-                    violations.append({
-                        "type": "autonomous_agent",
-                        "turns": [turn.turn_number],
-                        "agent": pid,
-                        "severity": "critical",
-                        "description": f"Agent '{pid}' proceeding autonomously ({consecutive_count+1} turns without user)",
-                    })
+                    violations.append(
+                        {
+                            "type": "autonomous_agent",
+                            "turns": [turn.turn_number],
+                            "agent": pid,
+                            "severity": "critical",
+                            "description": f"Agent '{pid}' proceeding autonomously ({consecutive_count + 1} turns without user)",
+                        }
+                    )
             else:
                 consecutive_count = 1
                 prev_pid = pid
@@ -677,13 +783,15 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
 
             for pattern, vtype in self.USURPATION_PATTERNS:
                 if re.search(pattern, content_lower):
-                    violations.append({
-                        "type": vtype,
-                        "turns": [turn.turn_number],
-                        "agent": turn.participant_id,
-                        "severity": "critical",
-                        "description": f"Agent {turn.participant_id}: {vtype.replace('_', ' ')}",
-                    })
+                    violations.append(
+                        {
+                            "type": vtype,
+                            "turns": [turn.turn_number],
+                            "agent": turn.participant_id,
+                            "severity": "critical",
+                            "description": f"Agent {turn.participant_id}: {vtype.replace('_', ' ')}",
+                        }
+                    )
                     break  # Only report first pattern match per turn
 
         return violations[:5]  # Limit to top 5
@@ -697,13 +805,36 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
 
         # Task verbs that typically belong to different roles
         task_verbs = [
-            "written", "wrote", "created", "generated", "composed",
-            "edited", "revised", "modified", "updated", "changed",
-            "formatted", "styled", "designed", "structured",
-            "reviewed", "checked", "validated", "verified", "tested",
-            "scheduled", "planned", "organized", "arranged",
-            "published", "deployed", "released", "launched",
-            "approved", "authorized", "signed off",
+            "written",
+            "wrote",
+            "created",
+            "generated",
+            "composed",
+            "edited",
+            "revised",
+            "modified",
+            "updated",
+            "changed",
+            "formatted",
+            "styled",
+            "designed",
+            "structured",
+            "reviewed",
+            "checked",
+            "validated",
+            "verified",
+            "tested",
+            "scheduled",
+            "planned",
+            "organized",
+            "arranged",
+            "published",
+            "deployed",
+            "released",
+            "launched",
+            "approved",
+            "authorized",
+            "signed off",
         ]
 
         # Conjunction patterns indicating multiple tasks
@@ -725,14 +856,16 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
                     task_count = sum(1 for verb in task_verbs if verb in content_lower)
 
                     if task_count >= 3:  # At least 3 different tasks
-                        violations.append({
-                            "type": "multi_task_usurpation",
-                            "turns": [turn.turn_number],
-                            "agent": turn.participant_id,
-                            "task_count": task_count,
-                            "severity": "moderate",
-                            "description": f"Agent {turn.participant_id} performing {task_count} distinct tasks (role boundary violation)",
-                        })
+                        violations.append(
+                            {
+                                "type": "multi_task_usurpation",
+                                "turns": [turn.turn_number],
+                                "agent": turn.participant_id,
+                                "task_count": task_count,
+                                "severity": "moderate",
+                                "description": f"Agent {turn.participant_id} performing {task_count} distinct tasks (role boundary violation)",
+                            }
+                        )
                         break  # Only report once per turn
 
         return violations[:3]  # Limit to top 3
@@ -777,12 +910,14 @@ class TurnAwareRoleUsurpationDetector(EmbeddingMixin, TurnAwareDetector):
             return []
 
         # All conditions met - return cascade violation
-        return [{
-            "type": "cascade_pattern",
-            "turns": [],
-            "severity": "critical",
-            "description": f"Systemic cascade: {strong_error_count} tracebacks, {message_count} messages, recovery_loop=True",
-        }]
+        return [
+            {
+                "type": "cascade_pattern",
+                "turns": [],
+                "severity": "critical",
+                "description": f"Systemic cascade: {strong_error_count} tracebacks, {message_count} messages, recovery_loop=True",
+            }
+        ]
 
     def _detect_recovery_loop(self, turns: List[TurnSnapshot]) -> bool:
         """Detect error → revised code → error pattern.

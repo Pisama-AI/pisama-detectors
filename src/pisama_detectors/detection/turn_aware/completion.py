@@ -13,13 +13,13 @@ Based on MAST research (NeurIPS 2025): FM-3.1 Completion Misjudgment (23%)
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 from ._embedding_mixin import EmbeddingMixin
 
@@ -51,42 +51,81 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
 
     # Premature completion indicators - made more specific to reduce FPs
     PREMATURE_COMPLETION = [
-        "task is complete", "task complete", "task finished",
-        "all done", "completely done", "fully completed",
-        "mission accomplished", "final version",
-        "implementation complete", "development complete",
-        "work is complete", "everything is done",
+        "task is complete",
+        "task complete",
+        "task finished",
+        "all done",
+        "completely done",
+        "fully completed",
+        "mission accomplished",
+        "final version",
+        "implementation complete",
+        "development complete",
+        "work is complete",
+        "everything is done",
         # Added for improved recall (v2.1) - implicit completion claims
-        "here's the solution", "here's the implementation",
-        "i've implemented", "i have implemented",
-        "solution below", "see attached",
-        "here is the final", "here's the finished",
-        "ready for review", "ready for deployment",
+        "here's the solution",
+        "here's the implementation",
+        "i've implemented",
+        "i have implemented",
+        "solution below",
+        "see attached",
+        "here is the final",
+        "here's the finished",
+        "ready for review",
+        "ready for deployment",
     ]
 
     # Incomplete indicators following completion - stricter patterns
     INCOMPLETE_INDICATORS = [
-        "still need to", "remaining tasks", "left to do", "not yet finished",
-        "missing parts", "incomplete implementation", "partial solution",
-        "TODO:", "FIXME:", "TBD:", "WIP:",
-        "placeholder code", "stub implementation", "mock data",
-        "need to finish", "haven't completed", "not fully",
+        "still need to",
+        "remaining tasks",
+        "left to do",
+        "not yet finished",
+        "missing parts",
+        "incomplete implementation",
+        "partial solution",
+        "TODO:",
+        "FIXME:",
+        "TBD:",
+        "WIP:",
+        "placeholder code",
+        "stub implementation",
+        "mock data",
+        "need to finish",
+        "haven't completed",
+        "not fully",
     ]
 
     # False success indicators - stricter patterns
     FALSE_SUCCESS = [
-        "should probably work", "might not work", "probably won't work",
-        "seems to work but", "appears to work but", "looks like it might",
-        "assuming it works", "hopefully it works", "fingers crossed",
-        "not sure if it works", "haven't tested", "untested code",
+        "should probably work",
+        "might not work",
+        "probably won't work",
+        "seems to work but",
+        "appears to work but",
+        "looks like it might",
+        "assuming it works",
+        "hopefully it works",
+        "fingers crossed",
+        "not sure if it works",
+        "haven't tested",
+        "untested code",
     ]
 
     # Continuation needed indicators - stricter patterns
     CONTINUATION_NEEDED = [
-        "next step is to", "then we need to", "after that we need",
-        "following that we must", "additionally we need",
-        "don't forget to", "remember to also", "make sure to also",
-        "still need to complete", "have to also do", "need to also finish",
+        "next step is to",
+        "then we need to",
+        "after that we need",
+        "following that we must",
+        "additionally we need",
+        "don't forget to",
+        "remember to also",
+        "make sure to also",
+        "still need to complete",
+        "have to also do",
+        "need to also finish",
     ]
 
     def __init__(self, min_turns: int = 2, min_issues_to_flag: int = 1):
@@ -187,12 +226,14 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
 
                 for ind in self.INCOMPLETE_INDICATORS:
                     if ind.lower() in all_content:
-                        issues.append({
-                            "type": "premature_completion",
-                            "turns": [turn.turn_number],
-                            "indicator": ind,
-                            "description": f"Completion claim with incompleteness: '{ind}'",
-                        })
+                        issues.append(
+                            {
+                                "type": "premature_completion",
+                                "turns": [turn.turn_number],
+                                "indicator": ind,
+                                "description": f"Completion claim with incompleteness: '{ind}'",
+                            }
+                        )
                         break
         return issues[:3]
 
@@ -209,13 +250,15 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
             content_lower = turn.content.lower()
             for indicator in self.FALSE_SUCCESS:
                 if indicator in content_lower:
-                    issues.append({
-                        "type": "false_success",
-                        "turns": [turn.turn_number],
-                        "indicator": indicator,
-                        "description": f"Uncertain success: '{indicator}'",
-                        "method": "keyword",
-                    })
+                    issues.append(
+                        {
+                            "type": "false_success",
+                            "turns": [turn.turn_number],
+                            "indicator": indicator,
+                            "description": f"Uncertain success: '{indicator}'",
+                            "method": "keyword",
+                        }
+                    )
                     break
 
         # Semantic detection - detect uncertain completion claims
@@ -247,8 +290,12 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
                     continue
 
                 # Compare confidence: uncertain vs confident completion
-                uncertain_sims = self.batch_semantic_similarity(content, uncertain_completion_patterns)
-                confident_sims = self.batch_semantic_similarity(content, confident_completion_patterns)
+                uncertain_sims = self.batch_semantic_similarity(
+                    content, uncertain_completion_patterns
+                )
+                confident_sims = self.batch_semantic_similarity(
+                    content, confident_completion_patterns
+                )
 
                 if uncertain_sims and confident_sims:
                     max_uncertain = max(uncertain_sims)
@@ -256,14 +303,16 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
 
                     # If more similar to uncertain than confident completion
                     if max_uncertain >= 0.62 and max_uncertain > max_confident + 0.10:
-                        issues.append({
-                            "type": "false_success",
-                            "turns": [turn.turn_number],
-                            "uncertainty_score": max_uncertain,
-                            "confidence_score": max_confident,
-                            "description": f"Semantically uncertain completion claim (uncertainty: {max_uncertain:.2f})",
-                            "method": "semantic",
-                        })
+                        issues.append(
+                            {
+                                "type": "false_success",
+                                "turns": [turn.turn_number],
+                                "uncertainty_score": max_uncertain,
+                                "confidence_score": max_confident,
+                                "description": f"Semantically uncertain completion claim (uncertainty: {max_uncertain:.2f})",
+                                "method": "semantic",
+                            }
+                        )
 
         return issues[:3]
 
@@ -283,12 +332,14 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
             if completion_found:
                 for indicator in self.CONTINUATION_NEEDED:
                     if indicator in content_lower:
-                        issues.append({
-                            "type": "continuation_needed",
-                            "turns": [turn.turn_number],
-                            "indicator": indicator,
-                            "description": f"More work needed after completion: '{indicator}'",
-                        })
+                        issues.append(
+                            {
+                                "type": "continuation_needed",
+                                "turns": [turn.turn_number],
+                                "indicator": indicator,
+                                "description": f"More work needed after completion: '{indicator}'",
+                            }
+                        )
                         break
         return issues[:2]
 
@@ -301,11 +352,13 @@ class TurnAwareCompletionMisjudgmentDetector(EmbeddingMixin, TurnAwareDetector):
             content = turn.content
             for marker in markers:
                 if marker in content:
-                    issues.append({
-                        "type": "unfinished_marker",
-                        "turns": [turn.turn_number],
-                        "marker": marker,
-                        "description": f"Unfinished marker: {marker}",
-                    })
+                    issues.append(
+                        {
+                            "type": "unfinished_marker",
+                            "turns": [turn.turn_number],
+                            "marker": marker,
+                            "description": f"Unfinished marker: {marker}",
+                        }
+                    )
                     break
         return issues[:3]

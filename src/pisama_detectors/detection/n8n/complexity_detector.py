@@ -18,10 +18,10 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,35 +159,36 @@ class N8NComplexityDetector(TurnAwareDetector):
 
         # 1. Check node count
         if node_count > scaled_max_node_count:
-            issues.append({
-                "detected": True,
-                "type": "excessive_nodes",
-                "node_count": node_count,
-                "threshold": scaled_max_node_count,
-                "explanation": f"Workflow has {node_count} nodes (threshold: {scaled_max_node_count})",
-                "turns": list(range(node_count)),
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "excessive_nodes",
+                    "node_count": node_count,
+                    "threshold": scaled_max_node_count,
+                    "explanation": f"Workflow has {node_count} nodes (threshold: {scaled_max_node_count})",
+                    "turns": list(range(node_count)),
+                }
+            )
             affected_node_indices.extend(range(node_count))
 
         # 2. Calculate branching depth from the connection graph
-        branching_depth = self._calculate_workflow_branch_depth(
-            adjacency, node_lookup
-        )
+        branching_depth = self._calculate_workflow_branch_depth(adjacency, node_lookup)
         if branching_depth > scaled_max_branch_depth:
             branching_indices = [
                 node_index_map[name]
                 for name, data in node_lookup.items()
-                if data.get("type", "") in BRANCHING_NODE_TYPES
-                and name in node_index_map
+                if data.get("type", "") in BRANCHING_NODE_TYPES and name in node_index_map
             ]
-            issues.append({
-                "detected": True,
-                "type": "deep_branching",
-                "branch_depth": branching_depth,
-                "threshold": scaled_max_branch_depth,
-                "explanation": f"Workflow has {branching_depth} levels of nested branches (threshold: {scaled_max_branch_depth})",
-                "turns": branching_indices,
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "deep_branching",
+                    "branch_depth": branching_depth,
+                    "threshold": scaled_max_branch_depth,
+                    "explanation": f"Workflow has {branching_depth} levels of nested branches (threshold: {scaled_max_branch_depth})",
+                    "turns": branching_indices,
+                }
+            )
             affected_node_indices.extend(branching_indices)
 
         # 3. Calculate cyclomatic complexity: E - N + 2P
@@ -202,24 +203,25 @@ class N8NComplexityDetector(TurnAwareDetector):
             branching_indices = [
                 node_index_map[name]
                 for name, data in node_lookup.items()
-                if data.get("type", "") in BRANCHING_NODE_TYPES
-                and name in node_index_map
+                if data.get("type", "") in BRANCHING_NODE_TYPES and name in node_index_map
             ]
-            issues.append({
-                "detected": True,
-                "type": "high_cyclomatic_complexity",
-                "complexity": cyclomatic_complexity,
-                "edges": total_edges,
-                "nodes": node_count,
-                "connected_components": num_connected_components,
-                "threshold": scaled_max_cyclomatic,
-                "explanation": (
-                    f"Workflow has cyclomatic complexity of {cyclomatic_complexity} "
-                    f"(E={total_edges} - N={node_count} + 2*P={num_connected_components}, "
-                    f"threshold: {scaled_max_cyclomatic})"
-                ),
-                "turns": branching_indices,
-            })
+            issues.append(
+                {
+                    "detected": True,
+                    "type": "high_cyclomatic_complexity",
+                    "complexity": cyclomatic_complexity,
+                    "edges": total_edges,
+                    "nodes": node_count,
+                    "connected_components": num_connected_components,
+                    "threshold": scaled_max_cyclomatic,
+                    "explanation": (
+                        f"Workflow has cyclomatic complexity of {cyclomatic_complexity} "
+                        f"(E={total_edges} - N={node_count} + 2*P={num_connected_components}, "
+                        f"threshold: {scaled_max_cyclomatic})"
+                    ),
+                    "turns": branching_indices,
+                }
+            )
             affected_node_indices.extend(branching_indices)
 
         # 4. Count branching nodes directly from node types
@@ -227,10 +229,12 @@ class N8NComplexityDetector(TurnAwareDetector):
         for node in nodes:
             node_type = node.get("type", "")
             if node_type in BRANCHING_NODE_TYPES:
-                branching_nodes.append({
-                    "name": node.get("name", ""),
-                    "type": node_type,
-                })
+                branching_nodes.append(
+                    {
+                        "name": node.get("name", ""),
+                        "type": node_type,
+                    }
+                )
 
         # 5. Check for multiple unrelated concerns
         multiple_concerns = self._detect_workflow_multiple_concerns(nodes)
@@ -274,7 +278,9 @@ class N8NComplexityDetector(TurnAwareDetector):
         if has_excessive or multiple_concerns:
             fixes.append("Split workflow into smaller sub-workflows using Execute Workflow nodes")
         if branching_depth > self.max_branch_depth or has_high_complexity:
-            fixes.append("Simplify branching logic - consider using Switch node instead of nested IFs")
+            fixes.append(
+                "Simplify branching logic - consider using Switch node instead of nested IFs"
+            )
 
         suggested_fix = "; ".join(fixes) if fixes else None
 
@@ -423,7 +429,12 @@ class N8NComplexityDetector(TurnAwareDetector):
                 categories["validation"].append(i)
             elif "email" in node_type or "slack" in node_type or "webhook" in node_type:
                 categories["notification"].append(i)
-            elif "database" in node_type or "sql" in node_type or "postgres" in node_type or "mysql" in node_type:
+            elif (
+                "database" in node_type
+                or "sql" in node_type
+                or "postgres" in node_type
+                or "mysql" in node_type
+            ):
                 categories["storage"].append(i)
             elif "ai" in node_type or "openai" in node_type or "langchain" in node_type:
                 categories["ai_processing"].append(i)
@@ -440,9 +451,7 @@ class N8NComplexityDetector(TurnAwareDetector):
         # "transform", "validation", "other" are infrastructure — not
         # independent functional concerns.
         infrastructure_categories = {"transform", "validation", "other"}
-        unrelated_categories = {
-            k for k in active_categories if k not in infrastructure_categories
-        }
+        unrelated_categories = {k for k in active_categories if k not in infrastructure_categories}
 
         # Flag when a workflow touches 3+ UNRELATED functional areas,
         # which indicates it should be decomposed or split.
@@ -459,9 +468,7 @@ class N8NComplexityDetector(TurnAwareDetector):
 
         return None
 
-    def _detect_excessive_nodes(
-        self, turns: List[TurnSnapshot]
-    ) -> Optional[Dict[str, Any]]:
+    def _detect_excessive_nodes(self, turns: List[TurnSnapshot]) -> Optional[Dict[str, Any]]:
         """Detect if workflow has too many nodes."""
         node_count = len(turns)
 
@@ -499,9 +506,7 @@ class N8NComplexityDetector(TurnAwareDetector):
 
         return max_depth
 
-    def _detect_deep_branching(
-        self, turns: List[TurnSnapshot]
-    ) -> Optional[Dict[str, Any]]:
+    def _detect_deep_branching(self, turns: List[TurnSnapshot]) -> Optional[Dict[str, Any]]:
         """Detect if workflow has deeply nested branches."""
         branch_depth = self._calculate_branch_depth(turns)
 
@@ -578,9 +583,7 @@ class N8NComplexityDetector(TurnAwareDetector):
 
         if execution_time_ms is None and turns:
             # Try to calculate from turn timestamps
-            if turns[0].turn_metadata.get("timestamp") and turns[
-                -1
-            ].turn_metadata.get("timestamp"):
+            if turns[0].turn_metadata.get("timestamp") and turns[-1].turn_metadata.get("timestamp"):
                 try:
                     from datetime import datetime
 
@@ -596,10 +599,7 @@ class N8NComplexityDetector(TurnAwareDetector):
                 except Exception as e:
                     logger.warning(f"Failed to calculate execution time: {e}")
 
-        if (
-            execution_time_ms is not None
-            and execution_time_ms > self.max_execution_time_ms
-        ):
+        if execution_time_ms is not None and execution_time_ms > self.max_execution_time_ms:
             return {
                 "detected": True,
                 "type": "long_execution",
@@ -611,9 +611,7 @@ class N8NComplexityDetector(TurnAwareDetector):
 
         return None
 
-    def _detect_multiple_concerns(
-        self, turns: List[TurnSnapshot]
-    ) -> Optional[Dict[str, Any]]:
+    def _detect_multiple_concerns(self, turns: List[TurnSnapshot]) -> Optional[Dict[str, Any]]:
         """Detect if workflow handles multiple unrelated concerns.
 
         Heuristic: Group nodes by type and check if there are many distinct
@@ -739,7 +737,9 @@ class N8NComplexityDetector(TurnAwareDetector):
         if excessive_nodes or multiple_concerns:
             fixes.append("Split workflow into smaller sub-workflows using Execute Workflow nodes")
         if deep_branching or high_complexity:
-            fixes.append("Simplify branching logic - consider using Switch node instead of nested IFs")
+            fixes.append(
+                "Simplify branching logic - consider using Switch node instead of nested IFs"
+            )
         if long_execution:
             fixes.append("Optimize slow operations or split into async sub-workflows")
 

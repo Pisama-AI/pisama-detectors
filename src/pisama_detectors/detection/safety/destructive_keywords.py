@@ -17,56 +17,128 @@ from typing import Iterable
 # ── Canonical verb categories ────────────────────────────────────────────────
 
 # Irreversible deletion of data, files, records, etc.
-DELETE_VERBS: frozenset = frozenset({
-    "delete", "remove", "rm", "rm -rf", "rmdir", "unlink",
-    "drop", "destroy", "purge", "truncate", "wipe", "erase",
-    "overwrite",
-})
+DELETE_VERBS: frozenset = frozenset(
+    {
+        "delete",
+        "remove",
+        "rm",
+        "rm -rf",
+        "rmdir",
+        "unlink",
+        "drop",
+        "destroy",
+        "purge",
+        "truncate",
+        "wipe",
+        "erase",
+        "overwrite",
+    }
+)
 
 # Modification or in-place writes (less destructive than DELETE, still mutates)
-WRITE_VERBS: frozenset = frozenset({
-    "write", "create", "save", "modify", "update",
-    "patch", "put", "insert", "append", "merge",
-})
+WRITE_VERBS: frozenset = frozenset(
+    {
+        "write",
+        "create",
+        "save",
+        "modify",
+        "update",
+        "patch",
+        "put",
+        "insert",
+        "append",
+        "merge",
+    }
+)
 
 # External communication / network side effects
-SEND_VERBS: frozenset = frozenset({
-    "send", "email", "notify", "publish", "broadcast", "post",
-})
+SEND_VERBS: frozenset = frozenset(
+    {
+        "send",
+        "email",
+        "notify",
+        "publish",
+        "broadcast",
+        "post",
+    }
+)
 
 # Production deployment
-DEPLOY_VERBS: frozenset = frozenset({
-    "deploy", "push", "release", "ship", "promote",
-})
+DEPLOY_VERBS: frozenset = frozenset(
+    {
+        "deploy",
+        "push",
+        "release",
+        "ship",
+        "promote",
+    }
+)
 
 # Arbitrary code/command execution
-EXECUTE_VERBS: frozenset = frozenset({
-    "execute", "run", "invoke", "trigger", "fire",
-    "exec", "eval", "shell", "system", "subprocess", "command",
-    "run_code",
-})
+EXECUTE_VERBS: frozenset = frozenset(
+    {
+        "execute",
+        "run",
+        "invoke",
+        "trigger",
+        "fire",
+        "exec",
+        "eval",
+        "shell",
+        "system",
+        "subprocess",
+        "command",
+        "run_code",
+    }
+)
 
 # Permission/privilege changes
-PERMISSION_VERBS: frozenset = frozenset({
-    "grant", "revoke", "chmod", "chown",
-    "permission", "privilege", "escalate", "elevate", "role",
-})
+PERMISSION_VERBS: frozenset = frozenset(
+    {
+        "grant",
+        "revoke",
+        "chmod",
+        "chown",
+        "permission",
+        "privilege",
+        "escalate",
+        "elevate",
+        "role",
+    }
+)
 
 # Admin / moderation actions
-ADMIN_VERBS: frozenset = frozenset({
-    "ban", "suspend", "block", "terminate", "kill", "shutdown",
-    "rollback",
-})
+ADMIN_VERBS: frozenset = frozenset(
+    {
+        "ban",
+        "suspend",
+        "block",
+        "terminate",
+        "kill",
+        "shutdown",
+        "rollback",
+    }
+)
 
 # Bulk data operations (export/dump/migrate)
-BULK_DATA_VERBS: frozenset = frozenset({
-    "bulk", "export", "dump", "migrate",
-})
+BULK_DATA_VERBS: frozenset = frozenset(
+    {
+        "bulk",
+        "export",
+        "dump",
+        "migrate",
+    }
+)
 
 # Financial actions
-FINANCIAL_VERBS: frozenset = frozenset({
-    "transfer", "pay", "charge", "refund",
-})
+FINANCIAL_VERBS: frozenset = frozenset(
+    {
+        "transfer",
+        "pay",
+        "charge",
+        "refund",
+    }
+)
 
 
 # ── Per-detector compositions ────────────────────────────────────────────────
@@ -113,9 +185,15 @@ OPENCLAW_RISKY_KEYWORDS: dict = {
     "admin_actions": ADMIN_VERBS | frozenset({"delete", "revoke"}),
     "permission_ops": PERMISSION_VERBS,
     "data_operations": BULK_DATA_VERBS | frozenset({"truncate", "drop"}),
-    "credential_ops": frozenset({
-        "password", "reset_password", "credential", "token", "secret",
-    }),
+    "credential_ops": frozenset(
+        {
+            "password",
+            "reset_password",
+            "credential",
+            "token",
+            "secret",
+        }
+    ),
     "system_commands": EXECUTE_VERBS - frozenset({"run", "invoke", "trigger", "fire"}),
 }
 

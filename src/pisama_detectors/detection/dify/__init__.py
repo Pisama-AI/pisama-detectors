@@ -15,12 +15,12 @@ These detectors are framework-specific for Dify workflows and complement
 the generic turn-aware detectors with Dify-specific node type awareness.
 """
 
-from .rag_poisoning_detector import DifyRagPoisoningDetector
+from .classifier_drift_detector import DifyClassifierDriftDetector
 from .iteration_escape_detector import DifyIterationEscapeDetector
 from .model_fallback_detector import DifyModelFallbackDetector
-from .variable_leak_detector import DifyVariableLeakDetector
-from .classifier_drift_detector import DifyClassifierDriftDetector
+from .rag_poisoning_detector import DifyRagPoisoningDetector
 from .tool_schema_mismatch_detector import DifyToolSchemaMismatchDetector
+from .variable_leak_detector import DifyVariableLeakDetector
 
 __all__ = [
     "DifyRagPoisoningDetector",

@@ -21,10 +21,10 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnSnapshot,
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
+    TurnSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,9 +83,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
-    def detect_graph_execution(
-        self, graph_execution: Dict[str, Any]
-    ) -> TurnAwareDetectionResult:
+    def detect_graph_execution(self, graph_execution: Dict[str, Any]) -> TurnAwareDetectionResult:
         nodes = graph_execution.get("nodes", [])
         edges = graph_execution.get("edges", [])
 
@@ -101,15 +99,9 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
 
         # Build lookup structures
         node_ids: Set[str] = {n.get("node_id", "") for n in nodes}
-        node_map: Dict[str, Dict[str, Any]] = {
-            n.get("node_id", ""): n for n in nodes
-        }
-        node_types: Dict[str, str] = {
-            n.get("node_id", ""): n.get("node_type", "") for n in nodes
-        }
-        node_titles: Dict[str, str] = {
-            n.get("node_id", ""): n.get("title", "") for n in nodes
-        }
+        node_map: Dict[str, Dict[str, Any]] = {n.get("node_id", ""): n for n in nodes}
+        node_types: Dict[str, str] = {n.get("node_id", ""): n.get("node_type", "") for n in nodes}
+        node_titles: Dict[str, str] = {n.get("node_id", ""): n.get("title", "") for n in nodes}
 
         nodes_with_outgoing: Set[str] = set()
         nodes_with_incoming: Set[str] = set()
@@ -135,33 +127,34 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                     skip = False
                     if edge_type == "conditional":
                         for other_edge in edges:
-                            if (other_edge.get("source") == source
-                                    and other_edge.get("target") != target
-                                    and other_edge.get("edge_type") == "conditional"):
-                                other_tgt = node_map.get(
-                                    other_edge.get("target", ""), {}
-                                )
-                                if other_tgt.get("status") in (
-                                    "succeeded", "completed"
-                                ):
+                            if (
+                                other_edge.get("source") == source
+                                and other_edge.get("target") != target
+                                and other_edge.get("edge_type") == "conditional"
+                            ):
+                                other_tgt = node_map.get(other_edge.get("target", ""), {})
+                                if other_tgt.get("status") in ("succeeded", "completed"):
                                     skip = True
                                     break
                     if not skip:
-                        issues.append({
-                            "type": "missing_target",
-                            "source": source,
-                            "target": target,
-                            "edge_type": edge_type,
-                            "description": (
-                                f"Edge from '{source}' targets non-existent "
-                                f"node '{target}'"
-                            ),
-                        })
+                        issues.append(
+                            {
+                                "type": "missing_target",
+                                "source": source,
+                                "target": target,
+                                "edge_type": edge_type,
+                                "description": (
+                                    f"Edge from '{source}' targets non-existent node '{target}'"
+                                ),
+                            }
+                        )
 
             # 4. Condition name mismatch (end/process patterns)
             if edge_type == "conditional" and condition and target in node_ids:
                 mismatch = self._check_condition_mismatch(
-                    condition, target, node_types.get(target, ""),
+                    condition,
+                    target,
+                    node_types.get(target, ""),
                     node_titles.get(target, ""),
                 )
                 if mismatch:
@@ -170,7 +163,8 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             # 5. Condition-title semantic mismatch (route_to_X type check)
             if edge_type == "conditional" and condition and target in node_ids:
                 semantic = self._check_condition_title_mismatch(
-                    condition, target,
+                    condition,
+                    target,
                     node_types.get(target, ""),
                     node_titles.get(target, ""),
                 )
@@ -193,22 +187,22 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                 status = graph_execution.get("status", "")
                 if status == "completed":
                     node_superstep = node.get("superstep", -1)
-                    max_superstep = max(
-                        (n.get("superstep", 0) for n in nodes), default=0
-                    )
+                    max_superstep = max((n.get("superstep", 0) for n in nodes), default=0)
                     if node_superstep >= max_superstep:
                         continue
 
-                issues.append({
-                    "type": "dead_end",
-                    "node_id": nid,
-                    "node_type": ntype,
-                    "title": node.get("title", ""),
-                    "description": (
-                        f"Node '{nid}' ({ntype}) has no outgoing edges "
-                        f"but is not a terminal node"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "dead_end",
+                        "node_id": nid,
+                        "node_type": ntype,
+                        "title": node.get("title", ""),
+                        "description": (
+                            f"Node '{nid}' ({ntype}) has no outgoing edges "
+                            f"but is not a terminal node"
+                        ),
+                    }
+                )
 
         # 3. Unreachable nodes
         if nodes:
@@ -218,16 +212,17 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             for node in nodes:
                 nid = node.get("node_id", "")
                 if nid != entry_id and nid not in nodes_with_incoming:
-                    issues.append({
-                        "type": "unreachable",
-                        "node_id": nid,
-                        "node_type": node.get("node_type", ""),
-                        "title": node.get("title", ""),
-                        "description": (
-                            f"Node '{nid}' has no incoming edges and "
-                            f"is not the entry point"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "unreachable",
+                            "node_id": nid,
+                            "node_type": node.get("node_type", ""),
+                            "title": node.get("title", ""),
+                            "description": (
+                                f"Node '{nid}' has no incoming edges and is not the entry point"
+                            ),
+                        }
+                    )
 
         # 6. State value vs edge condition contradiction
         state_snapshots = graph_execution.get("state_snapshots", [])
@@ -238,21 +233,15 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             issues.extend(state_issues)
 
         # 7. Node output vs edge condition contradiction
-        output_issues = self._check_output_condition_contradiction(
-            edges, node_map
-        )
+        output_issues = self._check_output_condition_contradiction(edges, node_map)
         issues.extend(output_issues)
 
         # 8. Condition value vs target name semantic mismatch
-        cond_target_issues = self._check_condition_value_target_mismatch(
-            edges, node_map
-        )
+        cond_target_issues = self._check_condition_value_target_mismatch(edges, node_map)
         issues.extend(cond_target_issues)
 
         # 9. Skipped conditional edge targets
-        skipped_issues = self._check_skipped_conditional_targets(
-            edges, node_map, state_snapshots
-        )
+        skipped_issues = self._check_skipped_conditional_targets(edges, node_map, state_snapshots)
         issues.extend(skipped_issues)
 
         if not issues:
@@ -282,7 +271,11 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
 
         if has_missing or has_state_contradiction or has_output_contradiction:
             severity = TurnAwareSeverity.SEVERE
-        elif "dead_end" in issue_types or "condition_title_mismatch" in issue_types or has_cond_target:
+        elif (
+            "dead_end" in issue_types
+            or "condition_title_mismatch" in issue_types
+            or has_cond_target
+        ):
             severity = TurnAwareSeverity.MODERATE
         else:
             severity = TurnAwareSeverity.MINOR
@@ -323,9 +316,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
         condition_lower = condition.lower().replace("_", " ")
         target_lower = (target_title or target_id).lower()
 
-        condition_suggests_end = any(
-            p in condition_lower for p in END_CONDITION_PATTERNS
-        )
+        condition_suggests_end = any(p in condition_lower for p in END_CONDITION_PATTERNS)
         target_is_processing = target_type in ("llm", "tool", "subgraph", "map_reduce")
 
         if condition_suggests_end and target_is_processing:
@@ -340,12 +331,9 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                 ),
             }
 
-        condition_suggests_process = any(
-            p in condition_lower for p in PROCESS_CONDITION_PATTERNS
-        )
-        target_is_terminal = (
-            target_type in TERMINAL_NODE_TYPES
-            or any(p in target_lower for p in END_CONDITION_PATTERNS)
+        condition_suggests_process = any(p in condition_lower for p in PROCESS_CONDITION_PATTERNS)
+        target_is_terminal = target_type in TERMINAL_NODE_TYPES or any(
+            p in target_lower for p in END_CONDITION_PATTERNS
         )
 
         if condition_suggests_process and target_is_terminal:
@@ -434,9 +422,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                 continue
 
             # Parse condition: "key == 'value'" pattern
-            match = re.match(
-                r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", condition
-            )
+            match = re.match(r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", condition)
             if not match:
                 continue
 
@@ -475,19 +461,21 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                         if output_matches_sibling:
                             continue
 
-                issues.append({
-                    "type": "state_condition_contradiction",
-                    "condition": condition,
-                    "source": source,
-                    "target": target,
-                    "expected_value": cond_value,
-                    "actual_value": str(actual_value),
-                    "state_key": cond_key,
-                    "description": (
-                        f"State has {cond_key}='{actual_value}' but edge "
-                        f"condition '{condition}' was taken (routing to '{target}')"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "state_condition_contradiction",
+                        "condition": condition,
+                        "source": source,
+                        "target": target,
+                        "expected_value": cond_value,
+                        "actual_value": str(actual_value),
+                        "state_key": cond_key,
+                        "description": (
+                            f"State has {cond_key}='{actual_value}' but edge "
+                            f"condition '{condition}' was taken (routing to '{target}')"
+                        ),
+                    }
+                )
 
         return issues
 
@@ -527,9 +515,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                 continue
 
             # Parse "key == 'value'" pattern
-            match = re.match(
-                r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", condition
-            )
+            match = re.match(r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", condition)
             if not match:
                 continue
 
@@ -577,20 +563,22 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                         if output_matches_sibling:
                             continue
 
-                issues.append({
-                    "type": "output_condition_contradiction",
-                    "condition": condition,
-                    "source": source,
-                    "target": target,
-                    "expected_value": cond_value,
-                    "actual_value": str(actual_value),
-                    "key": cond_key,
-                    "description": (
-                        f"Node output has {cond_key}='{actual_value}' but "
-                        f"edge condition '{condition}' was taken "
-                        f"(routing to '{target}')"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "output_condition_contradiction",
+                        "condition": condition,
+                        "source": source,
+                        "target": target,
+                        "expected_value": cond_value,
+                        "actual_value": str(actual_value),
+                        "key": cond_key,
+                        "description": (
+                            f"Node output has {cond_key}='{actual_value}' but "
+                            f"edge condition '{condition}' was taken "
+                            f"(routing to '{target}')"
+                        ),
+                    }
+                )
 
         return issues
 
@@ -609,19 +597,50 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
 
         # Generic suffixes that don't count as meaningful overlap
         generic_suffixes = {
-            "tool", "service", "handler", "agent", "processor",
-            "node", "queue", "manager", "worker", "module",
-            "search", "path", "process", "step",
+            "tool",
+            "service",
+            "handler",
+            "agent",
+            "processor",
+            "node",
+            "queue",
+            "manager",
+            "worker",
+            "module",
+            "search",
+            "path",
+            "process",
+            "step",
         }
 
         # Generic condition values not expected to match target names
         generic_values = {
-            "true", "false", "yes", "no", "default", "none",
-            "high", "low", "medium", "valid", "invalid",
-            "premium", "standard", "basic", "normal",
-            "available", "unavailable", "found", "not_found",
-            "success", "error", "failed", "pending",
-            "positive", "negative", "neutral",
+            "true",
+            "false",
+            "yes",
+            "no",
+            "default",
+            "none",
+            "high",
+            "low",
+            "medium",
+            "valid",
+            "invalid",
+            "premium",
+            "standard",
+            "basic",
+            "normal",
+            "available",
+            "unavailable",
+            "found",
+            "not_found",
+            "success",
+            "error",
+            "failed",
+            "pending",
+            "positive",
+            "negative",
+            "neutral",
             "user_found",
         }
 
@@ -669,9 +688,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             cond_words = set(re.split(r"[\s_\-]", cond_value.lower()))
             cond_words -= {"", "to", "the", "a", "is", "and", "or"}
 
-            title_words = set(
-                re.split(r"(?<=[a-z])(?=[A-Z])|[\s_\-]", target_title)
-            )
+            title_words = set(re.split(r"(?<=[a-z])(?=[A-Z])|[\s_\-]", target_title))
             title_words = {w.lower() for w in title_words}
             title_words -= {"", "to", "the", "a", "is", "and", "or"}
 
@@ -698,17 +715,19 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
                 # All condition words are generic, skip
                 continue
 
-            issues.append({
-                "type": "condition_value_target_mismatch",
-                "condition": condition,
-                "target": target,
-                "target_title": target_title,
-                "condition_value": cond_value,
-                "description": (
-                    f"Condition value '{cond_value}' has no semantic match "
-                    f"with target node '{target_title}'"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "condition_value_target_mismatch",
+                    "condition": condition,
+                    "target": target,
+                    "target_title": target_title,
+                    "condition_value": cond_value,
+                    "description": (
+                        f"Condition value '{cond_value}' has no semantic match "
+                        f"with target node '{target_title}'"
+                    ),
+                }
+            )
 
         return issues
 
@@ -727,7 +746,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
 
         # Build state by superstep
         state_by_step: Dict[int, Dict[str, Any]] = {}
-        for ss in (state_snapshots or []):
+        for ss in state_snapshots or []:
             step = ss.get("superstep", -1)
             state_by_step[step] = ss.get("state", {})
 
@@ -765,9 +784,7 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
             # Check if state or source outputs confirm the executed branch
             executed_edge = executed_targets[0]
             executed_cond = executed_edge.get("condition", "")
-            executed_match = re.match(
-                r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", executed_cond
-            )
+            executed_match = re.match(r"(\w+)\s*==\s*['\"]([^'\"]+)['\"]", executed_cond)
 
             routing_confirmed = False
             if executed_match:
@@ -801,19 +818,21 @@ class LangGraphEdgeMisrouteDetector(TurnAwareDetector):
 
             # State/outputs don't confirm — flag as suspicious
             for skipped_edge in skipped_targets:
-                issues.append({
-                    "type": "skipped_conditional",
-                    "source": source,
-                    "skipped_target": skipped_edge.get("target", ""),
-                    "skipped_condition": skipped_edge.get("condition", ""),
-                    "executed_target": executed_edge.get("target", ""),
-                    "executed_condition": executed_cond,
-                    "description": (
-                        f"Router '{source}' skipped target "
-                        f"'{skipped_edge.get('target', '')}' "
-                        f"(condition: {skipped_edge.get('condition', '')}) "
-                        f"while executing '{executed_edge.get('target', '')}'"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "skipped_conditional",
+                        "source": source,
+                        "skipped_target": skipped_edge.get("target", ""),
+                        "skipped_condition": skipped_edge.get("condition", ""),
+                        "executed_target": executed_edge.get("target", ""),
+                        "executed_condition": executed_cond,
+                        "description": (
+                            f"Router '{source}' skipped target "
+                            f"'{skipped_edge.get('target', '')}' "
+                            f"(condition: {skipped_edge.get('condition', '')}) "
+                            f"while executing '{executed_edge.get('target', '')}'"
+                        ),
+                    }
+                )
 
         return issues

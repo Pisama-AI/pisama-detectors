@@ -7,6 +7,30 @@ on:
     branches: [main]
 
 jobs:
+  quality:
+    name: Lint, tests, and benchmark evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests benchmarks/verify_report.py
+
+      - name: Test all 42 public detector contracts
+        run: pytest -q
+
+      - name: Verify public benchmark metrics
+        run: python benchmarks/verify_report.py
+
   smoke:
     name: Smoke test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

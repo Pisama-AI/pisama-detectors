@@ -11,12 +11,11 @@ status / error structure.
 """
 
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors.detection.turn_aware._base import (
-    TurnAwareDetector,
     TurnAwareDetectionResult,
+    TurnAwareDetector,
     TurnAwareSeverity,
     TurnSnapshot,
 )
@@ -25,8 +24,16 @@ logger = logging.getLogger(__name__)
 
 # Keywords indicating schema-related errors in failure messages
 SCHEMA_ERROR_KEYWORDS = [
-    "schema", "validation", "type", "required", "missing",
-    "invalid", "expected", "unexpected", "mismatch", "format",
+    "schema",
+    "validation",
+    "type",
+    "required",
+    "missing",
+    "invalid",
+    "expected",
+    "unexpected",
+    "mismatch",
+    "format",
 ]
 
 # Python/JSON type names for matching
@@ -180,13 +187,15 @@ class DifyToolSchemaMismatchDetector(TurnAwareDetector):
         # Check required inputs are present
         for field in required_fields:
             if field not in inputs or field == "schema":
-                issues.append({
-                    "type": "missing_required_input",
-                    "node_id": node_id,
-                    "title": node_title,
-                    "field": field,
-                    "confidence": 0.7,
-                })
+                issues.append(
+                    {
+                        "type": "missing_required_input",
+                        "node_id": node_id,
+                        "title": node_title,
+                        "field": field,
+                        "confidence": 0.7,
+                    }
+                )
 
         # Check type mismatches for provided inputs
         for field, field_schema in properties.items():
@@ -194,28 +203,32 @@ class DifyToolSchemaMismatchDetector(TurnAwareDetector):
                 expected_type = field_schema.get("type", "")
                 actual_value = inputs[field]
                 if not self._type_matches(actual_value, expected_type):
-                    issues.append({
-                        "type": "type_mismatch",
-                        "node_id": node_id,
-                        "title": node_title,
-                        "field": field,
-                        "expected_type": expected_type,
-                        "actual_type": type(actual_value).__name__,
-                        "confidence": 0.75,
-                    })
+                    issues.append(
+                        {
+                            "type": "type_mismatch",
+                            "node_id": node_id,
+                            "title": node_title,
+                            "field": field,
+                            "expected_type": expected_type,
+                            "actual_type": type(actual_value).__name__,
+                            "confidence": 0.75,
+                        }
+                    )
 
         # Check for extra unexpected inputs
         schema_fields = set(properties.keys())
         input_fields = {k for k in inputs.keys() if k != "schema"}
         extra = input_fields - schema_fields
         if extra and schema_fields:  # Only flag if schema defines fields
-            issues.append({
-                "type": "extra_inputs",
-                "node_id": node_id,
-                "title": node_title,
-                "extra_fields": list(extra),
-                "confidence": 0.5,
-            })
+            issues.append(
+                {
+                    "type": "extra_inputs",
+                    "node_id": node_id,
+                    "title": node_title,
+                    "extra_fields": list(extra),
+                    "confidence": 0.5,
+                }
+            )
 
         return issues
 
@@ -233,12 +246,14 @@ class DifyToolSchemaMismatchDetector(TurnAwareDetector):
         for field in required_fields:
             val = inputs.get(field)
             if val is None:
-                issues.append({
-                    "type": "null_required_field",
-                    "node_id": node_id,
-                    "title": node_title,
-                    "field": field,
-                })
+                issues.append(
+                    {
+                        "type": "null_required_field",
+                        "node_id": node_id,
+                        "title": node_title,
+                        "field": field,
+                    }
+                )
         return issues
 
     def _check_error_message(

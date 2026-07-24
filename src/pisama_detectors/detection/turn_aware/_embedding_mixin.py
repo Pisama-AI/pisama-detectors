@@ -6,7 +6,7 @@ Provides embedding-based semantic analysis capabilities for detectors.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ._base import EMBEDDING_SIMILARITY_THRESHOLD
 
@@ -21,7 +21,10 @@ def _check_embedding_available() -> bool:
     global EMBEDDING_AVAILABLE
     if EMBEDDING_AVAILABLE is None:
         try:
-            from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+            from pisama_detectors.detection.shared_embedder import (
+                get_shared_embedder as get_embedder,
+            )
+
             embedder = get_embedder()
             # Try a quick encode to verify it works
             _ = embedder.encode("test")
@@ -50,6 +53,7 @@ class EmbeddingMixin:
         """Get or create the class-level lock for embedder initialization."""
         if cls._embedder_lock is None:
             import threading
+
             cls._embedder_lock = threading.RLock()
         return cls._embedder_lock
 
@@ -60,7 +64,10 @@ class EmbeddingMixin:
         with lock:
             if self._embedder is None and _check_embedding_available():
                 try:
-                    from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
+                    from pisama_detectors.detection.shared_embedder import (
+                        get_shared_embedder as get_embedder,
+                    )
+
                     self._embedder = get_embedder()
                 except Exception:
                     pass
@@ -83,11 +90,7 @@ class EmbeddingMixin:
             logger.debug(f"Embedding similarity failed: {e}")
             return -1.0
 
-    def batch_semantic_similarity(
-        self,
-        query: str,
-        passages: List[str]
-    ) -> List[float]:
+    def batch_semantic_similarity(self, query: str, passages: List[str]) -> List[float]:
         """Compute semantic similarity between query and multiple passages.
 
         Returns:
@@ -109,7 +112,7 @@ class EmbeddingMixin:
         self,
         reference: str,
         responses: List[str],
-        threshold: float = EMBEDDING_SIMILARITY_THRESHOLD
+        threshold: float = EMBEDDING_SIMILARITY_THRESHOLD,
     ) -> Dict[str, Any]:
         """Detect semantic drift from reference text across multiple responses.
 
@@ -129,8 +132,8 @@ class EmbeddingMixin:
         # Detect progressive drift (similarity decreasing over time)
         progressive = False
         if len(similarities) >= 3:
-            first_half = similarities[:len(similarities)//2]
-            second_half = similarities[len(similarities)//2:]
+            first_half = similarities[: len(similarities) // 2]
+            second_half = similarities[len(similarities) // 2 :]
             first_avg = sum(first_half) / len(first_half) if first_half else 0
             second_avg = sum(second_half) / len(second_half) if second_half else 0
             progressive = second_avg < first_avg - 0.1  # 10% degradation
@@ -163,19 +166,20 @@ class EmbeddingMixin:
 
         # Specificity markers (numbers, technical terms, proper nouns)
         import re
-        numbers = len(re.findall(r'\b\d+(?:\.\d+)?\b', text))
-        technical = len(re.findall(r'\b[A-Z][a-z]*[A-Z]\w*\b', text))  # camelCase
+
+        numbers = len(re.findall(r"\b\d+(?:\.\d+)?\b", text))
+        technical = len(re.findall(r"\b[A-Z][a-z]*[A-Z]\w*\b", text))  # camelCase
 
         # Sentence complexity (words per sentence)
-        sentences = max(1, text.count('.') + text.count('!') + text.count('?'))
+        sentences = max(1, text.count(".") + text.count("!") + text.count("?"))
         words_per_sentence = len(words) / sentences
 
         # Combine metrics
         density = (
-            unique_ratio * 0.4 +
-            min(1.0, numbers / 10) * 0.2 +
-            min(1.0, technical / 5) * 0.2 +
-            min(1.0, words_per_sentence / 20) * 0.2
+            unique_ratio * 0.4
+            + min(1.0, numbers / 10) * 0.2
+            + min(1.0, technical / 5) * 0.2
+            + min(1.0, words_per_sentence / 20) * 0.2
         )
 
         return min(1.0, density)
@@ -262,18 +266,20 @@ class EmbeddingMixin:
             # Find drift points (sudden drops)
             drift_points = []
             for i in range(1, n):
-                if similarities[i-1] - similarities[i] > 0.15:  # 15% drop
-                    drift_points.append({
-                        "index": i,
-                        "drop": similarities[i-1] - similarities[i],
-                        "before": similarities[i-1],
-                        "after": similarities[i],
-                    })
+                if similarities[i - 1] - similarities[i] > 0.15:  # 15% drop
+                    drift_points.append(
+                        {
+                            "index": i,
+                            "drop": similarities[i - 1] - similarities[i],
+                            "before": similarities[i - 1],
+                            "after": similarities[i],
+                        }
+                    )
 
             # Sliding window analysis
             window_avgs = []
             for i in range(n - window_size + 1):
-                window = similarities[i:i + window_size]
+                window = similarities[i : i + window_size]
                 window_avgs.append(sum(window) / len(window))
 
             # Compute trend (linear regression slope)
