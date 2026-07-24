@@ -278,7 +278,7 @@ class SemanticCorruptionDetector:
                 issues.append(
                     CorruptionIssue(
                         issue_type="type_drift",
-                        field=field,
+                        field=field_name,
                         message=f"Type changed from {prev_type.__name__} to {curr_type.__name__}",
                         severity="high",
                     )

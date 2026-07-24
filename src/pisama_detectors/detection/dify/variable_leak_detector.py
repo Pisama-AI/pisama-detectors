@@ -148,7 +148,11 @@ class DifyVariableLeakDetector(TurnAwareDetector):
         confidence = max_confidence if max_confidence > 0 else 0.6
 
         # Severity based on category
-        categories_found = {i.get("category") for i in issues if "category" in i}
+        categories_found: Set[str] = set()
+        for issue in issues:
+            category_value = issue.get("category")
+            if isinstance(category_value, str):
+                categories_found.add(category_value)
         has_api_key = "api_key" in categories_found
         has_pii = "pii" in categories_found
         has_scope_leak = any(i.get("type") == "scope_leak" for i in issues)
@@ -211,7 +215,7 @@ class DifyVariableLeakDetector(TurnAwareDetector):
         values that appear verbatim in the inputs of a node outside the
         iteration, that is a scope leak.
         """
-        leaks = []
+        leaks: List[Dict[str, Any]] = []
 
         # Collect iteration children and their output strings
         child_outputs: Dict[str, Set[str]] = {}  # parent_id -> set of output strings

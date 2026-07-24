@@ -16,7 +16,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pisama_detectors._config import get_settings, get_tenant_thresholds
 from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
@@ -774,12 +774,12 @@ class MultiLevelLoopDetector:
 
     def _find_cluster_pattern(self, recent_labels, cluster_labels) -> Optional[dict]:
         """Analyze cluster assignments for dominance or cyclic patterns."""
-        cluster_counts = {}
+        cluster_counts: Dict[Any, int] = {}
         for label in recent_labels:
             cluster_counts[label] = cluster_counts.get(label, 0) + 1
 
         max_cluster_count = max(cluster_counts.values())
-        dominant_cluster = max(cluster_counts, key=cluster_counts.get)
+        dominant_cluster = max(cluster_counts, key=cluster_counts.__getitem__)
         dominance_ratio = max_cluster_count / len(recent_labels)
 
         # Check for cyclic patterns in cluster sequence
@@ -791,7 +791,7 @@ class MultiLevelLoopDetector:
                 cycle_length = potential_cycle
                 break
 
-        evidence = {}
+        evidence: Dict[str, Any] = {}
         is_loop = False
 
         if dominance_ratio >= 0.6 and max_cluster_count >= self.min_matches_for_loop:

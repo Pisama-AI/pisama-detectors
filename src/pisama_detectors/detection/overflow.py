@@ -162,8 +162,8 @@ class ContextOverflowDetector:
             else self.warning_threshold
         )
 
-        warnings = []
-        details = {}
+        warnings: List[str] = []
+        details: Dict[str, Any] = {}
 
         if usage_percent >= self.overflow_threshold:
             severity = OverflowSeverity.OVERFLOW
@@ -311,7 +311,7 @@ class ContextOverflowDetector:
         if avg_growth > 0.05 and not expected_shrink:
             current = token_history[-1]
             turns_to_overflow = 0
-            projected = current
+            projected = float(current)
 
             while projected < context_window and turns_to_overflow < 100:
                 projected = projected * (1 + avg_growth)

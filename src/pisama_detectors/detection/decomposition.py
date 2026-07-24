@@ -973,11 +973,9 @@ class TaskDecompositionDetector:
         agent_capabilities: Optional[dict[str, list[str]]] = None,
     ) -> DecompositionResult:
         # v2.0: Handle list-format decomposition (e.g. from AgentBench/GAIA traces)
-        # Sprint 8 LL: Promote ONLY list-format with 1-2 items AND an existing
-        # "Step/goal/Phase" prefix would NOT have been parsed. Well-formed
-        # goal-lists (e.g. BabyAI "goal 1:" / "goal 2:") already have markers
-        # the parser recognizes once joined; only truly thin "Agent output..."
-        # single-item traces need a synthetic "Step 1:" prefix.
+        # List boundaries are structural evidence of separate subtasks. Preserve
+        # intrinsic markers when present and add explicit Step prefixes when the
+        # item text itself has none.
         if isinstance(decomposition, list):
             raw_strs = []
             for item in decomposition:
@@ -986,15 +984,12 @@ class TaskDecompositionDetector:
                 else:
                     raw_strs.append(str(item))
             joined = "\n".join(raw_strs)
-            # Only synthesize Step-prefixes for thin single-item traces that
-            # otherwise defeat parsing. Multi-item lists with intrinsic
-            # markers (goal N, step N, numbered bullets) are left alone.
-            needs_synth = len(raw_strs) <= 1 and not re.search(
+            has_intrinsic_markers = re.search(
                 r"(?:^|\n)\s*(?:\d+[.)]|[-•*]\s|step\s*\d*[:.]|phase\s|goal\s*\d)",
                 joined,
                 re.IGNORECASE,
             )
-            if needs_synth:
+            if raw_strs and not has_intrinsic_markers:
                 decomposition = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(raw_strs))
             else:
                 decomposition = joined

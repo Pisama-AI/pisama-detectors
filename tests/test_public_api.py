@@ -301,3 +301,47 @@ def test_tenant_threshold_overrides_keep_declared_numeric_types() -> None:
     assert thresholds.min_matches_for_loop == 4
     assert isinstance(thresholds.structural_threshold, float)
     assert isinstance(thresholds.loop_detection_window, int)
+
+
+def test_coordination_wrapper_preserves_calibrated_detection_fields() -> None:
+    result = pd.detect_coordination(
+        [
+            {
+                "sender": "planner",
+                "receiver": "reviewer",
+                "content": "Review the release evidence.",
+                "timestamp": 1,
+                "acknowledged": False,
+            },
+            {
+                "sender": "planner",
+                "receiver": "publisher",
+                "content": "Publishing was acknowledged.",
+                "timestamp": 2,
+                "acknowledged": True,
+            },
+        ],
+        ["planner", "reviewer", "publisher"],
+    )
+
+    assert result.detected
+    assert result.issue_count == len(result.issues)
+    assert result.confidence > 0
+    assert result.calibration_info is not None
+
+
+def test_decomposition_wrapper_preserves_structured_list_boundaries() -> None:
+    result = pd.detect_decomposition(
+        "Implement the release and verify it with automated tests.",
+        [
+            {"id": "implement", "description": "Implement the release workflow."},
+            {
+                "id": "verify",
+                "description": "Verify the release with automated tests.",
+                "dependencies": ["implement"],
+            },
+        ],
+    )
+
+    assert result.subtask_count == 2
+    assert "No subtasks found" not in result.explanation

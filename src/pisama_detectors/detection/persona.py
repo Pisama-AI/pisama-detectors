@@ -368,7 +368,7 @@ class PersonaConsistencyScorer:
         """Auto-detect role type from persona description."""
         desc_lower = persona_description.lower()
 
-        scores = {}
+        scores: Dict[RoleType, int] = {}
         for role_type, keywords in ROLE_KEYWORDS.items():
             score = sum(1 for kw in keywords if kw in desc_lower)
             scores[role_type] = score
@@ -376,7 +376,7 @@ class PersonaConsistencyScorer:
         if max(scores.values()) == 0:
             return RoleType.ASSISTANT
 
-        return max(scores, key=scores.get)
+        return max(scores, key=scores.__getitem__)
 
     def _get_thresholds(self, agent: Agent) -> Dict[str, float]:
         """Get role-specific thresholds for the agent."""

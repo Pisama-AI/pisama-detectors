@@ -6,13 +6,17 @@
 
 **42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
-An archived Pisama heuristic run reports **59.9% joint accuracy on the
-[TRAIL](https://github.com/PatronusAI/trail) benchmark** (Patronus, 2025; 148
-traces, 841 labelled errors), versus 11.9% for the best frontier-model judge
-tested. The public confusion counts independently reproduce the reported
-0.754 macro-F1 and 0.746 micro-F1. Run `python benchmarks/verify_report.py`;
-see [`benchmarks/README.md`](benchmarks/README.md) for the exact
-reproducibility boundary.
+An archived Pisama platform run reports **59.9% joint accuracy on the
+[TRAIL](https://github.com/PatronusAI/trail) public split** (Patronus, 2025;
+148 traces, 841 labelled errors). This was not a package-level evaluation and
+144 of 148 traces overlapped calibration material, so the result is
+in-distribution rather than held out. The public confusion counts reproduce
+the reported 0.754 macro-F1 and 0.746 micro-F1 arithmetic. They do not
+independently reproduce joint accuracy or production precision. Run
+`python benchmarks/verify_report.py`; see
+[`benchmarks/README.md`](benchmarks/README.md) and the machine-checked
+[`benchmarks/evidence.json`](benchmarks/evidence.json) for the exact claim
+boundary.
 
 Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
 
@@ -27,6 +31,15 @@ package remains the home of the specialized families.
 The legacy `pisama_detectors.detection.turn_aware` namespace is frozen for
 compatibility and is not part of the supported top-level API. New integrations
 should use the typed functions documented below.
+
+## Quality gates
+
+CI runs positive and negative behavioral cases across the supported detector
+surface, enforces at least 63% statement coverage, and strictly type-checks
+the public wrapper contract. The frozen `detection.turn_aware` compatibility
+namespace is excluded from the supported-surface coverage calculation.
+Supported Python versions are exercised through the 3.10 to 3.13 test matrix,
+including wheel installation and public API smoke tests.
 
 ## Quick Start
 
@@ -128,9 +141,15 @@ for name, info in DETECTOR_REGISTRY.items():
     print(f"{name}: {info.description} ({info.tier})")
 ```
 
-## TRAIL benchmark
+## Archived TRAIL platform benchmark
 
 [TRAIL](https://github.com/PatronusAI/trail) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
+
+The table below is retained as historical platform evidence. It does not
+measure `pisama-detectors` 0.3.0, and the heuristic result is in-distribution
+because 144 of the 148 traces appeared in calibration material. The comparison
+with untuned model judges is therefore not an apples-to-apples generalization
+comparison.
 
 | Method | Joint accuracy | Macro F1 | Cost per trace |
 |---|---|---|---|
@@ -166,7 +185,8 @@ Archived run output and per-model frontier-judge baselines:
 Run `python benchmarks/verify_report.py` to recompute the public
 per-category and aggregate F1 metrics from the confusion counts. The archived
 joint-accuracy value cannot be independently recomputed without the original
-per-annotation predictions, and is labeled accordingly.
+per-annotation predictions, and is labeled accordingly. No held-out
+package-level benchmark result is claimed.
 
 ## Calibration Caveat
 

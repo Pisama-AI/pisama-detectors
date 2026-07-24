@@ -826,13 +826,13 @@ class N8NCycleDetector(TurnAwareDetector):
             if turn.participant_id == current_node:
                 current_count += 1
             else:
-                if current_count > 1:
+                if current_node is not None and current_count > 1:
                     consecutive_counts.append((current_node, current_count, current_start))
                 current_node = turn.participant_id
                 current_count = 1
                 current_start = i
 
-        if current_count > 1:
+        if current_node is not None and current_count > 1:
             consecutive_counts.append((current_node, current_count, current_start))
 
         for node, count, start in consecutive_counts:

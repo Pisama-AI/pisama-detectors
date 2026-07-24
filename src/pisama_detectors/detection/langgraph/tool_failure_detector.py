@@ -193,9 +193,9 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
             confidence = min(0.75, 0.50 + 0.05 * len(issues) + 0.10 * fail_ratio)
             severity = TurnAwareSeverity.MINOR
 
-        type_counts = {}
-        for i in issues:
-            type_counts[i["type"]] = type_counts.get(i["type"], 0) + 1
+        type_counts: Dict[str, int] = {}
+        for issue in issues:
+            type_counts[issue["type"]] = type_counts.get(issue["type"], 0) + 1
         summary = [f"{c} {t}" for t, c in type_counts.items()]
 
         return TurnAwareDetectionResult(

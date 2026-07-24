@@ -23,17 +23,21 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check src tests benchmarks/verify_report.py
+        run: ruff check src tests typing_tests benchmarks/verify_report.py
 
-      - name: Type-check the supported public surface
+      - name: Type-check the supported detector engine
+        run: mypy
+
+      - name: Strict type-check of the supported public surface
         run: >-
-          mypy --ignore-missing-imports --follow-imports=skip
+          mypy --strict --ignore-missing-imports --follow-imports=skip
           src/pisama_detectors/__init__.py
           src/pisama_detectors/_api.py
           src/pisama_detectors/_config.py
+          typing_tests/public_api.py
 
       - name: Test all 42 public detector contracts
-        run: python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=30
+        run: python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=63
 
       - name: Verify public benchmark metrics
         run: python benchmarks/verify_report.py

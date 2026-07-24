@@ -1151,7 +1151,7 @@ class CompletionMisjudgmentDetector:
         # Analyze subtasks if provided
         subtasks_completed = 0
         subtasks_total = 0
-        incomplete_subtasks = []
+        incomplete_subtasks: List[str] = []
 
         if subtasks:
             subtasks_completed, subtasks_total, incomplete_subtasks = self._analyze_subtasks(
@@ -1182,7 +1182,7 @@ class CompletionMisjudgmentDetector:
         criteria = success_criteria or self._extract_success_criteria(task)
         criteria_met = 0
         criteria_total = 0
-        unmet_criteria = []
+        unmet_criteria: List[str] = []
 
         if criteria:
             criteria_met, criteria_total, unmet_criteria = self._check_criteria_met(
@@ -1671,7 +1671,9 @@ class CompletionMisjudgmentDetector:
         # coverage and the raw-substring check adds FPs via tokenization.
         if subtasks and len(subtasks) > 1 and completion_claimed and not incomplete_subtasks:
             subtask_names = [
-                s.get("name", s.get("description", "")) if isinstance(s, dict) else str(s)
+                str(s.get("name", s.get("description", "")) or "")
+                if isinstance(s, dict)
+                else str(s)
                 for s in subtasks
             ]
             output_lower = agent_output.lower()

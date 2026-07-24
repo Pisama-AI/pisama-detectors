@@ -111,8 +111,8 @@ class HallucinationDetector:
         context: Optional[str] = None,
         tool_results: Optional[List[Dict[str, Any]]] = None,
     ) -> HallucinationResult:
-        evidence = []
-        details = {}
+        evidence: List[str] = []
+        details: Dict[str, Any] = {}
 
         grounding_score = 1.0
         hallucination_type = None
@@ -498,7 +498,7 @@ class HallucinationDetector:
         evidence = []
         output.lower()
 
-        contradictions = 0
+        contradictions = 0.0
         total_checks = 0
 
         for result in tool_results:
