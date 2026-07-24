@@ -388,6 +388,9 @@ class PersonaConsistencyScorer:
 
     def _compute_semantic_similarity(self, agent: Agent, output: str) -> float:
         """Compute semantic similarity with caching."""
+        if self.embedder is None:
+            return self._compute_lexical_overlap(agent.persona_description, output)
+
         cache_key = f"{agent.id}:{agent.persona_description[:50]}"
 
         if cache_key not in self._role_embedding_cache:

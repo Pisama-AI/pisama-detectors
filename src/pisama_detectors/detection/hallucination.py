@@ -470,6 +470,16 @@ class HallucinationDetector:
     ) -> Tuple[float, List[str]]:
         evidence = []
 
+        if self.embedder is None:
+            output_tokens = set(re.findall(r"\b[a-z0-9]+\b", output.lower()))
+            context_tokens = set(re.findall(r"\b[a-z0-9]+\b", context.lower()))
+            if not output_tokens or not context_tokens:
+                return 0.0, ["Output or context has no comparable tokens"]
+            similarity = len(output_tokens & context_tokens) / len(output_tokens | context_tokens)
+            if similarity < 0.4:
+                evidence.append("Output has low lexical similarity to context")
+            return similarity, evidence
+
         output_emb = self.embedder.encode(output)
         context_emb = self.embedder.encode(context)
 
