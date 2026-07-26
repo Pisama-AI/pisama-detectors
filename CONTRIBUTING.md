@@ -41,12 +41,29 @@ ruff check src tests typing_tests benchmarks/verify_report.py
 mypy
 mypy --strict --ignore-missing-imports --follow-imports=normal \
   src/pisama_detectors/{__init__,_api,_config}.py typing_tests/public_api.py
-python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=61
+python -m pytest -q \
+  --cov=pisama_detectors \
+  --cov-branch \
+  --cov-report=term \
+  --cov-report=json:/tmp/pisama-coverage.json
+python - <<'PY'
+import json
+from pathlib import Path
+
+totals = json.loads(
+    Path("/tmp/pisama-coverage.json").read_text(encoding="utf-8")
+)["totals"]
+statement = 100 * totals["covered_lines"] / totals["num_statements"]
+branch = 100 * totals["covered_branches"] / totals["num_branches"]
+assert statement >= 67, f"statement coverage {statement:.2f}% is below 67%"
+assert branch >= 50, f"branch coverage {branch:.2f}% is below 50%"
+PY
 python benchmarks/verify_report.py
 ```
 
-Coverage measures every Python module shipped in the wheel, including the
-frozen `detection.turn_aware` compatibility namespace.
+Coverage requires at least 67% statement coverage and 50% branch coverage
+across every Python module shipped in the wheel, including the frozen
+`detection.turn_aware` compatibility namespace.
 
 ## PR checklist
 

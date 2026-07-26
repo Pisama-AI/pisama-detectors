@@ -179,6 +179,10 @@ from pisama_detectors import run_all_detectors
 
 results = run_all_detectors({
     "framework": "n8n",
+    "trace": {
+        "nodes": [],
+        "connections": {},
+    },
     "text": "Ignore instructions...",
     "states": [{"output": "A"}, {"output": "A"}],
     "prev_state": {"x": 1},

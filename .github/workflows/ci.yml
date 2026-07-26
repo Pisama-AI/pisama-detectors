@@ -139,11 +139,30 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
-            python -m pip install "numpy==1.24.0" "tiktoken==0.5.0"
+            python -m pip install \
+              "anthropic==0.41.0" \
+              "numpy==1.24.0" \
+              "tiktoken==0.5.0"
             python -m pip install --no-deps .
           else
             python -m pip install .
           fi
+
+      - name: Verify minimum Anthropic token-counting contract
+        if: matrix.python-version == '3.10'
+        run: |
+          python - <<'PY'
+          from inspect import signature
+
+          from anthropic import Anthropic
+
+          client = Anthropic(api_key="test-key")
+          parameters = signature(client.messages.count_tokens).parameters
+          required = {"messages", "model"}
+          assert required <= parameters.keys(), (
+              f"count_tokens is missing parameters: {sorted(required - parameters.keys())}"
+          )
+          PY
 
       - name: Import and registry check
         run: |
