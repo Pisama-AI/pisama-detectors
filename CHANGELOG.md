@@ -22,6 +22,8 @@ All notable changes to `pisama-detectors` are documented here.
 - Pin the optional MiniLM model to an immutable reviewed revision and download
   only its required safe artifacts.
 - Count long or special-token text with bounded offline tokenization.
+- Require `anthropic>=0.41.0` in the `full` extra so the documented
+  `messages.count_tokens` API is available.
 
 ### Fixed
 
