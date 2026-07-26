@@ -36,11 +36,87 @@ jobs:
           src/pisama_detectors/_config.py
           typing_tests/public_api.py
 
-      - name: Test all 42 public detector contracts
-        run: python -m pytest -q --cov=pisama_detectors --cov-report=term --cov-fail-under=61
+      - name: Test all 42 public detector contracts with coverage gates
+        run: |
+          python -m pytest -q \
+            --cov=pisama_detectors \
+            --cov-branch \
+            --cov-report=term \
+            --cov-report=json:/tmp/pisama-coverage.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          totals = json.loads(
+              Path("/tmp/pisama-coverage.json").read_text(encoding="utf-8")
+          )["totals"]
+          measured = {
+              "statement": 100 * totals["covered_lines"] / totals["num_statements"],
+              "branch": 100 * totals["covered_branches"] / totals["num_branches"],
+          }
+          floors = {"statement": 67, "branch": 50}
+
+          failures = []
+          for kind, floor in floors.items():
+              actual = measured[kind]
+              print(f"{kind.capitalize()} coverage: {actual:.2f}% (minimum {floor}%)")
+              if actual < floor:
+                  failures.append(f"{kind} coverage {actual:.2f}% is below {floor}%")
+
+          if failures:
+              raise SystemExit("; ".join(failures))
+          PY
 
       - name: Verify public benchmark metrics
         run: python benchmarks/verify_report.py
+
+  semantic-options:
+    name: Semantic option regression (real MiniLM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_HOME: /tmp/pisama-huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_DOWNLOAD_TIMEOUT: "60"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Cache MiniLM model
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.HF_HOME }}/hub
+          key: ${{ runner.os }}-huggingface-all-minilm-l6-v2-1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+
+      - name: Install semantic test dependencies
+        run: python -m pip install -e ".[dev,semantic]"
+
+      - name: Load the real semantic model
+        run: |
+          python - <<'PY'
+          from pisama_detectors.detection.shared_embedder import get_shared_embedder
+
+          embedder = get_shared_embedder()
+          if embedder is None:
+              raise SystemExit("all-MiniLM-L6-v2 did not load")
+          embeddings = embedder.encode(["loop state one", "loop state two"])
+          if embeddings.shape[0] != 2:
+              raise SystemExit(f"unexpected embedding shape: {embeddings.shape}")
+          PY
+
+      - name: Verify the public semantic threshold
+        env:
+          HF_HUB_OFFLINE: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_public_option_regressions.py::test_detect_loop_honors_similarity_threshold_with_semantic_extra \
+            tests/test_public_option_regressions.py::test_semantic_cycle_only_path_honors_similarity_threshold
 
   smoke:
     name: Smoke test (Python ${{ matrix.python-version }})
@@ -63,11 +139,30 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
-            python -m pip install "numpy==1.24.0" "tiktoken==0.5.0"
+            python -m pip install \
+              "anthropic==0.41.0" \
+              "numpy==1.24.0" \
+              "tiktoken==0.5.0"
             python -m pip install --no-deps .
           else
             python -m pip install .
           fi
+
+      - name: Verify minimum Anthropic token-counting contract
+        if: matrix.python-version == '3.10'
+        run: |
+          python - <<'PY'
+          from inspect import signature
+
+          from anthropic import Anthropic
+
+          client = Anthropic(api_key="test-key")
+          parameters = signature(client.messages.count_tokens).parameters
+          required = {"messages", "model"}
+          assert required <= parameters.keys(), (
+              f"count_tokens is missing parameters: {sorted(required - parameters.keys())}"
+          )
+          PY
 
       - name: Import and registry check
         run: |

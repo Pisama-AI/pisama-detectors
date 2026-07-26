@@ -14,6 +14,7 @@ Version History:
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -116,18 +117,87 @@ class MultiLevelLoopDetector:
         # Get thresholds with tenant overrides if available
         if tenant_settings or framework:
             thresholds = get_tenant_thresholds(tenant_settings, framework)
-            self.structural_threshold = structural_threshold or thresholds.structural_threshold
-            self.semantic_threshold = semantic_threshold or thresholds.semantic_threshold
-            self.window_size = window_size or thresholds.loop_detection_window
-            self.min_matches_for_loop = min_matches_for_loop or thresholds.min_matches_for_loop
-            self.confidence_scaling = confidence_scaling or thresholds.confidence_scaling
+            self.structural_threshold = (
+                structural_threshold
+                if structural_threshold is not None
+                else thresholds.structural_threshold
+            )
+            self.semantic_threshold = (
+                semantic_threshold
+                if semantic_threshold is not None
+                else thresholds.semantic_threshold
+            )
+            self.window_size = (
+                window_size if window_size is not None else thresholds.loop_detection_window
+            )
+            self.min_matches_for_loop = (
+                min_matches_for_loop
+                if min_matches_for_loop is not None
+                else thresholds.min_matches_for_loop
+            )
+            self.confidence_scaling = (
+                confidence_scaling
+                if confidence_scaling is not None
+                else thresholds.confidence_scaling
+            )
         else:
             # Fall back to global settings
-            self.structural_threshold = structural_threshold or settings.structural_threshold
-            self.semantic_threshold = semantic_threshold or settings.semantic_threshold
-            self.window_size = window_size or settings.loop_detection_window
-            self.min_matches_for_loop = min_matches_for_loop or 2
-            self.confidence_scaling = confidence_scaling or 1.0
+            self.structural_threshold = (
+                structural_threshold
+                if structural_threshold is not None
+                else settings.structural_threshold
+            )
+            self.semantic_threshold = (
+                semantic_threshold
+                if semantic_threshold is not None
+                else settings.semantic_threshold
+            )
+            self.window_size = (
+                window_size if window_size is not None else settings.loop_detection_window
+            )
+            self.min_matches_for_loop = (
+                min_matches_for_loop if min_matches_for_loop is not None else 2
+            )
+            self.confidence_scaling = (
+                confidence_scaling if confidence_scaling is not None else 1.0
+            )
+
+        self._validate_configuration()
+
+    def _validate_configuration(self) -> None:
+        """Reject invalid detector settings before they reach matching code."""
+        for name, value in (
+            ("structural_threshold", self.structural_threshold),
+            ("semantic_threshold", self.semantic_threshold),
+        ):
+            try:
+                is_valid = (
+                    not isinstance(value, bool)
+                    and math.isfinite(value)
+                    and 0.0 <= value <= 1.0
+                )
+            except (TypeError, ValueError):
+                is_valid = False
+            if not is_valid:
+                raise ValueError(f"{name} must be between 0 and 1")
+
+        for name, value in (
+            ("window_size", self.window_size),
+            ("min_matches_for_loop", self.min_matches_for_loop),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be an integer of at least 1")
+
+        try:
+            confidence_scaling_is_valid = (
+                not isinstance(self.confidence_scaling, bool)
+                and math.isfinite(self.confidence_scaling)
+                and self.confidence_scaling > 0.0
+            )
+        except (TypeError, ValueError):
+            confidence_scaling_is_valid = False
+        if not confidence_scaling_is_valid:
+            raise ValueError("confidence_scaling must be greater than 0")
 
     @classmethod
     def for_framework(cls, framework: str) -> "MultiLevelLoopDetector":
@@ -288,7 +358,7 @@ class MultiLevelLoopDetector:
 
         first_match = matches[0]
         loop_length = len(window) - first_match
-        window_start = max(0, len(states) - self.window_size - 1)
+        window_start = len(states) - 1 - len(window)
         raw_score = len(matches) / len(window)
 
         return LoopDetectionResult(
@@ -393,7 +463,7 @@ class MultiLevelLoopDetector:
             avg_similarity = sum(s for _, s in high_sim_matches) / len(high_sim_matches)
             max_similarity = max(s for _, s in high_sim_matches)
             loop_length = len(window) - first_match_idx
-            window_start = max(0, len(states) - self.window_size - 1)
+            window_start = len(states) - 1 - len(window)
 
             return LoopDetectionResult(
                 detected=True,
@@ -557,7 +627,7 @@ class MultiLevelLoopDetector:
         first_match_idx = matches[0][0]
         avg_overlap = sum(j for _, j in matches) / len(matches)
         loop_length = len(window) - first_match_idx
-        window_start = max(0, len(states) - self.window_size - 1)
+        window_start = len(states) - 1 - len(window)
 
         return LoopDetectionResult(
             detected=True,
@@ -814,38 +884,82 @@ class MultiLevelLoopDetector:
         evidence["cluster_distribution"] = {int(k): v for k, v in cluster_counts.items()}
         return evidence
 
-    def _build_clustering_result(
-        self, embeddings, cluster_labels, recent_window: int, n_clusters: int, evidence: dict
-    ) -> LoopDetectionResult:
-        """Validate cluster loop with intra-cluster similarity and build result."""
-        dominant_cluster = evidence.get("dominant_cluster", 0)
-        max_cluster_count = evidence.get("cluster_count", 0)
-        dominance_ratio = evidence.get("dominance_ratio", 0.0)
-
-        # Calculate within-cluster similarity to validate
-        cluster_indices = [i for i, label in enumerate(cluster_labels) if label == dominant_cluster]
-        cluster_embs = [embeddings[i] for i in cluster_indices[-5:]]
-
-        avg_intra_sim = 0.0
-        if len(cluster_embs) >= 2:
-            sims = [
+    def _cluster_semantic_similarity(
+        self,
+        embeddings,
+        cluster_labels,
+        recent_window: int,
+        evidence: dict,
+    ) -> float:
+        """Measure semantic recurrence for dominance and cycle-only patterns."""
+        dominant_cluster = evidence.get("dominant_cluster")
+        if dominant_cluster is not None:
+            cluster_indices = [
+                i for i, label in enumerate(cluster_labels) if label == dominant_cluster
+            ]
+            cluster_embs = [embeddings[i] for i in cluster_indices[-5:]]
+            similarities = [
                 self.embedder.similarity(cluster_embs[i], cluster_embs[j])
                 for i in range(len(cluster_embs))
                 for j in range(i + 1, len(cluster_embs))
             ]
-            avg_intra_sim = sum(sims) / len(sims) if sims else 0.0
+            return sum(similarities) / len(similarities) if similarities else 0.0
 
-        evidence["avg_intra_cluster_similarity"] = round(avg_intra_sim, 4)
+        cycle_length = int(evidence.get("cycle_length", 0))
+        if cycle_length < 2 or recent_window < cycle_length * 2:
+            return 0.0
+
+        cycle_start = len(cluster_labels) - cycle_length * 2
+        similarities = [
+            self.embedder.similarity(
+                embeddings[index],
+                embeddings[index + cycle_length],
+            )
+            for index in range(cycle_start, cycle_start + cycle_length)
+        ]
+        return sum(similarities) / len(similarities) if similarities else 0.0
+
+    def _build_clustering_result(
+        self, embeddings, cluster_labels, recent_window: int, n_clusters: int, evidence: dict
+    ) -> Optional[LoopDetectionResult]:
+        """Validate cluster semantics against the configured threshold."""
+        semantic_similarity = self._cluster_semantic_similarity(
+            embeddings,
+            cluster_labels,
+            recent_window,
+            evidence,
+        )
+        evidence["avg_intra_cluster_similarity"] = round(semantic_similarity, 4)
+        evidence["semantic_threshold"] = self.semantic_threshold
+        if semantic_similarity <= self.semantic_threshold:
+            return None
+
+        cluster_distribution = evidence.get("cluster_distribution", {})
+        max_cluster_count = evidence.get(
+            "cluster_count",
+            max(cluster_distribution.values(), default=0),
+        )
+        dominance_ratio = evidence.get(
+            "dominance_ratio",
+            max_cluster_count / recent_window if recent_window else 0.0,
+        )
         evidence["n_clusters"] = n_clusters
 
-        raw_score = dominance_ratio * 0.5 + avg_intra_sim * 0.5
+        raw_score = dominance_ratio * 0.5 + semantic_similarity * 0.5
 
-        # Find loop start (first state in dominant cluster in recent window)
-        loop_start_index = None
-        for i in range(len(cluster_labels) - recent_window, len(cluster_labels)):
-            if cluster_labels[i] == dominant_cluster:
-                loop_start_index = i
-                break
+        dominant_cluster = evidence.get("dominant_cluster")
+        loop_start_index: Optional[int]
+        if dominant_cluster is None:
+            loop_start_index = len(cluster_labels) - 2 * int(evidence["cycle_length"])
+        else:
+            loop_start_index = next(
+                (
+                    i
+                    for i in range(len(cluster_labels) - recent_window, len(cluster_labels))
+                    if cluster_labels[i] == dominant_cluster
+                ),
+                None,
+            )
 
         return LoopDetectionResult(
             detected=True,

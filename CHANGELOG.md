@@ -4,6 +4,39 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-26
+
+### Added
+
+- Accept structured grounding sources with citation labels in
+  `detect_hallucination`.
+- Accept provider-reported token counts in `detect_overflow` for callers that
+  cannot rely on an offline estimate.
+- Exercise statement and branch coverage in CI, including a pinned real-MiniLM
+  semantic regression job.
+
+### Changed
+
+- Route `run_all_detectors` to the selected LangGraph, Dify, n8n, or OpenClaw
+  adapters when framework metadata is present.
+- Pin the optional MiniLM model to an immutable reviewed revision and download
+  only its required safe artifacts.
+- Count long or special-token text with bounded offline tokenization.
+- Require `anthropic>=0.41.0` in the `full` extra so the documented
+  `messages.count_tokens` API is available.
+
+### Fixed
+
+- Honor public loop window and similarity options across pairwise and
+  clustering paths, validate invalid detector settings, and report correct
+  loop origins.
+- Count separately supplied output during overflow detection and recognize
+  Claude Sonnet 4.6 pricing and context limits.
+- Ground claims against matched source clauses, reject unsupported related
+  claims, and validate every numbered or named citation.
+- Detect direct polarity, numeric, language, and audience-scope conflicts
+  without cross-pairing unrelated requirements.
+
 ## [0.3.1] - 2026-07-26
 
 ### Changed

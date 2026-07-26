@@ -1,4 +1,4 @@
-"""Context window overflow detection."""
+"""Context window overflow detection with bounded offline token estimates."""
 
 from dataclasses import dataclass, field
 from enum import Enum
@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import tiktoken
 
 from .cost import cost_calculator
+
+TOKENIZER_CHUNK_CHARS = 4096
 
 
 class OverflowSeverity(str, Enum):
@@ -65,21 +67,43 @@ class ContextOverflowDetector:
         self.small_model_warning_threshold = small_model_warning_threshold
 
     def _get_tokenizer(self, model: str) -> tiktoken.Encoding:
+        cached = self._tokenizers.get(model)
+        if cached is not None:
+            return cached
+
         try:
             if "gpt-4" in model or "gpt-3.5" in model:
-                return tiktoken.encoding_for_model(model)
+                tokenizer = tiktoken.encoding_for_model(model)
             elif "claude" in model:
-                return tiktoken.get_encoding("cl100k_base")
+                tokenizer = tiktoken.get_encoding("cl100k_base")
             else:
-                return tiktoken.get_encoding("cl100k_base")
+                tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception:
-            return tiktoken.get_encoding("cl100k_base")
+            tokenizer = tiktoken.get_encoding("cl100k_base")
+
+        self._tokenizers[model] = tokenizer
+        return tokenizer
 
     def count_tokens(self, text: str, model: str = "gpt-4") -> int:
+        """Return a bounded offline token estimate for plain text.
+
+        ``encode_ordinary`` treats tokenizer sentinel strings as user text
+        instead of raising. Fixed-size chunks cap the tokenizer's worst-case
+        work on long low-entropy inputs. Chunk boundaries make this an estimate,
+        and ``cl100k_base`` is only a proxy for non-OpenAI models such as Claude.
+        Callers with provider-reported counts should prefer those exact values.
+        """
         if not text:
             return 0
         tokenizer = self._get_tokenizer(model)
-        return len(tokenizer.encode(text))
+        return self._count_with_tokenizer(text, tokenizer)
+
+    @staticmethod
+    def _count_with_tokenizer(text: str, tokenizer: tiktoken.Encoding) -> int:
+        return sum(
+            len(tokenizer.encode_ordinary(text[start : start + TOKENIZER_CHUNK_CHARS]))
+            for start in range(0, len(text), TOKENIZER_CHUNK_CHARS)
+        )
 
     def count_messages_tokens(
         self,
@@ -97,10 +121,10 @@ class ContextOverflowDetector:
             content = msg.get("content", "")
 
             if isinstance(content, str):
-                tokens = len(tokenizer.encode(content))
+                tokens = self._count_with_tokenizer(content, tokenizer)
             elif isinstance(content, list):
                 tokens = sum(
-                    len(tokenizer.encode(str(c.get("text", ""))))
+                    self._count_with_tokenizer(str(c.get("text", "")), tokenizer)
                     for c in content
                     if isinstance(c, dict)
                 )
@@ -115,8 +139,9 @@ class ContextOverflowDetector:
                 tool_tokens += tokens
                 if msg.get("tool_calls"):
                     for tc in msg.get("tool_calls", []):
-                        tool_tokens += len(
-                            tokenizer.encode(str(tc.get("function", {}).get("arguments", "")))
+                        tool_tokens += self._count_with_tokenizer(
+                            str(tc.get("function", {}).get("arguments", "")),
+                            tokenizer,
                         )
             else:
                 message_tokens += tokens

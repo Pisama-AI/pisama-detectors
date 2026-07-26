@@ -6,9 +6,9 @@ Each function takes plain Python dicts/lists and returns a result dataclass.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, ParamSpec, TypeVar
+from typing import Any, Dict, List, Optional, ParamSpec, TypedDict, TypeVar
 
 from pisama_detectors.detection.communication import CommunicationBreakdownResult
 from pisama_detectors.detection.completion import CompletionResult
@@ -32,6 +32,24 @@ from pisama_detectors.detection.workflow import WorkflowAnalysisResult
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
+
+class _HallucinationSourceContent(TypedDict):
+    """Required fields for a public structured grounding source."""
+
+    content: str
+
+
+class HallucinationSource(_HallucinationSourceContent, total=False):
+    """Structured source input with optional named-citation metadata."""
+
+    metadata: Mapping[str, Any]
+    id: Any
+    label: Any
+    name: Any
+    source: Any
+    title: Any
+    url: Any
 
 
 @dataclass
@@ -77,15 +95,24 @@ def detect_loop(
 
     Args:
         states: List of agent state dicts (each representing a step)
-        window_size: Number of states to compare for pattern detection
+        window_size: Total recent-state window, including the current state
         similarity_threshold: Similarity threshold for semantic loop detection
 
     Returns:
         LoopDetectionResult with detected, confidence, loop_type, etc.
+
+    Raises:
+        ValueError: If window_size is less than 1 or similarity_threshold is
+            outside the inclusive range from 0 to 1.
     """
     import json
 
     from pisama_detectors.detection.loop import MultiLevelLoopDetector, StateSnapshot
+
+    if window_size < 1:
+        raise ValueError("window_size must be at least 1")
+    if not 0.0 <= similarity_threshold <= 1.0:
+        raise ValueError("similarity_threshold must be between 0 and 1")
 
     snapshots = []
     for i, state in enumerate(states):
@@ -98,7 +125,10 @@ def detect_loop(
             )
         )
 
-    detector = MultiLevelLoopDetector()
+    detector = MultiLevelLoopDetector(
+        window_size=window_size,
+        semantic_threshold=similarity_threshold,
+    )
     return detector.detect_loop(snapshots)
 
 
@@ -147,7 +177,7 @@ def detect_injection(
 @_register("hallucination", "Detect factual inaccuracies and fabrications", "production")
 def detect_hallucination(
     output: str,
-    sources: Optional[List[str]] = None,
+    sources: Optional[Sequence[str | HallucinationSource]] = None,
 ) -> HallucinationResult:
     """Detect hallucinations in agent output.
 
@@ -158,11 +188,34 @@ def detect_hallucination(
     Returns:
         HallucinationResult with detected, confidence, issues
     """
-    from pisama_detectors.detection.hallucination import HallucinationDetector
+    from pisama_detectors.detection.hallucination import (
+        HallucinationDetector,
+        SourceDocument,
+    )
+
+    normalized_sources = []
+    for source in sources or ():
+        if isinstance(source, str):
+            normalized_sources.append(SourceDocument(content=source))
+            continue
+        if not isinstance(source, Mapping):
+            raise TypeError("Each hallucination source must be a string or mapping")
+        content = source.get("content")
+        if not isinstance(content, str):
+            raise TypeError("Structured hallucination sources require string 'content'")
+        raw_metadata = source.get("metadata", {})
+        if not isinstance(raw_metadata, Mapping):
+            raise TypeError("Structured source 'metadata' must be a mapping")
+        metadata = dict(raw_metadata)
+        for key in ("id", "label", "name", "source", "title", "url"):
+            if key in source:
+                metadata.setdefault(key, source[key])
+        normalized_sources.append(SourceDocument(content=content, metadata=metadata))
 
     detector = HallucinationDetector()
     return detector.detect_hallucination(
-        output=output, context="\n".join(sources) if sources else None
+        output=output,
+        sources=normalized_sources or None,
     )
 
 
@@ -235,23 +288,48 @@ def detect_overflow(
     context: str,
     output: str,
     model: str = "claude-sonnet-4-6",
+    *,
+    provider_token_count: Optional[int] = None,
 ) -> OverflowResult:
     """Detect context overflow issues.
 
     Args:
-        context: Full context/conversation
-        output: Agent output
+        context: Context/conversation to inspect. If it already includes the
+            latest agent output, pass an empty ``output`` to avoid double counting.
+        output: Separately supplied latest agent output. Every non-empty value
+            is counted in addition to ``context``.
         model: LLM model name (for token limit lookup)
+        provider_token_count: Optional provider-reported count for the
+            complete request represented by ``context`` and ``output``. When
+            omitted, the detector uses a bounded offline estimate. Claude uses
+            ``cl100k_base`` as a proxy, not Anthropic's proprietary tokenizer.
 
     Returns:
         OverflowResult with detected, severity, token counts
+
+    Raises:
+        ValueError: If provider_token_count is not a non-negative integer.
     """
     from pisama_detectors.detection.overflow import ContextOverflowDetector
 
     detector = ContextOverflowDetector()
-    # Estimate token count from context length (rough: 1 token ≈ 4 chars)
-    current_tokens = len(context) // 4
-    return detector.detect_overflow(current_tokens=current_tokens, model=model)
+    if provider_token_count is not None:
+        if (
+            isinstance(provider_token_count, bool)
+            or not isinstance(provider_token_count, int)
+            or provider_token_count < 0
+        ):
+            raise ValueError("provider_token_count must be a non-negative integer")
+        current_tokens = provider_token_count
+        token_count_source = "provider"
+    else:
+        current_tokens = detector.count_tokens(context, model)
+        current_tokens += detector.count_tokens(output, model)
+        token_count_source = "offline_estimate"
+
+    result = detector.detect_overflow(current_tokens=current_tokens, model=model)
+    result.details["token_count_source"] = token_count_source
+    return result
 
 
 @_register("derailment", "Detect task focus deviation", "beta")
@@ -786,7 +864,25 @@ def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     results = {}
 
+    trace = trace_data.get("trace")
+    framework_candidates = [
+        trace_data.get("framework"),
+        trace.get("framework") if isinstance(trace, Mapping) else None,
+    ]
+    framework = next(
+        (
+            candidate.strip().lower()
+            for candidate in framework_candidates
+            if isinstance(candidate, str)
+            and candidate.strip().lower() in {"langgraph", "dify", "n8n", "openclaw"}
+        ),
+        None,
+    )
+    framework_prefix = f"{framework}_" if framework is not None else None
+
     for name, info in DETECTOR_REGISTRY.items():
+        if framework_prefix and _is_other_framework_detector(name, framework_prefix):
+            continue
         try:
             # Only run detectors whose inputs are available
             result = _try_run_detector(name, info.function, trace_data)
@@ -796,6 +892,12 @@ def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
             results[name] = {"error": str(e)}
 
     return results
+
+
+def _is_other_framework_detector(name: str, selected_prefix: str) -> bool:
+    """Return whether a registered framework detector belongs to another framework."""
+    framework_prefixes = ("langgraph_", "dify_", "n8n_", "openclaw_")
+    return name.startswith(framework_prefixes) and not name.startswith(selected_prefix)
 
 
 def _try_run_detector(name: str, fn: Callable[..., Any], data: Dict[str, Any]) -> Any:

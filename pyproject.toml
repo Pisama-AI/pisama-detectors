@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pisama-detectors"
-version = "0.3.1"
+version = "0.3.2"
 description = "42 failure detectors for LLM agent systems"
 readme = "README.md"
 license = {text = "BSL-1.1"}
@@ -36,11 +36,13 @@ dependencies = [
 
 [project.optional-dependencies]
 semantic = [
+    "safetensors>=0.3.1",
     "scikit-learn>=1.3.0",
     "sentence-transformers>=2.2.0",
 ]
 full = [
-    "anthropic>=0.25.0",
+    "anthropic>=0.41.0",
+    "safetensors>=0.3.1",
     "scikit-learn>=1.3.0",
     "sentence-transformers>=2.2.0",
 ]
@@ -53,7 +55,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://pisama.ai"
-Documentation = "https://docs.pisama.ai/detectors"
+Documentation = "https://github.com/Pisama-AI/pisama-detectors#readme"
 Repository = "https://github.com/Pisama-AI/pisama-detectors"
 Issues = "https://github.com/Pisama-AI/pisama-detectors/issues"
 Changelog = "https://github.com/Pisama-AI/pisama-detectors/blob/main/CHANGELOG.md"

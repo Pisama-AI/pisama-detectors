@@ -35,11 +35,11 @@ should use the typed functions documented below.
 ## Quality gates
 
 CI exercises failure and healthy-path behavior for the detector functions,
-checks the cost result contract, enforces at least 61% statement coverage
-across every Python module shipped in the wheel, resolves public runtime type
-annotations, and strictly type-checks the public wrapper contract. Supported
-Python versions are exercised through the 3.10 to 3.13 test matrix, including
-wheel installation and public API smoke tests.
+checks the cost result contract, enforces at least 67% statement coverage and
+50% branch coverage across every Python module shipped in the wheel, resolves
+public runtime type annotations, and strictly type-checks the public wrapper
+contract. Supported Python versions are exercised through the 3.10 to 3.13 test
+matrix, including wheel installation and public API smoke tests.
 
 ## Quick Start
 
@@ -73,6 +73,62 @@ result = detect_corruption(
     current_state={"balance": -500, "status": ""},
 )
 print(f"Corruption: {result.detected}")
+```
+
+### Context overflow token counts
+
+`detect_overflow(context, output)` counts every non-empty `output` separately
+from `context`. Pass `output=""` when the context already includes that output.
+Without a provider count, the detector uses a bounded offline estimate.
+For Claude, this estimate uses `cl100k_base` as a proxy and is not an exact
+Anthropic token count.
+
+Near a model's context limit, use the provider's token-counting API and pass
+the complete request count through the keyword-only `provider_token_count`
+argument:
+
+```python
+from anthropic import Anthropic
+from pisama_detectors import detect_overflow
+
+anthropic_client = Anthropic()
+serialized_context = "System: Review the release evidence carefully."
+latest_output = "Assistant: The release evidence is complete."
+messages = [
+    {"role": "user", "content": serialized_context},
+    {"role": "assistant", "content": latest_output},
+]
+count = anthropic_client.messages.count_tokens(
+    model="claude-sonnet-4-6",
+    messages=messages,
+).input_tokens
+
+result = detect_overflow(
+    context=serialized_context,
+    output=latest_output,
+    model="claude-sonnet-4-6",
+    provider_token_count=count,
+)
+```
+
+### Grounding sources and named citations
+
+Plain string sources support numbered citations. Structured sources also
+support names, titles, IDs, labels, and URLs:
+
+```python
+from pisama_detectors import HallucinationSource, detect_hallucination
+
+sources: list[HallucinationSource] = [
+    {
+        "content": "The API requires TLS for every request.",
+        "title": "Official Guide",
+    }
+]
+result = detect_hallucination(
+    "TLS is required by the API (source: Official Guide).",
+    sources,
+)
 ```
 
 ## Core Detectors (18)
@@ -122,6 +178,11 @@ Specialized detectors that understand the execution model of each framework.
 from pisama_detectors import run_all_detectors
 
 results = run_all_detectors({
+    "framework": "n8n",
+    "trace": {
+        "nodes": [],
+        "connections": {},
+    },
     "text": "Ignore instructions...",
     "states": [{"output": "A"}, {"output": "A"}],
     "prev_state": {"x": 1},
@@ -131,6 +192,10 @@ results = run_all_detectors({
 for detector, result in results.items():
     print(f"{detector}: {result}")
 ```
+
+For LangGraph, Dify, n8n, and OpenClaw, `framework` can be provided at the
+top level or inside the `trace` mapping. Recognized values skip adapters for
+other frameworks. Omitting it preserves the legacy fanout behavior.
 
 ## Detector Registry
 

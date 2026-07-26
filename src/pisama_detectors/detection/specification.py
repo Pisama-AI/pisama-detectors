@@ -479,6 +479,17 @@ class SpecificationMismatchDetector:
                     break  # One hit per pattern is enough
         return negations
 
+    def _detect_direct_contradictions(
+        self,
+        user_intent: str,
+        task_specification: str,
+    ) -> list[str]:
+        from pisama_detectors.detection._specification_contradictions import (
+            detect_direct_contradictions,
+        )
+
+        return detect_direct_contradictions(user_intent, task_specification)
+
     # v2.1: Words excluded from key phrase extraction — generic/vague terms
     # that don't carry specific meaning
     _PHRASE_STOP_WORDS = frozenset(
@@ -1279,14 +1290,20 @@ class SpecificationMismatchDetector:
         user_intent = self._strip_metadata(user_intent)
         task_specification = self._strip_metadata(task_specification)
 
-        # v2.8: When task_specification is identical to user_intent (or a
-        # pure extension of it), no mismatch is possible — the spec IS the
-        # intent. This prevents false positives on sources that store the
-        # same text in both fields (e.g. swebench_real where the GitHub
-        # issue text is passed as both intent and spec).
+        # v2.8: Identical inputs are always clean. A textual extension is only
+        # clean when the appended clauses do not reverse an existing constraint.
         ui_norm = " ".join(user_intent.split())
         ts_norm = " ".join(task_specification.split())
-        if ui_norm and (ui_norm == ts_norm or ts_norm.startswith(ui_norm)):
+        extension_contradictions: list[str] = []
+        if ui_norm and ts_norm.startswith(ui_norm) and ui_norm != ts_norm:
+            extension_contradictions = self._detect_direct_contradictions(
+                user_intent,
+                task_specification,
+            )
+        if ui_norm and (
+            ui_norm == ts_norm
+            or (ts_norm.startswith(ui_norm) and not extension_contradictions)
+        ):
             return SpecificationMismatchResult(
                 detected=False,
                 mismatch_type=None,
@@ -1325,6 +1342,7 @@ class SpecificationMismatchDetector:
         mismatch_type = None
         detected = False
         code_issues = []
+        direct_contradictions: list[str] = extension_contradictions
 
         # v1.1: Check numeric constraints with tolerance
         numeric_constraint = self._extract_numeric_constraint(user_intent)
@@ -1439,20 +1457,22 @@ class SpecificationMismatchDetector:
                 mismatch_type = MismatchType.SCOPE_DRIFT
                 missing.append(scope_expansion)
 
-        # v2.7: Requirement negation — spec explicitly excludes a user-intent
-        # requirement via phrases like "without X", "no X", "bypass X". Topical
-        # embedding similarity cannot catch this (both texts are about the
-        # same domain), so the deterministic negation check fires even when
-        # semantic coverage is 1.0.
-        if not detected and not is_qa_answer:
-            negations = self._detect_requirement_negation(user_intent, task_specification)
-            if negations:
+        # Direct reversals use almost identical vocabulary, so keyword and
+        # embedding coverage can score them as perfect matches. Check explicit
+        # polarity, numeric, language, and scope conflicts deterministically.
+        if not is_qa_answer:
+            if not direct_contradictions:
+                direct_contradictions = self._detect_direct_contradictions(
+                    user_intent,
+                    task_specification,
+                )
+            if direct_contradictions:
                 detected = True
-                mismatch_type = MismatchType.MISSING_REQUIREMENT
-                for neg in negations[:3]:
-                    missing.append(f"requirement negated: {neg}")
-                # v2.7: Requirement negation is a severe, deterministic signal
-                # (not borderline) — cap coverage to ensure severe severity.
+                mismatch_type = MismatchType.CONFLICTING_SPEC
+                missing = [
+                    *(f"direct contradiction: {conflict}" for conflict in direct_contradictions),
+                    *missing,
+                ]
                 coverage = min(coverage, 0.25)
 
         # v2.9: Semantic divergence gate — catches FN clusters where the
@@ -1522,6 +1542,12 @@ class SpecificationMismatchDetector:
                 f"Coverage: {coverage:.1%}"
             )
             fix = f"Add missing requirements to specification: {', '.join(missing[:3])}"
+        elif mismatch_type == MismatchType.CONFLICTING_SPEC:
+            explanation = (
+                f"Task specification directly conflicts with user intent in "
+                f"{len(direct_contradictions)} place(s)"
+            )
+            fix = "Resolve the direct contradictions before implementation"
         elif mismatch_type == MismatchType.AMBIGUOUS_SPEC:
             explanation = (
                 f"Task specification contains {len(ambiguities)} ambiguous elements: "

@@ -31,6 +31,8 @@ LLM_PRICING_2025: Dict[str, ModelPricing] = {
     # Claude 4.5 models (latest)
     "claude-opus-4-5-20251101": ModelPricing(15.00, 75.00, 200000, "anthropic"),
     "claude-sonnet-4-5-20251101": ModelPricing(3.00, 15.00, 200000, "anthropic"),
+    # Claude 4.6 models
+    "claude-sonnet-4-6": ModelPricing(3.00, 15.00, 1000000, "anthropic"),
     "gemini-1.5-pro": ModelPricing(1.25, 5.00, 2000000, "google"),
     "gemini-1.5-flash": ModelPricing(0.075, 0.30, 1000000, "google"),
     "gemini-2.0-flash": ModelPricing(0.10, 0.40, 1000000, "google"),
