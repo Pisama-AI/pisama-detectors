@@ -35,8 +35,8 @@ should use the typed functions documented below.
 ## Quality gates
 
 CI exercises failure and healthy-path behavior for the detector functions,
-checks the cost result contract, enforces at least 65% statement coverage and
-48% branch coverage across every Python module shipped in the wheel, resolves
+checks the cost result contract, enforces at least 67% statement coverage and
+50% branch coverage across every Python module shipped in the wheel, resolves
 public runtime type annotations, and strictly type-checks the public wrapper
 contract. Supported Python versions are exercised through the 3.10 to 3.13 test
 matrix, including wheel installation and public API smoke tests.
@@ -88,8 +88,16 @@ the complete request count through the keyword-only `provider_token_count`
 argument:
 
 ```python
+from anthropic import Anthropic
 from pisama_detectors import detect_overflow
 
+anthropic_client = Anthropic()
+serialized_context = "System: Review the release evidence carefully."
+latest_output = "Assistant: The release evidence is complete."
+messages = [
+    {"role": "user", "content": serialized_context},
+    {"role": "assistant", "content": latest_output},
+]
 count = anthropic_client.messages.count_tokens(
     model="claude-sonnet-4-6",
     messages=messages,
@@ -100,6 +108,26 @@ result = detect_overflow(
     output=latest_output,
     model="claude-sonnet-4-6",
     provider_token_count=count,
+)
+```
+
+### Grounding sources and named citations
+
+Plain string sources support numbered citations. Structured sources also
+support names, titles, IDs, labels, and URLs:
+
+```python
+from pisama_detectors import HallucinationSource, detect_hallucination
+
+sources: list[HallucinationSource] = [
+    {
+        "content": "The API requires TLS for every request.",
+        "title": "Official Guide",
+    }
+]
+result = detect_hallucination(
+    "TLS is required by the API (source: Official Guide).",
+    sources,
 )
 ```
 
@@ -150,6 +178,7 @@ Specialized detectors that understand the execution model of each framework.
 from pisama_detectors import run_all_detectors
 
 results = run_all_detectors({
+    "framework": "n8n",
     "text": "Ignore instructions...",
     "states": [{"output": "A"}, {"output": "A"}],
     "prev_state": {"x": 1},
@@ -159,6 +188,10 @@ results = run_all_detectors({
 for detector, result in results.items():
     print(f"{detector}: {result}")
 ```
+
+For LangGraph, Dify, n8n, and OpenClaw, `framework` can be provided at the
+top level or inside the `trace` mapping. Recognized values skip adapters for
+other frameworks. Omitting it preserves the legacy fanout behavior.
 
 ## Detector Registry
 

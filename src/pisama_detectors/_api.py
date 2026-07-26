@@ -299,7 +299,7 @@ def detect_overflow(
         output: Separately supplied latest agent output. Every non-empty value
             is counted in addition to ``context``.
         model: LLM model name (for token limit lookup)
-        provider_token_count: Optional exact provider-reported count for the
+        provider_token_count: Optional provider-reported count for the
             complete request represented by ``context`` and ``output``. When
             omitted, the detector uses a bounded offline estimate. Claude uses
             ``cl100k_base`` as a proxy, not Anthropic's proprietary tokenizer.

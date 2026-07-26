@@ -54,7 +54,7 @@ jobs:
               "statement": 100 * totals["covered_lines"] / totals["num_statements"],
               "branch": 100 * totals["covered_branches"] / totals["num_branches"],
           }
-          floors = {"statement": 65, "branch": 48}
+          floors = {"statement": 67, "branch": 50}
 
           failures = []
           for kind, floor in floors.items():
