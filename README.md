@@ -146,10 +146,10 @@ for name, info in DETECTOR_REGISTRY.items():
 [TRAIL](https://github.com/PatronusAI/trail) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
 
 The table below is retained as historical platform evidence. It does not
-measure `pisama-detectors` 0.3.0, and the heuristic result is in-distribution
-because 144 of the 148 traces appeared in calibration material. The comparison
-with untuned model judges is therefore not an apples-to-apples generalization
-comparison.
+measure any published `pisama-detectors` package release, and the heuristic
+result is in-distribution because 144 of the 148 traces appeared in calibration
+material. The comparison with untuned model judges is therefore not an
+apples-to-apples generalization comparison.
 
 | Method | Joint accuracy | Macro F1 | Cost per trace |
 |---|---|---|---|
