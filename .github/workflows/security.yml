@@ -12,6 +12,24 @@ permissions:
   contents: read
 
 jobs:
+  dependency-audit:
+    name: Audit core runtime dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Audit project dependency resolution
+        run: |
+          python -m pip install "pip-audit==2.10.1"
+          python -m pip_audit --strict --progress-spinner=off --timeout=30 .
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

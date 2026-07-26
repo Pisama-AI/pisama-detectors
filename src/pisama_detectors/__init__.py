@@ -82,7 +82,7 @@ from ._api import (
 try:
     __version__ = version("pisama-detectors")
 except PackageNotFoundError:
-    __version__ = "0.3.0"
+    __version__ = "0.3.1"
 
 __all__ = [
     "DETECTOR_REGISTRY",
