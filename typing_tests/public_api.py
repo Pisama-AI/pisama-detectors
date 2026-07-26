@@ -28,6 +28,11 @@ hallucination_result: HallucinationResult = pd.detect_hallucination("", [])
 persona_result: PersonaConsistencyResult = pd.detect_persona_drift("", "", "")
 coordination_result: CoordinationAnalysisResult = pd.detect_coordination([])
 overflow_result: OverflowResult = pd.detect_overflow("", "")
+provider_overflow_result: OverflowResult = pd.detect_overflow(
+    "",
+    "",
+    provider_token_count=0,
+)
 derailment_result: DerailmentResult = pd.detect_derailment("", "")
 context_result: ContextNeglectResult = pd.detect_context_neglect("", "")
 communication_result: CommunicationBreakdownResult = pd.detect_communication("", "")

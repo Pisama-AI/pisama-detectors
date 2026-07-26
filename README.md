@@ -35,11 +35,11 @@ should use the typed functions documented below.
 ## Quality gates
 
 CI exercises failure and healthy-path behavior for the detector functions,
-checks the cost result contract, enforces at least 61% statement coverage
-across every Python module shipped in the wheel, resolves public runtime type
-annotations, and strictly type-checks the public wrapper contract. Supported
-Python versions are exercised through the 3.10 to 3.13 test matrix, including
-wheel installation and public API smoke tests.
+checks the cost result contract, enforces at least 65% statement coverage and
+48% branch coverage across every Python module shipped in the wheel, resolves
+public runtime type annotations, and strictly type-checks the public wrapper
+contract. Supported Python versions are exercised through the 3.10 to 3.13 test
+matrix, including wheel installation and public API smoke tests.
 
 ## Quick Start
 
@@ -73,6 +73,34 @@ result = detect_corruption(
     current_state={"balance": -500, "status": ""},
 )
 print(f"Corruption: {result.detected}")
+```
+
+### Context overflow token counts
+
+`detect_overflow(context, output)` counts every non-empty `output` separately
+from `context`. Pass `output=""` when the context already includes that output.
+Without a provider count, the detector uses a bounded offline estimate.
+For Claude, this estimate uses `cl100k_base` as a proxy and is not an exact
+Anthropic token count.
+
+Near a model's context limit, use the provider's token-counting API and pass
+the complete request count through the keyword-only `provider_token_count`
+argument:
+
+```python
+from pisama_detectors import detect_overflow
+
+count = anthropic_client.messages.count_tokens(
+    model="claude-sonnet-4-6",
+    messages=messages,
+).input_tokens
+
+result = detect_overflow(
+    context=serialized_context,
+    output=latest_output,
+    model="claude-sonnet-4-6",
+    provider_token_count=count,
+)
 ```
 
 ## Core Detectors (18)

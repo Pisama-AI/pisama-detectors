@@ -77,15 +77,24 @@ def detect_loop(
 
     Args:
         states: List of agent state dicts (each representing a step)
-        window_size: Number of states to compare for pattern detection
+        window_size: Total recent-state window, including the current state
         similarity_threshold: Similarity threshold for semantic loop detection
 
     Returns:
         LoopDetectionResult with detected, confidence, loop_type, etc.
+
+    Raises:
+        ValueError: If window_size is less than 1 or similarity_threshold is
+            outside the inclusive range from 0 to 1.
     """
     import json
 
     from pisama_detectors.detection.loop import MultiLevelLoopDetector, StateSnapshot
+
+    if window_size < 1:
+        raise ValueError("window_size must be at least 1")
+    if not 0.0 <= similarity_threshold <= 1.0:
+        raise ValueError("similarity_threshold must be between 0 and 1")
 
     snapshots = []
     for i, state in enumerate(states):
@@ -98,7 +107,10 @@ def detect_loop(
             )
         )
 
-    detector = MultiLevelLoopDetector()
+    detector = MultiLevelLoopDetector(
+        window_size=window_size,
+        semantic_threshold=similarity_threshold,
+    )
     return detector.detect_loop(snapshots)
 
 
@@ -235,23 +247,48 @@ def detect_overflow(
     context: str,
     output: str,
     model: str = "claude-sonnet-4-6",
+    *,
+    provider_token_count: Optional[int] = None,
 ) -> OverflowResult:
     """Detect context overflow issues.
 
     Args:
-        context: Full context/conversation
-        output: Agent output
+        context: Context/conversation to inspect. If it already includes the
+            latest agent output, pass an empty ``output`` to avoid double counting.
+        output: Separately supplied latest agent output. Every non-empty value
+            is counted in addition to ``context``.
         model: LLM model name (for token limit lookup)
+        provider_token_count: Optional exact provider-reported count for the
+            complete request represented by ``context`` and ``output``. When
+            omitted, the detector uses a bounded offline estimate. Claude uses
+            ``cl100k_base`` as a proxy, not Anthropic's proprietary tokenizer.
 
     Returns:
         OverflowResult with detected, severity, token counts
+
+    Raises:
+        ValueError: If provider_token_count is not a non-negative integer.
     """
     from pisama_detectors.detection.overflow import ContextOverflowDetector
 
     detector = ContextOverflowDetector()
-    # Estimate token count from context length (rough: 1 token ≈ 4 chars)
-    current_tokens = len(context) // 4
-    return detector.detect_overflow(current_tokens=current_tokens, model=model)
+    if provider_token_count is not None:
+        if (
+            isinstance(provider_token_count, bool)
+            or not isinstance(provider_token_count, int)
+            or provider_token_count < 0
+        ):
+            raise ValueError("provider_token_count must be a non-negative integer")
+        current_tokens = provider_token_count
+        token_count_source = "provider"
+    else:
+        current_tokens = detector.count_tokens(context, model)
+        current_tokens += detector.count_tokens(output, model)
+        token_count_source = "offline_estimate"
+
+    result = detector.detect_overflow(current_tokens=current_tokens, model=model)
+    result.details["token_count_source"] = token_count_source
+    return result
 
 
 @_register("derailment", "Detect task focus deviation", "beta")
