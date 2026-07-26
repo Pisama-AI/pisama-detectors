@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "artifact": {
+    "path": "trail.json",
+    "sha256": "26b1df07012c89afd14555cdbcf2e0206f215428b5b9ad960bbcebe0b7c85203",
+    "run_id": "dfad8a45"
+  },
+  "evaluation": {
+    "scope": "archived_pisama_platform_run",
+    "package_release_evaluated": null,
+    "split": "TRAIL public split",
+    "traces": 148,
+    "calibration_overlap_traces": 144,
+    "held_out": false,
+    "prediction_level_artifact_available": false,
+    "negative_candidate_set_available": false
+  },
+  "claim_boundary": [
+    "The archived confusion counts reproduce aggregate recall and F1 arithmetic.",
+    "The run is in-distribution because 144 of 148 traces appeared in calibration material.",
+    "The run does not establish held-out generalization for this package release.",
+    "The archive does not contain the prediction-level data needed to reproduce joint accuracy.",
+    "The archive does not contain a negative candidate set that independently establishes precision."
+  ]
+}

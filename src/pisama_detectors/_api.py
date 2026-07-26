@@ -4,8 +4,34 @@ Provides simplified functions that wrap the core detection algorithms.
 Each function takes plain Python dicts/lists and returns a result dataclass.
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional, ParamSpec, TypeVar
+
+from pisama_detectors.detection.communication import CommunicationBreakdownResult
+from pisama_detectors.detection.completion import CompletionResult
+from pisama_detectors.detection.context import ContextNeglectResult
+from pisama_detectors.detection.context_pressure import ContextPressureResult
+from pisama_detectors.detection.convergence import ConvergenceResult
+from pisama_detectors.detection.coordination import CoordinationAnalysisResult
+from pisama_detectors.detection.corruption import CorruptionResult
+from pisama_detectors.detection.cost import CostResult
+from pisama_detectors.detection.decomposition import DecompositionResult
+from pisama_detectors.detection.derailment import DerailmentResult
+from pisama_detectors.detection.hallucination import HallucinationResult
+from pisama_detectors.detection.injection import InjectionResult
+from pisama_detectors.detection.loop import LoopDetectionResult
+from pisama_detectors.detection.overflow import OverflowResult
+from pisama_detectors.detection.persona import PersonaConsistencyResult
+from pisama_detectors.detection.specification import SpecificationMismatchResult
+from pisama_detectors.detection.turn_aware._base import TurnAwareDetectionResult
+from pisama_detectors.detection.withholding import WithholdingResult
+from pisama_detectors.detection.workflow import WorkflowAnalysisResult
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 @dataclass
@@ -14,7 +40,7 @@ class DetectorInfo:
 
     name: str
     description: str
-    function: Callable
+    function: Callable[..., Any]
     tier: str  # production, beta, experimental
 
 
@@ -22,10 +48,14 @@ class DetectorInfo:
 DETECTOR_REGISTRY: Dict[str, DetectorInfo] = {}
 
 
-def _register(name: str, description: str, tier: str = "production"):
+def _register(
+    name: str,
+    description: str,
+    tier: str = "production",
+) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """Decorator to register a detector function."""
 
-    def decorator(fn):
+    def decorator(fn: Callable[_P, _R]) -> Callable[_P, _R]:
         DETECTOR_REGISTRY[name] = DetectorInfo(
             name=name,
             description=description,
@@ -42,7 +72,7 @@ def detect_loop(
     states: List[Dict[str, Any]],
     window_size: int = 5,
     similarity_threshold: float = 0.85,
-) -> Any:
+) -> LoopDetectionResult:
     """Detect infinite loops in agent state sequences.
 
     Args:
@@ -76,7 +106,7 @@ def detect_loop(
 def detect_corruption(
     prev_state: Dict[str, Any],
     current_state: Dict[str, Any],
-) -> Any:
+) -> CorruptionResult:
     """Detect state corruption between consecutive states.
 
     Args:
@@ -99,7 +129,7 @@ def detect_corruption(
 @_register("injection", "Detect prompt injection and jailbreak attempts", "production")
 def detect_injection(
     text: str,
-) -> Any:
+) -> InjectionResult:
     """Detect prompt injection or jailbreak attempts in text.
 
     Args:
@@ -118,7 +148,7 @@ def detect_injection(
 def detect_hallucination(
     output: str,
     sources: Optional[List[str]] = None,
-) -> Any:
+) -> HallucinationResult:
     """Detect hallucinations in agent output.
 
     Args:
@@ -142,7 +172,7 @@ def detect_persona_drift(
     persona_description: str,
     output: str,
     allowed_actions: Optional[List[str]] = None,
-) -> Any:
+) -> PersonaConsistencyResult:
     """Detect persona drift in agent behavior.
 
     Args:
@@ -169,7 +199,7 @@ def detect_persona_drift(
 def detect_coordination(
     messages: List[Dict[str, Any]],
     agent_ids: Optional[List[str]] = None,
-) -> Any:
+) -> CoordinationAnalysisResult:
     """Detect coordination failures between agents.
 
     Args:
@@ -194,7 +224,7 @@ def detect_coordination(
         )
 
     analyzer = CoordinationAnalyzer()
-    return analyzer.analyze_coordination(
+    return analyzer.analyze_coordination_with_confidence(
         messages=parsed_messages,
         agent_ids=agent_ids or [],
     )
@@ -205,7 +235,7 @@ def detect_overflow(
     context: str,
     output: str,
     model: str = "claude-sonnet-4-6",
-) -> Any:
+) -> OverflowResult:
     """Detect context overflow issues.
 
     Args:
@@ -228,7 +258,7 @@ def detect_overflow(
 def detect_derailment(
     task: str,
     output: str,
-) -> Any:
+) -> DerailmentResult:
     """Detect task derailment.
 
     Args:
@@ -248,7 +278,7 @@ def detect_derailment(
 def detect_context_neglect(
     context: str,
     output: str,
-) -> Any:
+) -> ContextNeglectResult:
     """Detect context neglect.
 
     Args:
@@ -268,7 +298,7 @@ def detect_context_neglect(
 def detect_communication(
     sender_message: str,
     receiver_response: str,
-) -> Any:
+) -> CommunicationBreakdownResult:
     """Detect communication breakdown between agents.
 
     Args:
@@ -291,7 +321,7 @@ def detect_communication(
 def detect_specification(
     user_intent: str,
     task_specification: str,
-) -> Any:
+) -> SpecificationMismatchResult:
     """Detect specification mismatch.
 
     Args:
@@ -313,8 +343,8 @@ def detect_specification(
 @_register("decomposition", "Detect task breakdown failures", "production")
 def detect_decomposition(
     task_description: str,
-    decomposition: List[Dict[str, Any]],
-) -> Any:
+    decomposition: List[Dict[str, Any] | str],
+) -> DecompositionResult:
     """Detect task decomposition failures.
 
     Args:
@@ -336,7 +366,7 @@ def detect_decomposition(
 @_register("workflow", "Detect workflow execution issues", "beta")
 def detect_workflow(
     nodes: List[Dict[str, Any]],
-) -> Any:
+) -> WorkflowAnalysisResult:
     """Detect workflow design and execution issues.
 
     Args:
@@ -368,7 +398,7 @@ def detect_workflow(
 def detect_withholding(
     agent_output: str,
     internal_state: Any,
-) -> Any:
+) -> WithholdingResult:
     """Detect information withholding.
 
     Args:
@@ -398,7 +428,7 @@ def detect_completion(
     subtasks: List[str],
     agent_output: str,
     success_criteria: Optional[List[str]] = None,
-) -> Any:
+) -> CompletionResult:
     """Detect completion misjudgment.
 
     Args:
@@ -426,7 +456,7 @@ def detect_convergence(
     metrics: List[float],
     direction: str = "minimize",
     window_size: int = 5,
-) -> Any:
+) -> ConvergenceResult:
     """Detect convergence failures in optimization metrics.
 
     Args:
@@ -460,7 +490,7 @@ def calculate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
-) -> Any:
+) -> CostResult:
     """Calculate LLM cost.
 
     Args:
@@ -487,7 +517,7 @@ def calculate_cost(
 
 
 @_register("langgraph_recursion", "Detect LangGraph recursion limit issues", "production")
-def detect_langgraph_recursion(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_recursion(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect recursion issues in LangGraph executions."""
     from pisama_detectors.detection.langgraph import LangGraphRecursionDetector
 
@@ -496,7 +526,7 @@ def detect_langgraph_recursion(trace: Dict[str, Any]) -> Any:
 
 
 @_register("langgraph_state_corruption", "Detect LangGraph state corruption", "production")
-def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect state corruption in LangGraph graph state."""
     from pisama_detectors.detection.langgraph import LangGraphStateCorruptionDetector
 
@@ -505,7 +535,7 @@ def detect_langgraph_state_corruption(trace: Dict[str, Any]) -> Any:
 
 
 @_register("langgraph_edge_misroute", "Detect LangGraph edge misrouting", "beta")
-def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect edge misrouting in LangGraph conditional edges."""
     from pisama_detectors.detection.langgraph import LangGraphEdgeMisrouteDetector
 
@@ -514,7 +544,7 @@ def detect_langgraph_edge_misroute(trace: Dict[str, Any]) -> Any:
 
 
 @_register("langgraph_checkpoint_corruption", "Detect LangGraph checkpoint corruption", "beta")
-def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect checkpoint corruption in LangGraph persistence."""
     from pisama_detectors.detection.langgraph import LangGraphCheckpointCorruptionDetector
 
@@ -523,7 +553,7 @@ def detect_langgraph_checkpoint_corruption(trace: Dict[str, Any]) -> Any:
 
 
 @_register("langgraph_parallel_sync", "Detect LangGraph parallel branch sync failures", "beta")
-def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect parallel branch synchronization issues in LangGraph."""
     from pisama_detectors.detection.langgraph import LangGraphParallelSyncDetector
 
@@ -532,7 +562,7 @@ def detect_langgraph_parallel_sync(trace: Dict[str, Any]) -> Any:
 
 
 @_register("langgraph_tool_failure", "Detect LangGraph tool execution failures", "production")
-def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> Any:
+def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect tool execution failures in LangGraph."""
     from pisama_detectors.detection.langgraph import LangGraphToolFailureDetector
 
@@ -546,7 +576,7 @@ def detect_langgraph_tool_failure(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_classifier_drift", "Detect Dify classifier drift", "beta")
-def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
+def detect_dify_classifier_drift(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect classifier drift in Dify intent routing."""
     from pisama_detectors.detection.dify import DifyClassifierDriftDetector
 
@@ -555,7 +585,7 @@ def detect_dify_classifier_drift(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_iteration_escape", "Detect Dify iteration escape", "beta")
-def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
+def detect_dify_iteration_escape(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect iteration escape in Dify loop nodes."""
     from pisama_detectors.detection.dify import DifyIterationEscapeDetector
 
@@ -564,7 +594,7 @@ def detect_dify_iteration_escape(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_rag_poisoning", "Detect Dify RAG poisoning", "production")
-def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
+def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect RAG knowledge base poisoning in Dify."""
     from pisama_detectors.detection.dify import DifyRagPoisoningDetector
 
@@ -573,7 +603,7 @@ def detect_dify_rag_poisoning(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_tool_schema_mismatch", "Detect Dify tool schema mismatch", "beta")
-def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
+def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect tool schema mismatches in Dify."""
     from pisama_detectors.detection.dify import DifyToolSchemaMismatchDetector
 
@@ -582,7 +612,7 @@ def detect_dify_tool_schema_mismatch(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_variable_leak", "Detect Dify variable leak", "production")
-def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
+def detect_dify_variable_leak(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect variable leaks between Dify workflow branches."""
     from pisama_detectors.detection.dify import DifyVariableLeakDetector
 
@@ -591,7 +621,7 @@ def detect_dify_variable_leak(trace: Dict[str, Any]) -> Any:
 
 
 @_register("dify_model_fallback", "Detect Dify model fallback issues", "beta")
-def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
+def detect_dify_model_fallback(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect silent model fallback in Dify."""
     from pisama_detectors.detection.dify import DifyModelFallbackDetector
 
@@ -605,7 +635,7 @@ def detect_dify_model_fallback(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_cycle", "Detect n8n workflow cycles", "production")
-def detect_n8n_cycle(trace: Dict[str, Any]) -> Any:
+def detect_n8n_cycle(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect cycles in n8n workflow execution."""
     from pisama_detectors.detection.n8n import N8NCycleDetector
 
@@ -614,7 +644,7 @@ def detect_n8n_cycle(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_error", "Detect n8n execution errors", "production")
-def detect_n8n_error(trace: Dict[str, Any]) -> Any:
+def detect_n8n_error(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect error patterns in n8n workflows."""
     from pisama_detectors.detection.n8n import N8NErrorDetector
 
@@ -623,7 +653,7 @@ def detect_n8n_error(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_timeout", "Detect n8n timeout issues", "production")
-def detect_n8n_timeout(trace: Dict[str, Any]) -> Any:
+def detect_n8n_timeout(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect timeout issues in n8n executions."""
     from pisama_detectors.detection.n8n import N8NTimeoutDetector
 
@@ -632,7 +662,7 @@ def detect_n8n_timeout(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_complexity", "Detect n8n workflow complexity issues", "beta")
-def detect_n8n_complexity(trace: Dict[str, Any]) -> Any:
+def detect_n8n_complexity(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect excessive complexity in n8n workflows."""
     from pisama_detectors.detection.n8n import N8NComplexityDetector
 
@@ -641,7 +671,7 @@ def detect_n8n_complexity(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_schema", "Detect n8n schema mismatches", "beta")
-def detect_n8n_schema(trace: Dict[str, Any]) -> Any:
+def detect_n8n_schema(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect schema mismatches between n8n nodes."""
     from pisama_detectors.detection.n8n import N8NSchemaDetector
 
@@ -650,7 +680,7 @@ def detect_n8n_schema(trace: Dict[str, Any]) -> Any:
 
 
 @_register("n8n_resource", "Detect n8n resource issues", "beta")
-def detect_n8n_resource(trace: Dict[str, Any]) -> Any:
+def detect_n8n_resource(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect resource issues in n8n workflows."""
     from pisama_detectors.detection.n8n import N8NResourceDetector
 
@@ -664,7 +694,7 @@ def detect_n8n_resource(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_session_loop", "Detect OpenClaw session loops", "beta")
-def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_session_loop(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect session loops in OpenClaw."""
     from pisama_detectors.detection.openclaw import OpenClawSessionLoopDetector
 
@@ -673,7 +703,7 @@ def detect_openclaw_session_loop(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_sandbox_escape", "Detect OpenClaw sandbox escape", "production")
-def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect sandbox escape attempts in OpenClaw."""
     from pisama_detectors.detection.openclaw import OpenClawSandboxEscapeDetector
 
@@ -682,7 +712,7 @@ def detect_openclaw_sandbox_escape(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_tool_abuse", "Detect OpenClaw tool abuse", "production")
-def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect tool abuse patterns in OpenClaw."""
     from pisama_detectors.detection.openclaw import OpenClawToolAbuseDetector
 
@@ -691,7 +721,7 @@ def detect_openclaw_tool_abuse(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_spawn_chain", "Detect OpenClaw spawn chain issues", "beta")
-def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect excessive spawn chains in OpenClaw."""
     from pisama_detectors.detection.openclaw import OpenClawSpawnChainDetector
 
@@ -700,7 +730,7 @@ def detect_openclaw_spawn_chain(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_channel_mismatch", "Detect OpenClaw channel mismatch", "beta")
-def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect channel mismatches in OpenClaw communication."""
     from pisama_detectors.detection.openclaw import OpenClawChannelMismatchDetector
 
@@ -709,7 +739,7 @@ def detect_openclaw_channel_mismatch(trace: Dict[str, Any]) -> Any:
 
 
 @_register("openclaw_elevated_risk", "Detect OpenClaw elevated risk actions", "production")
-def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> Any:
+def detect_openclaw_elevated_risk(trace: Dict[str, Any]) -> TurnAwareDetectionResult:
     """Detect elevated risk actions in OpenClaw."""
     from pisama_detectors.detection.openclaw import OpenClawElevatedRiskDetector
 
@@ -722,7 +752,7 @@ def detect_context_pressure(
     states: List[Dict[str, Any]],
     context_limit: Optional[int] = None,
     task_complexity: Optional[str] = None,
-) -> Any:
+) -> ContextPressureResult:
     """Detect when agent output quality degrades due to context window saturation.
 
     Signals: token trajectory, output length decline, premature wrap-up language,
@@ -768,7 +798,7 @@ def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
     return results
 
 
-def _try_run_detector(name: str, fn: Callable, data: Dict[str, Any]) -> Any:
+def _try_run_detector(name: str, fn: Callable[..., Any], data: Dict[str, Any]) -> Any:
     """Try to run a detector if its required inputs are available."""
     import inspect
 

@@ -935,7 +935,7 @@ class SpecificationMismatchDetector:
 
     def _check_code_quality(self, output: str) -> list[tuple]:
         """v1.1: Check for code quality issues that indicate incomplete/buggy code."""
-        issues = []
+        issues: list[tuple[str, str, str]] = []
         for pattern, issue_type in self.CODE_QUALITY_PATTERNS:
             matches = re.finditer(pattern, output, re.MULTILINE)
             for match in matches:
@@ -948,7 +948,7 @@ class SpecificationMismatchDetector:
 
     def _check_deprecated_syntax(self, output: str, language: Optional[str]) -> list[tuple]:
         """v1.2: Check for deprecated syntax patterns in code output."""
-        issues = []
+        issues: list[tuple[str, str, str]] = []
         if not language or language not in self.DEPRECATED_SYNTAX_PATTERNS:
             return issues
 
@@ -1548,7 +1548,7 @@ class SpecificationMismatchDetector:
         self,
         trace: dict,
     ) -> list[SpecificationMismatchResult]:
-        results = []
+        results: list[SpecificationMismatchResult] = []
 
         root_input = trace.get("input", {}).get("user_request", "")
         if not root_input:

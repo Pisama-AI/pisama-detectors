@@ -17,7 +17,7 @@ intentionally does not read env vars.
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -50,7 +50,7 @@ def get_framework_thresholds(framework: Optional[str] = None) -> FrameworkThresh
 
 
 def get_tenant_thresholds(
-    tenant_settings: Optional[Dict] = None,
+    tenant_settings: Optional[Dict[str, Any]] = None,
     framework: Optional[str] = None,
 ) -> FrameworkThresholds:
     base = get_framework_thresholds(framework)

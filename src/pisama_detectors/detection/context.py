@@ -195,7 +195,7 @@ class ContextNeglectDetector:
         self.extract_entities = extract_entities
 
     def _extract_key_elements(self, text: str) -> dict[str, set[str]]:
-        elements = {
+        elements: dict[str, set[str]] = {
             "numbers": set(),
             "dates": set(),
             "names": set(),
@@ -278,9 +278,9 @@ class ContextNeglectDetector:
         context_elements: dict[str, set[str]],
         output_elements: dict[str, set[str]],
     ) -> tuple[float, list[str]]:
-        total_weight = 0
-        utilized_weight = 0
-        missing = []
+        total_weight = 0.0
+        utilized_weight = 0.0
+        missing: list[str] = []
 
         weights = {
             "numbers": 3.0,
@@ -629,9 +629,9 @@ class ContextNeglectDetector:
         has_critical_context = self._has_critical_context(context)
 
         # v1.2: Extract and check critical topics if present
-        critical_topics = set()
+        critical_topics: set[str] = set()
         critical_topics_addressed = True
-        critical_topics_missing = set()
+        critical_topics_missing: set[str] = set()
         if has_critical_context:
             critical_topics = self._extract_critical_topics(context)
             critical_topics_addressed, critical_topics_missing = (

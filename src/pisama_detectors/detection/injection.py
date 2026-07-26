@@ -470,10 +470,10 @@ class InjectionDetector:
         is_user_input: bool = True,
     ) -> InjectionResult:
         text_lower = text.lower()
-        matched_patterns = []
-        attack_types = set()
+        matched_patterns: List[str] = []
+        attack_types: set[str] = set()
         max_severity = "low"
-        details = {}
+        details: Dict[str, Any] = {}
 
         for pattern, attack_type, severity in INJECTION_PATTERNS:
             if re.search(pattern, text_lower, re.IGNORECASE):

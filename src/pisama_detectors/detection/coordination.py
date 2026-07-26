@@ -607,7 +607,7 @@ class CoordinationAnalyzer:
                 delegation_graph[msg.from_agent].append(msg.to_agent)
 
         for start_agent in delegation_graph:
-            visited = set()
+            visited: Set[str] = set()
             stack = [start_agent]
 
             while stack:

@@ -29,7 +29,7 @@ Version History:
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ class TaskDerailmentDetector:
         self.confidence_scaling = confidence_scaling
         self.task_coverage_threshold = task_coverage_threshold
         self.framework = framework
-        self._embedder = None
+        self._embedder: Any = None
 
     def _calibrate_confidence(
         self,
@@ -295,7 +295,7 @@ class TaskDerailmentDetector:
 
         return round(calibrated, 4)
 
-    def _get_embedder(self):
+    def _get_embedder(self) -> Any:
         if self._embedder is None:
             try:
                 from pisama_detectors.detection.shared_embedder import (
@@ -1115,14 +1115,6 @@ class TaskDerailmentDetector:
         if opening_resolves:
             task_addressed = True  # Override — task is clearly addressed
 
-        # v1.9: Lower coverage threshold for short outputs.
-        # Short answers have less keyword overlap by nature.
-        output_words = len(output.split())
-        if output_words < 200 and opening_resolves:
-            pass
-        else:
-            pass
-
         # v1.5: Check for framework-specific benign patterns
         has_framework_benign = self._has_framework_benign_pattern(output)
 
@@ -1240,11 +1232,11 @@ class TaskDerailmentDetector:
         # content, allow earlier drift (agent explored then converged)
         if task and output:
             last_portion = output[int(len(output) * 0.7) :]
-            task_words = task.lower().split()[:10]
-            if task_words:
+            final_task_words = task.lower().split()[:10]
+            if final_task_words:
                 final_coverage = sum(
-                    1 for word in task_words if word in last_portion.lower()
-                ) / len(task_words)
+                    1 for word in final_task_words if word in last_portion.lower()
+                ) / len(final_task_words)
                 if final_coverage > 0.3:
                     confidence *= 0.6
 

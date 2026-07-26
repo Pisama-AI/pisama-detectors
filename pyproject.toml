@@ -80,3 +80,19 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+files = [
+    "src/pisama_detectors",
+    "typing_tests/public_api.py",
+]
+exclude = ["src/pisama_detectors/detection/turn_aware/"]
+ignore_missing_imports = true
+follow_imports = "skip"
+check_untyped_defs = true
+
+[tool.coverage.run]
+source = ["pisama_detectors"]
+
+[tool.coverage.report]
+show_missing = true

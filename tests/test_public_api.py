@@ -5,7 +5,7 @@ model responses, or network services.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 
@@ -62,6 +62,14 @@ def test_registry_has_exactly_the_documented_42_detectors() -> None:
     assert set(pd.DETECTOR_REGISTRY) == EXPECTED_DETECTORS
     assert len(pd.DETECTOR_REGISTRY) == 42
     assert all(callable(info.function) for info in pd.DETECTOR_REGISTRY.values())
+
+
+def test_every_public_detector_exposes_resolvable_runtime_type_hints() -> None:
+    for name, info in pd.DETECTOR_REGISTRY.items():
+        hints = get_type_hints(info.function)
+        return_type = hints.get("return")
+
+        assert isinstance(return_type, type), f"{name} has unresolved return type {return_type!r}"
 
 
 CORE_CASES: dict[str, Callable[[], Any]] = {
@@ -133,6 +141,7 @@ def test_framework_detector_accepts_an_empty_trace(name: str) -> None:
     result = pd.DETECTOR_REGISTRY[name].function({})
     assert result is not None
     assert type(result).__name__ == "TurnAwareDetectionResult"
+    assert not result.detected
 
 
 FRAMEWORK_POSITIVE_CASES: dict[str, Callable[[], Any]] = {
@@ -301,3 +310,84 @@ def test_tenant_threshold_overrides_keep_declared_numeric_types() -> None:
     assert thresholds.min_matches_for_loop == 4
     assert isinstance(thresholds.structural_threshold, float)
     assert isinstance(thresholds.loop_detection_window, int)
+
+
+def test_coordination_wrapper_preserves_calibrated_detection_fields() -> None:
+    result = pd.detect_coordination(
+        [
+            {
+                "sender": "planner",
+                "receiver": "reviewer",
+                "content": "Review the release evidence.",
+                "timestamp": 1,
+                "acknowledged": False,
+            },
+            {
+                "sender": "planner",
+                "receiver": "publisher",
+                "content": "Publishing was acknowledged.",
+                "timestamp": 2,
+                "acknowledged": True,
+            },
+        ],
+        ["planner", "reviewer", "publisher"],
+    )
+
+    assert result.detected
+    assert result.issue_count == len(result.issues)
+    assert result.confidence > 0
+    assert result.calibration_info is not None
+
+
+def test_decomposition_wrapper_preserves_structured_list_boundaries() -> None:
+    result = pd.detect_decomposition(
+        "Implement the release and verify it with automated tests.",
+        [
+            {"id": "implement", "description": "Implement the release workflow."},
+            {
+                "id": "verify",
+                "description": "Verify the release with automated tests.",
+                "dependencies": ["implement"],
+            },
+        ],
+    )
+
+    assert result.subtask_count == 2
+    assert "No subtasks found" not in result.explanation
+
+
+@pytest.mark.parametrize(
+    "decomposition",
+    [
+        [
+            "Step 1: Implement the release workflow.",
+            "Verify the release with automated tests.",
+        ],
+        [
+            "Implement the release workflow.",
+            "Step 2: Verify the release with automated tests.",
+        ],
+        [
+            "1. Implement the release workflow.",
+            "Step 2: Verify the release with automated tests.",
+        ],
+        [
+            "- Implement the release workflow.",
+            "Step 2: Verify the release with automated tests.",
+        ],
+        [
+            "1. Implement the release workflow.",
+            "- Verify the release with automated tests.",
+        ],
+    ],
+)
+def test_decomposition_wrapper_preserves_mixed_marker_list_boundaries(
+    decomposition: list[str],
+) -> None:
+    result = pd.detect_decomposition(
+        "Implement the release and verify it with automated tests.",
+        decomposition,
+    )
+
+    assert result.subtask_count == 2
+    assert "too_few_subtasks" not in result.problematic_subtasks

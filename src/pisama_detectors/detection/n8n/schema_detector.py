@@ -717,7 +717,7 @@ class N8NSchemaDetector(TurnAwareDetector):
             return {"detected": False}
 
         # Check for monotonically decreasing field count (data loss)
-        lost_fields = []
+        lost_fields: List[str] = []
         for i in range(1, len(field_presence)):
             lost = field_presence[i - 1] - field_presence[i]
             if lost:

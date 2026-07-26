@@ -973,11 +973,9 @@ class TaskDecompositionDetector:
         agent_capabilities: Optional[dict[str, list[str]]] = None,
     ) -> DecompositionResult:
         # v2.0: Handle list-format decomposition (e.g. from AgentBench/GAIA traces)
-        # Sprint 8 LL: Promote ONLY list-format with 1-2 items AND an existing
-        # "Step/goal/Phase" prefix would NOT have been parsed. Well-formed
-        # goal-lists (e.g. BabyAI "goal 1:" / "goal 2:") already have markers
-        # the parser recognizes once joined; only truly thin "Agent output..."
-        # single-item traces need a synthetic "Step 1:" prefix.
+        # List boundaries are structural evidence of separate subtasks. Normalize
+        # every item to one marker grammar so mixed intrinsic marker styles cannot
+        # collapse into a single parsed subtask.
         if isinstance(decomposition, list):
             raw_strs = []
             for item in decomposition:
@@ -985,19 +983,10 @@ class TaskDecompositionDetector:
                     raw_strs.append(str(item.get("subtask") or item.get("description") or item))
                 else:
                     raw_strs.append(str(item))
-            joined = "\n".join(raw_strs)
-            # Only synthesize Step-prefixes for thin single-item traces that
-            # otherwise defeat parsing. Multi-item lists with intrinsic
-            # markers (goal N, step N, numbered bullets) are left alone.
-            needs_synth = len(raw_strs) <= 1 and not re.search(
-                r"(?:^|\n)\s*(?:\d+[.)]|[-•*]\s|step\s*\d*[:.]|phase\s|goal\s*\d)",
-                joined,
-                re.IGNORECASE,
+            decomposition = "\n".join(
+                f"Step {index + 1}: {raw}"
+                for index, raw in enumerate(raw_strs)
             )
-            if needs_synth:
-                decomposition = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(raw_strs))
-            else:
-                decomposition = joined
 
         # v2.1: Recognize SWE-bench / patch-plan format:
         #   "Repository: X\n Fix: ... \n Tests to pass: [...]"

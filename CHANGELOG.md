@@ -4,6 +4,21 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Measure coverage across every Python module shipped in the wheel, including
+  the frozen turn-aware compatibility namespace.
+- Resolve public return annotations at runtime and make the strict type
+  contract analyze imported result types.
+- Add failure and healthy-path contracts for the complete supported detector
+  surface and compatibility checks for every turn-aware failure mode.
+
+### Fixed
+
+- Preserve every item in mixed-marker decomposition lists.
+- Allow the benchmark verifier to validate renamed copies by their reviewed
+  SHA-256 digest instead of requiring a specific filename.
+
 ## [0.3.0] - 2026-07-23
 
 ### Changed
