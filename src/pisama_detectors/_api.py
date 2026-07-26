@@ -6,9 +6,9 @@ Each function takes plain Python dicts/lists and returns a result dataclass.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, ParamSpec, TypeVar
+from typing import Any, Dict, List, Optional, ParamSpec, TypedDict, TypeVar
 
 from pisama_detectors.detection.communication import CommunicationBreakdownResult
 from pisama_detectors.detection.completion import CompletionResult
@@ -32,6 +32,24 @@ from pisama_detectors.detection.workflow import WorkflowAnalysisResult
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
+
+class _HallucinationSourceContent(TypedDict):
+    """Required fields for a public structured grounding source."""
+
+    content: str
+
+
+class HallucinationSource(_HallucinationSourceContent, total=False):
+    """Structured source input with optional named-citation metadata."""
+
+    metadata: Mapping[str, Any]
+    id: Any
+    label: Any
+    name: Any
+    source: Any
+    title: Any
+    url: Any
 
 
 @dataclass
@@ -159,7 +177,7 @@ def detect_injection(
 @_register("hallucination", "Detect factual inaccuracies and fabrications", "production")
 def detect_hallucination(
     output: str,
-    sources: Optional[List[str]] = None,
+    sources: Optional[Sequence[str | HallucinationSource]] = None,
 ) -> HallucinationResult:
     """Detect hallucinations in agent output.
 
@@ -170,11 +188,34 @@ def detect_hallucination(
     Returns:
         HallucinationResult with detected, confidence, issues
     """
-    from pisama_detectors.detection.hallucination import HallucinationDetector
+    from pisama_detectors.detection.hallucination import (
+        HallucinationDetector,
+        SourceDocument,
+    )
+
+    normalized_sources = []
+    for source in sources or ():
+        if isinstance(source, str):
+            normalized_sources.append(SourceDocument(content=source))
+            continue
+        if not isinstance(source, Mapping):
+            raise TypeError("Each hallucination source must be a string or mapping")
+        content = source.get("content")
+        if not isinstance(content, str):
+            raise TypeError("Structured hallucination sources require string 'content'")
+        raw_metadata = source.get("metadata", {})
+        if not isinstance(raw_metadata, Mapping):
+            raise TypeError("Structured source 'metadata' must be a mapping")
+        metadata = dict(raw_metadata)
+        for key in ("id", "label", "name", "source", "title", "url"):
+            if key in source:
+                metadata.setdefault(key, source[key])
+        normalized_sources.append(SourceDocument(content=content, metadata=metadata))
 
     detector = HallucinationDetector()
     return detector.detect_hallucination(
-        output=output, context="\n".join(sources) if sources else None
+        output=output,
+        sources=normalized_sources or None,
     )
 
 
@@ -823,7 +864,25 @@ def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     results = {}
 
+    trace = trace_data.get("trace")
+    framework_candidates = [
+        trace_data.get("framework"),
+        trace.get("framework") if isinstance(trace, Mapping) else None,
+    ]
+    framework = next(
+        (
+            candidate.strip().lower()
+            for candidate in framework_candidates
+            if isinstance(candidate, str)
+            and candidate.strip().lower() in {"langgraph", "dify", "n8n", "openclaw"}
+        ),
+        None,
+    )
+    framework_prefix = f"{framework}_" if framework is not None else None
+
     for name, info in DETECTOR_REGISTRY.items():
+        if framework_prefix and _is_other_framework_detector(name, framework_prefix):
+            continue
         try:
             # Only run detectors whose inputs are available
             result = _try_run_detector(name, info.function, trace_data)
@@ -833,6 +892,12 @@ def run_all_detectors(trace_data: Dict[str, Any]) -> Dict[str, Any]:
             results[name] = {"error": str(e)}
 
     return results
+
+
+def _is_other_framework_detector(name: str, selected_prefix: str) -> bool:
+    """Return whether a registered framework detector belongs to another framework."""
+    framework_prefixes = ("langgraph_", "dify_", "n8n_", "openclaw_")
+    return name.startswith(framework_prefixes) and not name.startswith(selected_prefix)
 
 
 def _try_run_detector(name: str, fn: Callable[..., Any], data: Dict[str, Any]) -> Any:

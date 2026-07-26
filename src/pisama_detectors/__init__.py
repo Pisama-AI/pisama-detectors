@@ -28,6 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from ._api import (
     DETECTOR_REGISTRY,
+    HallucinationSource,
     calculate_cost,
     detect_communication,
     detect_completion,
@@ -86,6 +87,7 @@ except PackageNotFoundError:
 
 __all__ = [
     "DETECTOR_REGISTRY",
+    "HallucinationSource",
     "__version__",
     "calculate_cost",
     "detect_communication",

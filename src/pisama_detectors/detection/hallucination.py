@@ -38,7 +38,10 @@ class HallucinationDetector:
         self.grounding_threshold = grounding_threshold or 0.65
         self.confidence_scaling = confidence_scaling
         self.citation_pattern = re.compile(
-            r"\[(\d+)\]|\(source:?\s*([^)]+)\)|\{\{cite:[^}]+\}\}", re.IGNORECASE
+            r"\[(?P<bracket>\d+)\]|"
+            r"\(source:?\s*(?P<source>[^)]+)\)|"
+            r"\{\{cite:\s*(?P<template>[^}]+)\}\}",
+            re.IGNORECASE,
         )
         self.confidence_phrases = [
             "I'm not sure",
@@ -132,17 +135,6 @@ class HallucinationDetector:
             evidence.extend(source_evidence)
             details["source_grounding_score"] = source_score
 
-            # v1.4: If output closely matches source text (>75% word overlap),
-            # don't flag as hallucination — the output is well-grounded.
-            source_blob = " ".join(s.content for s in sources).lower().split()
-            output_words = set(output.lower().split())
-            if source_blob:
-                source_word_set = set(source_blob)
-                overlap = len(output_words & source_word_set) / max(len(output_words), 1)
-                if overlap > 0.75:
-                    grounding_score = max(grounding_score, 0.85)
-                    details["high_source_overlap"] = round(overlap, 3)
-
             # v1.5: Track short-source flag for diagnostics. The effective
             # threshold adjustment is handled below.
             all_sources_short = all(len(s.content) < 200 for s in sources)
@@ -207,7 +199,7 @@ class HallucinationDetector:
         )
         if has_citation_patterns or not sources_are_plain:
             citation_score, citation_evidence = self._check_citation_validity(output, sources)
-            if citation_score < 0.8:
+            if citation_evidence:
                 evidence.extend(citation_evidence)
                 details["citation_issues"] = citation_evidence
                 grounding_score = min(grounding_score, citation_score)
@@ -265,11 +257,10 @@ class HallucinationDetector:
             return 1.0, []
 
         source_texts = [s.content for s in sources]
-        all_texts = output_sentences + source_texts
-        embeddings = self.embedder.encode(all_texts)
-
-        output_embeddings = embeddings[: len(output_sentences)]
-        source_embeddings = embeddings[len(output_sentences) :]
+        sentence_similarities, sentence_contradictions = self._source_similarity_scores(
+            output_sentences,
+            source_texts,
+        )
 
         grounded_count = 0
         hedging_words = {
@@ -315,12 +306,7 @@ class HallucinationDetector:
             "it seems",
             "this suggests",
         ]
-        for i, sent_emb in enumerate(output_embeddings):
-            max_sim = 0.0
-            for src_emb in source_embeddings:
-                sim = self.embedder.similarity(sent_emb, src_emb)
-                max_sim = max(max_sim, sim)
-
+        for i, max_sim in enumerate(sentence_similarities):
             sent_lower = output_sentences[i].lower()
             sent_stripped = sent_lower.lstrip()
 
@@ -353,7 +339,11 @@ class HallucinationDetector:
 
             if max_sim >= grounding_bar:
                 grounded_count += 1
-            elif max_sim < 0.4 and len(output_sentences[i]) > 30:
+            elif sentence_contradictions[i]:
+                evidence.append(
+                    f"Claim contradicts provided source: '{output_sentences[i][:80]}...'"
+                )
+            elif max_sim < 0.4:
                 evidence.append(f"Ungrounded claim: '{output_sentences[i][:80]}...'")
 
         embedding_ratio = grounded_count / len(output_sentences)
@@ -363,7 +353,9 @@ class HallucinationDetector:
         source_blob_lower = " ".join(source_texts).lower()
         source_blob_original = " ".join(source_texts)
         novelty_penalty = self._compute_novelty_penalty(
-            output, source_blob_lower, source_blob_original
+            self._strip_citations(output),
+            source_blob_lower,
+            source_blob_original,
         )
         if novelty_penalty > 0:
             evidence.append(
@@ -372,6 +364,244 @@ class HallucinationDetector:
 
         grounding_ratio = max(0.0, embedding_ratio - novelty_penalty)
         return grounding_ratio, evidence
+
+    def _source_similarity_scores(
+        self,
+        output_sentences: List[str],
+        source_texts: List[str],
+    ) -> Tuple[List[float], List[bool]]:
+        source_clauses = [
+            clause
+            for source in source_texts
+            for clause in self._split_source_clauses(source)
+        ]
+        embedder = self.embedder
+        clean_output_sentences = [self._strip_citations(sentence) for sentence in output_sentences]
+        output_embeddings = source_embeddings = None
+        if embedder is not None and source_clauses:
+            embeddings = embedder.encode(clean_output_sentences + source_clauses)
+            output_embeddings = embeddings[: len(output_sentences)]
+            source_embeddings = embeddings[len(output_sentences) :]
+
+        sentence_similarities: List[float] = []
+        sentence_contradictions: List[bool] = []
+        for index, sentence in enumerate(output_sentences):
+            clean_sentence = clean_output_sentences[index]
+            similarities = []
+            contradicted = False
+            for source_index, source_clause in enumerate(source_clauses):
+                if self._claims_contradict(clean_sentence, source_clause):
+                    contradicted = True
+                    similarities.append(0.0)
+                    continue
+
+                lexical_score, shared_terms = self._claim_support_score(
+                    clean_sentence,
+                    source_clause,
+                )
+                if lexical_score <= 0:
+                    similarities.append(0.0)
+                    continue
+
+                if embedder is not None:
+                    assert output_embeddings is not None
+                    assert source_embeddings is not None
+                    semantic_score = embedder.similarity(
+                        output_embeddings[index],
+                        source_embeddings[source_index],
+                    )
+                    if lexical_score >= 0.6 or shared_terms >= 2:
+                        lexical_score = max(lexical_score, semantic_score)
+                similarities.append(lexical_score)
+            sentence_similarities.append(max(similarities, default=0.0))
+            sentence_contradictions.append(contradicted)
+        return sentence_similarities, sentence_contradictions
+
+    _GROUNDING_STOP_WORDS = frozenset(
+        "a all an and any are as at be been being by can could did do does every for from "
+        "had has have in is it may might must of on only or shall should that the their "
+        "there these they this those to was were will with would".split()
+    )
+    _CLAIM_TERM_ALIASES = {
+        "accessible": "access",
+        "available": "access",
+        "located": "locate",
+        "location": "locate",
+        "needed": "require",
+        "needs": "require",
+        "required": "require",
+        "requires": "require",
+        "using": "use",
+        "uses": "use",
+        "increased": "increase",
+        "increases": "increase",
+        "rising": "increase",
+        "rose": "increase",
+        "decreased": "decrease",
+        "decreases": "decrease",
+        "falling": "decrease",
+        "fell": "decrease",
+    }
+    _CLAIM_ANTONYMS = (
+        frozenset({"increase", "decrease"}),
+        frozenset({"allow", "deny"}),
+        frozenset({"enable", "disable"}),
+        frozenset({"include", "exclude"}),
+        frozenset({"before", "after"}),
+        frozenset({"above", "below"}),
+    )
+    _CLAIM_NEGATION = re.compile(
+        r"\b(?:not|never|no|none|without|cannot|can't|doesn't|does\s+not|"
+        r"do\s+not|isn't|is\s+not|aren't|are\s+not|must\s+not|should\s+not)\b",
+        re.IGNORECASE,
+    )
+    _CLAIM_AUDIENCE = (
+        r"(?:users?|customers?|admins?|administrators?|members?|tenants?|employees?|"
+        r"viewers?|visitors?|people|persons?|accounts?|roles?)"
+    )
+    _CLAIM_BROAD_SCOPE = re.compile(
+        rf"\b(?:all|every|any)\s+{_CLAIM_AUDIENCE}\b",
+        re.IGNORECASE,
+    )
+    _CLAIM_RESTRICTED_SCOPE = re.compile(
+        rf"(?:\bonly\s+(?:to\s+)?(?:selected\s+)?{_CLAIM_AUDIENCE}\b|"
+        rf"\bto\s+{_CLAIM_AUDIENCE}\s+only\b)",
+        re.IGNORECASE,
+    )
+    _CLAIM_MODAL_ACTION = re.compile(
+        r"\b(?:must|should|shall|can|cannot|can't|could|may|will|"
+        r"(?:do|does|is|are)\s+not|never)\s+"
+        r"(?:not\s+|never\s+)?(?:be\s+)?(?P<action>[a-z]+)",
+        re.IGNORECASE,
+    )
+    _CLAIM_DECLARATIVE_ACTION = re.compile(
+        r"^\s*(?:the\s+)?[a-z][a-z0-9_-]*\s+"
+        r"(?:(?:is|are|does|do|will)\s+(?:not\s+)?)?(?P<action>[a-z]+)",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _claim_stem(cls, word: str) -> str:
+        if word in cls._CLAIM_TERM_ALIASES:
+            return cls._CLAIM_TERM_ALIASES[word]
+        if word.endswith("ies") and len(word) > 4:
+            return f"{word[:-3]}y"
+        if word.endswith("ing") and len(word) > 5:
+            return word[:-3]
+        if word.endswith("ed") and len(word) > 4:
+            return word[:-2]
+        if word.endswith("es") and len(word) > 4:
+            return word[:-2]
+        if word.endswith("s") and len(word) > 3:
+            return word[:-1]
+        return word
+
+    @classmethod
+    def _claim_terms(cls, text: str) -> set[str]:
+        return {
+            cls._claim_stem(token)
+            for token in re.findall(r"[a-z]+|\d+(?:\.\d+)?", text.casefold())
+            if token not in cls._GROUNDING_STOP_WORDS
+        }
+
+    @classmethod
+    def _claim_action(cls, text: str) -> Optional[str]:
+        modal = cls._CLAIM_MODAL_ACTION.search(text)
+        if modal is not None:
+            action = modal.group("action").casefold()
+            if action not in {"at", "in", "of", "on", "to"}:
+                return cls._claim_stem(action)
+        declarative = cls._CLAIM_DECLARATIVE_ACTION.search(text)
+        if declarative is not None:
+            action = declarative.group("action").casefold()
+            if action not in {"at", "in", "of", "on", "to"}:
+                return cls._claim_stem(action)
+        return None
+
+    @classmethod
+    def _claim_numbers(cls, text: str) -> set[str]:
+        return set(re.findall(r"(?<![a-z0-9])\d+(?:[.,]\d+)*(?:%|[kmb])?", text.casefold()))
+
+    @classmethod
+    def _numbers_match(cls, claim: str, source: str) -> bool:
+        claim_numbers = cls._claim_numbers(claim)
+        if not claim_numbers:
+            return True
+        source_numbers = cls._claim_numbers(source)
+        return claim_numbers <= source_numbers
+
+    @classmethod
+    def _claim_pair_relevance(cls, claim: str, source: str) -> float:
+        claim_terms = cls._claim_terms(claim) - cls._claim_numbers(claim)
+        source_terms = cls._claim_terms(source) - cls._claim_numbers(source)
+        if not claim_terms or not source_terms:
+            return 0.0
+        claim_action = cls._claim_action(claim)
+        source_action = cls._claim_action(source)
+        if claim_action and source_action and claim_action != source_action:
+            if frozenset({claim_action, source_action}) not in cls._CLAIM_ANTONYMS:
+                return 0.0
+        return len(claim_terms & source_terms) / max(len(claim_terms), len(source_terms))
+
+    @classmethod
+    def _claims_contradict(cls, claim: str, source: str) -> bool:
+        overlap = cls._claim_pair_relevance(claim, source)
+        if overlap < 0.5:
+            return False
+
+        claim_action = cls._claim_action(claim)
+        source_action = cls._claim_action(source)
+        opposite_action = (
+            claim_action is not None
+            and source_action is not None
+            and frozenset({claim_action, source_action}) in cls._CLAIM_ANTONYMS
+        )
+        opposite_polarity = bool(cls._CLAIM_NEGATION.search(claim)) != bool(
+            cls._CLAIM_NEGATION.search(source)
+        )
+        opposite_scope = (
+            bool(cls._CLAIM_BROAD_SCOPE.search(claim))
+            and bool(cls._CLAIM_RESTRICTED_SCOPE.search(source))
+        ) or (
+            bool(cls._CLAIM_RESTRICTED_SCOPE.search(claim))
+            and bool(cls._CLAIM_BROAD_SCOPE.search(source))
+        )
+        numeric_conflict = not cls._numbers_match(claim, source)
+        return opposite_action or opposite_polarity or opposite_scope or numeric_conflict
+
+    def _strip_citations(self, text: str) -> str:
+        return " ".join(self.citation_pattern.sub("", text).split())
+
+    @classmethod
+    def _split_source_clauses(cls, text: str) -> List[str]:
+        clauses = re.split(
+            r"(?<=[.!?])\s+|[;\n]+|\b(?:and|but)\s+"
+            r"(?=(?:the|this|that|it|must|should|shall|can|cannot|do|does|never)\b)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        return [clause.strip() for clause in clauses if len(clause.strip()) >= 3]
+
+    def _claim_support_score(self, claim: str, source: str) -> Tuple[float, int]:
+        clean_claim = self._strip_citations(claim)
+        claim_terms = self._claim_terms(clean_claim)
+        source_terms = self._claim_terms(source)
+        if not claim_terms or not source_terms or not self._numbers_match(clean_claim, source):
+            return 0.0, 0
+
+        shared = claim_terms & source_terms
+        coverage = len(shared) / len(claim_terms)
+        normalized_claim = " ".join(
+            re.findall(r"[a-z]+|\d+(?:\.\d+)?", clean_claim.casefold())
+        )
+        normalized_source = " ".join(
+            re.findall(r"[a-z]+|\d+(?:\.\d+)?", source.casefold())
+        )
+        if normalized_claim and normalized_claim in normalized_source:
+            return 1.0, len(shared)
+        if coverage >= 0.6 and (len(shared) >= 2 or coverage >= 0.8):
+            return coverage, len(shared)
+        return 0.0, len(shared)
 
     @staticmethod
     def _compute_novelty_penalty(
@@ -730,7 +960,7 @@ class HallucinationDetector:
     ) -> Tuple[float, List[str]]:
         evidence = []
 
-        citations = self.citation_pattern.findall(output)
+        citations = list(self.citation_pattern.finditer(output))
         if not citations:
             return 1.0, []
 
@@ -743,22 +973,34 @@ class HallucinationDetector:
             return 1.0, []
 
         num_sources = len(sources)
+        source_labels = {
+            str(value).strip().casefold()
+            for source in sources
+            for key in ("id", "label", "name", "title", "source", "url")
+            if (value := source.metadata.get(key)) is not None
+        }
         invalid_citations = 0
 
         for match in citations:
-            cite_num = match[0] if match[0] else None
-            if cite_num:
-                try:
-                    idx = int(cite_num)
-                    if idx < 1 or idx > num_sources:
-                        invalid_citations += 1
-                        evidence.append(f"Citation [{cite_num}] references non-existent source")
-                except ValueError:
-                    pass
+            reference = next(
+                value
+                for value in (
+                    match.group("bracket"),
+                    match.group("source"),
+                    match.group("template"),
+                )
+                if value is not None
+            ).strip()
+            if reference.isdigit():
+                if not 1 <= int(reference) <= num_sources:
+                    invalid_citations += 1
+                    evidence.append(f"Citation {match.group(0)} references non-existent source")
+            elif reference.casefold() not in source_labels:
+                invalid_citations += 1
+                evidence.append(f"Citation {match.group(0)} references non-existent source")
 
         if invalid_citations > 0:
-            score = max(0, 1 - (invalid_citations / len(citations)))
-            return score, evidence
+            return 0.0, evidence
 
         return 1.0, []
 
@@ -780,7 +1022,7 @@ class HallucinationDetector:
 
     def _split_sentences(self, text: str) -> List[str]:
         sentences = re.split(r"(?<=[.!?])\s+", text)
-        return [s.strip() for s in sentences if len(s.strip()) > 20]
+        return [s.strip() for s in sentences if len(s.strip()) >= 3]
 
 
 hallucination_detector = HallucinationDetector()

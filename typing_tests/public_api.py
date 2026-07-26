@@ -25,6 +25,14 @@ loop_result: LoopDetectionResult = pd.detect_loop([])
 corruption_result: CorruptionResult = pd.detect_corruption({}, {})
 injection_result: InjectionResult = pd.detect_injection("")
 hallucination_result: HallucinationResult = pd.detect_hallucination("", [])
+hallucination_source: pd.HallucinationSource = {
+    "content": "The API requires TLS.",
+    "title": "Official Guide",
+}
+structured_hallucination_result: HallucinationResult = pd.detect_hallucination(
+    "The API requires TLS (source: Official Guide).",
+    [hallucination_source],
+)
 persona_result: PersonaConsistencyResult = pd.detect_persona_drift("", "", "")
 coordination_result: CoordinationAnalysisResult = pd.detect_coordination([])
 overflow_result: OverflowResult = pd.detect_overflow("", "")
