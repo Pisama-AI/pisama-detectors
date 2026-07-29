@@ -2,20 +2,20 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
-[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-yellow.svg)](LICENSE)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-yellow.svg)](https://github.com/Pisama-AI/pisama-detectors/blob/main/LICENSE)
 
 **42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
 An archived Pisama platform run reports **59.9% joint accuracy on the
-[TRAIL](https://github.com/PatronusAI/trail) public split** (Patronus, 2025;
+[TRAIL](https://arxiv.org/abs/2505.08638) public split** (Patronus, 2025;
 148 traces, 841 labelled errors). This was not a package-level evaluation and
 144 of 148 traces overlapped calibration material, so the result is
 in-distribution rather than held out. The public confusion counts reproduce
 the reported 0.754 macro-F1 and 0.746 micro-F1 arithmetic. They do not
 independently reproduce joint accuracy or production precision. Run
 `python benchmarks/verify_report.py`; see
-[`benchmarks/README.md`](benchmarks/README.md) and the machine-checked
-[`benchmarks/evidence.json`](benchmarks/evidence.json) for the exact claim
+[`benchmarks/README.md`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/README.md) and the machine-checked
+[`benchmarks/evidence.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json) for the exact claim
 boundary.
 
 Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
@@ -85,7 +85,8 @@ Anthropic token count.
 
 Near a model's context limit, use the provider's token-counting API and pass
 the complete request count through the keyword-only `provider_token_count`
-argument:
+argument. This example needs the Anthropic client, so install
+`pisama-detectors[full]`:
 
 ```python
 from anthropic import Anthropic
@@ -208,7 +209,7 @@ for name, info in DETECTOR_REGISTRY.items():
 
 ## Archived TRAIL platform benchmark
 
-[TRAIL](https://github.com/PatronusAI/trail) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
+[TRAIL](https://arxiv.org/abs/2505.08638) ([dataset](https://huggingface.co/datasets/PatronusAI/TRAIL)) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
 
 The table below is retained as historical platform evidence. It does not
 measure any published `pisama-detectors` package release, and the heuristic
@@ -224,25 +225,40 @@ apples-to-apples generalization comparison.
 | GPT-5.4-mini as judge | 1.5% | Not reported | LLM call |
 | Gemini 3.1 Flash-Lite as judge | 1.1% | Not reported | LLM call |
 
-Per-category F1 for the Pisama heuristic run (148 traces, 14 published
-category summaries, 808 total support):
+The four judge figures come from Pisama's own harness run of those models.
+[`benchmarks/trail_llm_baselines.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/trail_llm_baselines.json)
+stores per-category confusion counts for each judge but carries `"result": null`
+for all four, so these joint-accuracy figures cannot be recomputed from the
+published archive. Treat them as historical notes, not as verifiable baselines.
 
-| Category | F1 | Precision | Recall | Support |
-|---|---|---|---|---|
-| Context Handling Failures | 0.978 | 1.000 | 0.957 | 46 |
-| Goal Deviation | 0.829 | 1.000 | 0.708 | 65 |
-| Incorrect Memory Usage | 1.000 | 1.000 | 1.000 | 2 |
-| Incorrect Problem Identification | 1.000 | 1.000 | 1.000 | 28 |
-| Instruction Non-compliance | 0.743 | 1.000 | 0.591 | 154 |
-| Language-only hallucinations | 0.884 | 1.000 | 0.793 | 53 |
-| Poor Information Retrieval | 0.892 | 1.000 | 0.805 | 41 |
-| Resource Abuse | 1.000 | 1.000 | 1.000 | 57 |
-| Resource Exhaustion | 0.500 | 1.000 | 0.333 | 3 |
-| Task Orchestration | 0.000 | 0.000 | 0.000 | 49 |
-| Tool Output Misinterpretation | 0.583 | 1.000 | 0.412 | 17 |
-| Tool Selection Errors | 1.000 | 1.000 | 1.000 | 45 |
-| Tool-related hallucinations | 0.683 | 1.000 | 0.519 | 52 |
-| Formatting Errors | 0.457 | 1.000 | 0.296 | 196 |
+Per-category results for the Pisama heuristic run (148 traces, 14 published
+category summaries, 808 total support).
+
+**Read this table as a recall measurement.** The archive scored only annotated
+errors, so no false positive was recordable: `fp = 0` in 14 of 14 categories.
+Precision is therefore 1.000 by construction rather than by measurement, and F1
+collapses to `2R / (1 + R)`, carrying no information beyond recall. The
+precision column is omitted for that reason, and
+[`benchmarks/evidence.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json)
+records the same boundary: "The archive does not contain a negative candidate
+set that independently establishes precision."
+
+| Category | F1 | Recall | Support |
+|---|---|---|---|
+| Context Handling Failures | 0.978 | 0.957 | 46 |
+| Formatting Errors | 0.457 | 0.296 | 196 |
+| Goal Deviation | 0.829 | 0.708 | 65 |
+| Incorrect Memory Usage | 1.000 | 1.000 | 2 |
+| Incorrect Problem Identification | 1.000 | 1.000 | 28 |
+| Instruction Non-compliance | 0.743 | 0.591 | 154 |
+| Language-only hallucinations | 0.884 | 0.792 | 53 |
+| Poor Information Retrieval | 0.892 | 0.805 | 41 |
+| Resource Abuse | 1.000 | 1.000 | 57 |
+| Resource Exhaustion | 0.500 | 0.333 | 3 |
+| Task Orchestration | 0.000 | 0.000 | 49 |
+| Tool Output Misinterpretation | 0.583 | 0.412 | 17 |
+| Tool Selection Errors | 1.000 | 1.000 | 45 |
+| Tool-related hallucinations | 0.683 | 0.519 | 52 |
 
 Archived run output and per-model frontier-judge baselines:
 [`benchmarks/trail.json`](benchmarks/trail.json) and
@@ -263,7 +279,7 @@ Want automated fixes on top of detection? See [Pisama](https://pisama.ai) for AI
 
 ## License
 
-Business Source License 1.1. See [`LICENSE`](LICENSE).
+Business Source License 1.1. See [`LICENSE`](https://github.com/Pisama-AI/pisama-detectors/blob/main/LICENSE).
 
 Source-available. Free for non-commercial and non-competing production use.
 Auto-converts to Apache 2.0 on 2030-06-08. Commercial use that competes with
