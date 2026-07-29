@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pisama-detectors"
-version = "0.3.2"
+version = "0.3.3"
 description = "42 failure detectors for LLM agent systems"
 readme = "README.md"
 license = "BUSL-1.1"

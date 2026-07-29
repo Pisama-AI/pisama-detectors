@@ -4,6 +4,26 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-29
+
+### Fixed
+
+- Declare the license as `BUSL-1.1`, the real SPDX identifier for the Business
+  Source License 1.1. The previous `BSL-1.1` is not a valid SPDX identifier at all,
+  and the nearest match a scanner lands on is `BSL-1.0`, the permissive Boost
+  Software License. Package metadata now carries a machine-readable
+  `License-Expression: BUSL-1.1`. The LICENSE file itself is unchanged.
+- Repoint the TRAIL citation at the arXiv paper and the HuggingFace dataset. The
+  previously cited `github.com/PatronusAI/trail` is a 404.
+- Make the README's evidence links absolute. They were relative, so on the
+  PyPI-rendered page they resolved to the project page rather than to
+  `benchmarks/evidence.json` and `benchmarks/README.md`.
+- Remove the per-category precision column from the README's TRAIL table. The
+  archive records `fp = 0` in 14 of 14 categories because it scored only annotated
+  errors, so precision was 1.000 by construction rather than by measurement and F1
+  reduced to `2R/(1+R)`. The table is regenerated from `benchmarks/trail.json` and
+  now reports F1, recall and support, with the constraint stated inline.
+
 ## [0.3.2] - 2026-07-26
 
 ### Added
