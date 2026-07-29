@@ -4,6 +4,24 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-29
+
+### Fixed
+
+- Correct the README license badge, which read `License: BSL 1.1`. That is not a
+  valid SPDX identifier, and the nearest match a scanner lands on is `BSL-1.0`, the
+  unrelated permissive Boost Software License. The badge now reads `BUSL 1.1`,
+  matching the `License-Expression: BUSL-1.1` already carried in package metadata.
+  The README is the PyPI long description, so the wrong badge was rendering on the
+  public project page. The prose reference to "BSL-licensed" detector families is
+  corrected the same way. The LICENSE file itself is unchanged and was always
+  correct.
+
+### Added
+
+- `CODE_OF_CONDUCT.md`, the Contributor Covenant 2.1 text already used across the
+  sibling Pisama repositories, reported to conduct@pisama.ai.
+
 ## [0.3.3] - 2026-07-29
 
 ### Fixed
