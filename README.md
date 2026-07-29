@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
-[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-yellow.svg)](https://github.com/Pisama-AI/pisama-detectors/blob/main/LICENSE)
+[![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL_1.1-yellow.svg)](https://github.com/Pisama-AI/pisama-detectors/blob/main/LICENSE)
 
 **42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
@@ -24,7 +24,7 @@ Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Mul
 
 Start with [`pisama`](https://pypi.org/project/pisama/) for the canonical MIT
 CLI and framework-agnostic detector API. Use `pisama-detectors` when you need
-the BSL-licensed Dify, LangGraph, n8n, or OpenClaw detector families listed
+the BUSL-licensed Dify, LangGraph, n8n, or OpenClaw detector families listed
 below. New framework-agnostic detector work belongs in `pisama-core`; this
 package remains the home of the specialized families.
 
