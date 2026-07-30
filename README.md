@@ -4,19 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-detectors.svg)](https://pypi.org/project/pisama-detectors/)
 [![License: BUSL 1.1](https://img.shields.io/badge/License-BUSL_1.1-yellow.svg)](https://github.com/Pisama-AI/pisama-detectors/blob/main/LICENSE)
 
-**42 failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
-
-An archived Pisama platform run reports **59.9% joint accuracy on the
-[TRAIL](https://arxiv.org/abs/2505.08638) public split** (Patronus, 2025;
-148 traces, 841 labelled errors). This was not a package-level evaluation and
-144 of 148 traces overlapped calibration material, so the result is
-in-distribution rather than held out. The public confusion counts reproduce
-the reported 0.754 macro-F1 and 0.746 micro-F1 arithmetic. They do not
-independently reproduce joint accuracy or production precision. Run
-`python benchmarks/verify_report.py`; see
-[`benchmarks/README.md`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/README.md) and the machine-checked
-[`benchmarks/evidence.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json) for the exact claim
-boundary.
+**Failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
 Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
 
@@ -132,7 +120,7 @@ result = detect_hallucination(
 )
 ```
 
-## Core Detectors (18)
+## Core Detectors
 
 Framework-agnostic detectors for any LLM agent system.
 
@@ -157,20 +145,20 @@ Framework-agnostic detectors for any LLM agent system.
 | Withholding | `detect_withholding()` | Information withholding | beta |
 | Completion | `detect_completion()` | Premature/delayed completion | beta |
 
-## Framework-Specific Detectors (24)
+## Framework-Specific Detectors
 
 Specialized detectors that understand the execution model of each framework.
 
-### LangGraph (6)
+### LangGraph
 `detect_langgraph_recursion`, `detect_langgraph_state_corruption`, `detect_langgraph_edge_misroute`, `detect_langgraph_checkpoint_corruption`, `detect_langgraph_parallel_sync`, `detect_langgraph_tool_failure`
 
-### Dify (6)
+### Dify
 `detect_dify_classifier_drift`, `detect_dify_iteration_escape`, `detect_dify_rag_poisoning`, `detect_dify_tool_schema_mismatch`, `detect_dify_variable_leak`, `detect_dify_model_fallback`
 
-### n8n (6)
+### n8n
 `detect_n8n_cycle`, `detect_n8n_error`, `detect_n8n_timeout`, `detect_n8n_complexity`, `detect_n8n_schema`, `detect_n8n_resource`
 
-### OpenClaw (6)
+### OpenClaw
 `detect_openclaw_session_loop`, `detect_openclaw_sandbox_escape`, `detect_openclaw_tool_abuse`, `detect_openclaw_spawn_chain`, `detect_openclaw_channel_mismatch`, `detect_openclaw_elevated_risk`
 
 ## Run All Detectors
@@ -206,68 +194,6 @@ from pisama_detectors import DETECTOR_REGISTRY
 for name, info in DETECTOR_REGISTRY.items():
     print(f"{name}: {info.description} ({info.tier})")
 ```
-
-## Archived TRAIL platform benchmark
-
-[TRAIL](https://arxiv.org/abs/2505.08638) ([dataset](https://huggingface.co/datasets/PatronusAI/TRAIL)) is Patronus's 2025 benchmark of LLM agent failures: 148 OpenTelemetry traces from GAIA and SWE-Bench runs, annotated with 841 labelled errors.
-
-The table below is retained as historical platform evidence. It does not
-measure any published `pisama-detectors` package release, and the heuristic
-result is in-distribution because 144 of the 148 traces appeared in calibration
-material. The comparison with untuned model judges is therefore not an
-apples-to-apples generalization comparison.
-
-| Method | Joint accuracy | Macro F1 | Cost per trace |
-|---|---|---|---|
-| **Pisama heuristic (11 detectors)** | **59.9%** | **0.754** | $0 |
-| GPT-5.4 as judge | 11.9% | Not reported | LLM call |
-| Gemini 3.1 Pro as judge | 6.8% | Not reported | LLM call |
-| GPT-5.4-mini as judge | 1.5% | Not reported | LLM call |
-| Gemini 3.1 Flash-Lite as judge | 1.1% | Not reported | LLM call |
-
-The four judge figures come from Pisama's own harness run of those models.
-[`benchmarks/trail_llm_baselines.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/trail_llm_baselines.json)
-stores per-category confusion counts for each judge but carries `"result": null`
-for all four, so these joint-accuracy figures cannot be recomputed from the
-published archive. Treat them as historical notes, not as verifiable baselines.
-
-Per-category results for the Pisama heuristic run (148 traces, 14 published
-category summaries, 808 total support).
-
-**Read this table as a recall measurement.** The archive scored only annotated
-errors, so no false positive was recordable: `fp = 0` in 14 of 14 categories.
-Precision is therefore 1.000 by construction rather than by measurement, and F1
-collapses to `2R / (1 + R)`, carrying no information beyond recall. The
-precision column is omitted for that reason, and
-[`benchmarks/evidence.json`](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json)
-records the same boundary: "The archive does not contain a negative candidate
-set that independently establishes precision."
-
-| Category | F1 | Recall | Support |
-|---|---|---|---|
-| Context Handling Failures | 0.978 | 0.957 | 46 |
-| Formatting Errors | 0.457 | 0.296 | 196 |
-| Goal Deviation | 0.829 | 0.708 | 65 |
-| Incorrect Memory Usage | 1.000 | 1.000 | 2 |
-| Incorrect Problem Identification | 1.000 | 1.000 | 28 |
-| Instruction Non-compliance | 0.743 | 0.591 | 154 |
-| Language-only hallucinations | 0.884 | 0.792 | 53 |
-| Poor Information Retrieval | 0.892 | 0.805 | 41 |
-| Resource Abuse | 1.000 | 1.000 | 57 |
-| Resource Exhaustion | 0.500 | 0.333 | 3 |
-| Task Orchestration | 0.000 | 0.000 | 49 |
-| Tool Output Misinterpretation | 0.583 | 0.412 | 17 |
-| Tool Selection Errors | 1.000 | 1.000 | 45 |
-| Tool-related hallucinations | 0.683 | 0.519 | 52 |
-
-Archived run output and per-model frontier-judge baselines:
-[`benchmarks/trail.json`](benchmarks/trail.json) and
-[`benchmarks/trail_llm_baselines.json`](benchmarks/trail_llm_baselines.json).
-Run `python benchmarks/verify_report.py` to recompute the public
-per-category and aggregate F1 metrics from the confusion counts. The archived
-joint-accuracy value cannot be independently recomputed without the original
-per-annotation predictions, and is labeled accordingly. No held-out
-package-level benchmark result is claimed.
 
 ## Calibration Caveat
 
