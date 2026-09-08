@@ -13,6 +13,8 @@ All notable changes to `pisama-detectors` are documented here.
 - Replace the retired documentation link with the canonical package guide.
 - Gate publication on exact wheel and source-distribution installation checks
   across Python 3.10 through 3.13, and update the pinned PyPI publisher to 1.14.2.
+- Restrict source-distribution contents to source, tests, evidence and package
+  documentation; prevent generated coverage and other local output from shipping.
 
 ## [0.3.4] - 2026-07-29
 
