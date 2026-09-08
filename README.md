@@ -6,7 +6,10 @@
 
 **Failure detectors for LLM agent systems.** Catch loops, hallucinations, prompt injection, state corruption, coordination failures, persona drift, workflow execution bugs, and framework-specific failures in LangGraph, Dify, n8n, and OpenClaw.
 
-Built on the [MAST taxonomy](https://docs.pisama.ai/concepts/failure-modes) (Multi-Agent System Testing).
+The registry contains **41 failure detectors and one cost-accounting utility**.
+This package's evidence does **not certify any detector for production**.
+See the [detector reference](https://github.com/Pisama-AI/pisama-detectors#core-detectors)
+and the evidence limitations below.
 
 ## Which Pisama package should I use?
 
@@ -124,22 +127,21 @@ result = detect_hallucination(
 
 Framework-agnostic detectors for any LLM agent system.
 
-Tiers below are the calibration registry's readiness tiers, out-of-fold, refreshed
-2026-08-01: **production** clears F1 >= 0.80, precision >= 0.70, 30+ external traces,
-no per-difficulty blind spot, and an F1 that beats the detector's own always-fire
-baseline. **Beta** and **experimental** are measured but do not clear the full gate.
-**Failing** is measured and currently loses to a trivial always-fire baseline.
-**Untested** has not been scored on the external lane. This table is generated from
-the same `capability_registry.json` that backs the calibration record at
-[pisama.ai/benchmarks/detectors](https://pisama.ai/benchmarks/detectors); if the two
-ever disagree, the registry is correct and this file is stale.
+The table retains **historical labels and scores reported on 2026-08-01** for
+reference, not current readiness claims. In particular, the archived label
+`production` does not certify this package. The table is not a release-bound
+evaluation, a measured ceiling, or a performance guarantee for the defaults.
 
-These F1s are measured at each detector's calibrated optimal threshold. As noted
-below, this package ships with uncalibrated default thresholds, so a fresh
-`pip install` will not reproduce these numbers out of the box; they are the ceiling
-the detector reaches once tuned, not what you get by default.
+The separately bundled [TRAIL evidence card](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json)
+describes an archived platform run, not an evaluation of a package release:
+144 of 148 traces overlap calibration material, it is not held out, and neither
+prediction-level evidence nor an independent negative candidate set is available.
+All 14 categories record zero false positives, so the archived F1 arithmetic
+does not independently establish precision. The evidence verifier checks the
+archive's digest and arithmetic; passing it is not production certification.
+These limitations cannot be repaired by relabeling data or thresholds.
 
-| Detector | Function | What It Detects | Tier | F1 |
+| Detector | Function | What It Detects | Archived label | Archived F1 |
 |----------|----------|-----------------|------|----|
 | Injection | `detect_injection()` | Prompt injection, jailbreak attempts | production | 0.932 |
 | Specification | `detect_specification()` | Output vs spec mismatch | production | 0.945 |
@@ -159,21 +161,19 @@ the detector reaches once tuned, not what you get by default.
 | Overflow | `detect_overflow()` | Context window exhaustion | untested | not measured |
 | Context Pressure | `detect_context_pressure()` | Output degradation near context limit | not in registry | n/a |
 
-&dagger; Currently loses to (or ties) its own always-fire baseline: the detector does
-not separate signal from noise better than a rule that always answers the same way.
-&Dagger; Single-class evaluation corpus (`withholding`); the F1 is a floor, not an
-estimate against realistic traffic.
+&dagger; The historical table reported a loss or tie against an always-fire
+baseline. &Dagger; The historical `withholding` corpus was single-class.
+Neither annotation establishes present-day performance on realistic traffic.
 
 `Cost` (`calculate_cost()`) is a token and dollar accounting utility, not a failure
 detector, and does not carry a readiness tier.
 
 ## Framework-Specific Detectors
 
-Specialized detectors that understand the execution model of each framework. Tiers and
-F1 are the same out-of-fold registry as the core table above, refreshed 2026-08-01.
-Coverage is uneven across frameworks: OpenClaw is the most calibrated family and the
-only one with anything at production, n8n is calibrated but currently weak, and
-LangGraph and Dify have not been scored on the external lane at all.
+Specialized detectors cover the execution model of each framework. The labels
+and scores below are retained from the same historical table as the core entries.
+They do not establish current package performance or production certification.
+LangGraph and Dify have no external evaluation claimed by this table.
 
 ### LangGraph
 Coverage only; no detector in this family has been measured on the external lane.
@@ -190,9 +190,9 @@ Coverage only; no detector in this family has been measured on the external lane
 `detect_dify_variable_leak`, `detect_dify_model_fallback` — all untested.
 
 ### n8n
-Measured, and currently the weakest calibrated family.
+Historical n8n scores, not release-bound validation:
 
-| Function | Tier | F1 |
+| Function | Archived label | Archived F1 |
 |----------|------|----|
 | `detect_n8n_error` | experimental | 0.571 |
 | `detect_n8n_timeout` | failing | 0.333 |
@@ -202,10 +202,9 @@ Measured, and currently the weakest calibrated family.
 | `detect_n8n_resource` | failing | 0.000 |
 
 ### OpenClaw
-The most calibrated framework family, and the only one with production-grade
-detectors today.
+Historical OpenClaw scores. No production-grade claim follows from these labels.
 
-| Function | Tier | F1 |
+| Function | Archived label | Archived F1 |
 |----------|------|----|
 | `detect_openclaw_channel_mismatch` | production | 1.000 |
 | `detect_openclaw_spawn_chain` | production | 0.974 |
@@ -245,12 +244,21 @@ other frameworks. Omitting it preserves the legacy fanout behavior.
 from pisama_detectors import DETECTOR_REGISTRY
 
 for name, info in DETECTOR_REGISTRY.items():
-    print(f"{name}: {info.description} ({info.tier})")
+    print(f"{name}: {info.description} ({info.certification_status})")
 ```
+
+`info.tier` remains for compatibility with existing integrations. Its historical
+strings, including `production`, are not readiness guarantees. Every current
+entry reports `info.certification_status == "uncertified"`; cost is an accounting
+utility, not a failure detector or a certification target.
 
 ## Calibration Caveat
 
-The detectors in this package ship with **uncalibrated default thresholds**. They work out-of-the-box but are tuned conservatively. For tuned production F1 scores, per-framework threshold calibration, golden-dataset-driven quality gates, and advanced detectors (`grounding`, `retrieval_quality`, `quality_gate`, `tool_provision`), see [Pisama Cloud](https://pisama.ai).
+The detectors ship with **uncalibrated default thresholds**. Validate both failures
+and healthy cases on representative, independently labeled workflows before
+relying on their output. Neither these defaults nor the archived tables establish
+false-positive rates, held-out generalization, or production suitability. Hosted
+calibration and workflow capabilities are described separately at [Pisama](https://pisama.ai).
 
 ## Self-Healing
 
