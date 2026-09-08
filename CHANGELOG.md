@@ -4,6 +4,16 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-09-08
+
+- Correct the package count to 41 failure detectors plus one cost utility.
+- Mark historical readiness tables and registry tiers as non-certifying;
+  expose an explicit `uncertified` certification status for every registry entry.
+  Detector functions, thresholds and archived benchmark data are unchanged.
+- Replace the retired documentation link with the canonical package guide.
+- Gate publication on exact wheel and source-distribution installation checks
+  across Python 3.10 through 3.13, and update the pinned PyPI publisher to 1.14.2.
+
 ## [0.3.4] - 2026-07-29
 
 ### Fixed

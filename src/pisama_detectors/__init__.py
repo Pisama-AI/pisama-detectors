@@ -1,12 +1,11 @@
-"""Pisama Detectors — 42 failure detectors for LLM agent systems.
+"""Pisama Detectors: 41 failure detectors and 1 cost utility for LLM agent systems.
 
 Detect loops, hallucinations, prompt injection, state corruption,
-coordination failures, persona drift, and 36 more failure modes
+coordination failures, persona drift, and framework-specific failure modes
 in your multi-agent AI systems.
 
-Advanced detectors (grounding, retrieval_quality, quality_gate,
-tool_provision) and calibrated production weights are available
-via Pisama Cloud.
+No detector in this package is certified for production by the bundled
+evidence. Legacy registry tiers are compatibility labels, not certification.
 
 Usage:
     from pisama_detectors import detect_loop, detect_injection, detect_corruption

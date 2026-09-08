@@ -54,12 +54,13 @@ class HallucinationSource(_HallucinationSourceContent, total=False):
 
 @dataclass
 class DetectorInfo:
-    """Registry entry for a detector."""
+    """Registry entry; legacy ``tier`` values do not establish certification."""
 
     name: str
     description: str
     function: Callable[..., Any]
-    tier: str  # production, beta, experimental
+    tier: str  # Historical compatibility label, not a production-readiness gate.
+    certification_status: str = "uncertified"
 
 
 # Will be populated below

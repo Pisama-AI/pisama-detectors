@@ -58,10 +58,18 @@ EXPECTED_DETECTORS = {
 }
 
 
-def test_registry_has_exactly_the_documented_42_detectors() -> None:
+def test_registry_has_41_failure_detectors_and_one_cost_utility() -> None:
     assert set(pd.DETECTOR_REGISTRY) == EXPECTED_DETECTORS
     assert len(pd.DETECTOR_REGISTRY) == 42
     assert all(callable(info.function) for info in pd.DETECTOR_REGISTRY.values())
+    assert pd.DETECTOR_REGISTRY["cost"].function is pd.calculate_cost
+    assert len(set(pd.DETECTOR_REGISTRY) - {"cost"}) == 41
+
+
+def test_legacy_registry_tiers_do_not_certify_any_release_detector() -> None:
+    assert all(
+        info.certification_status == "uncertified" for info in pd.DETECTOR_REGISTRY.values()
+    )
 
 
 def test_every_public_detector_exposes_resolvable_runtime_type_hints() -> None:

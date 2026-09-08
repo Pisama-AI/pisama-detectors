@@ -1,8 +1,8 @@
 # Contributing to pisama-detectors
 
 Thanks for your interest in improving the detector pack. This repo ships
-the 42 uncalibrated failure detectors that underpin
-[Pisama](https://pisama.ai). Calibrated production weights, golden
+41 uncalibrated failure detectors and one cost utility for
+[Pisama](https://pisama.ai). Calibration infrastructure, golden
 datasets, and advanced detectors (`grounding`, `retrieval_quality`,
 `quality_gate`, `tool_provision`) live in Pisama Cloud. That split is
 deliberate and not up for debate in PRs.
@@ -21,7 +21,7 @@ deliberate and not up for debate in PRs.
 ## What we're not looking for
 
 - Tuned thresholds. Thresholds in this package are intentionally
-  conservative so the OSS pack works without calibration data.
+  uncalibrated; the source-available pack does not certify production readiness.
 - Calibration pipelines, golden-dataset generators, or ML model
   artifacts. Those are Pisama Cloud features.
 
@@ -68,8 +68,9 @@ across every Python module shipped in the wheel, including the frozen
 ## PR checklist
 
 - [ ] New detector (if applicable) is registered in `_api.py` via the
-      `@_register` decorator with a tier (`production` / `beta` /
-      `experimental`).
+      `@_register` decorator. Existing tier strings are historical compatibility
+      labels; certification must remain `uncertified` without independently
+      reviewed, release-bound held-out evidence.
 - [ ] Wrapper signature in `_api.py` matches the underlying detector
       class method signature.
 - [ ] Clean-venv install succeeds: the detector works with only the
