@@ -40,6 +40,8 @@ REASONING_MARKERS = [
     r"\blet me (?:think|consider|analyze|plan)\b",
 ]
 
+from pisama_detectors.detection.precision_guards import asserts_absence, negates_problem
+
 logger = logging.getLogger(__name__)
 
 
@@ -203,12 +205,21 @@ class InformationWithholdingDetector:
         self.detail_retention_threshold = detail_retention_threshold
 
     def _extract_critical_items(self, text: str) -> List[tuple]:
-        """Extract critical information items from text."""
+        """Extract critical information items from text.
+
+        Polarity-aware: a token is only a critical item when it ASSERTS the
+        condition. A clean run that reports "errors: 0", "critical alerts:
+        none" or "timeout: not reached" contains no critical items to pass on,
+        so counting those as withheld information flags healthy behaviour
+        (see tests/test_detector_precision_negatives.py::information_withholding).
+        """
         items = []
 
         for pattern, item_type in self.CRITICAL_PATTERNS:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
+                if asserts_absence(text, match.start(), match.end()):
+                    continue  # "0 failed", "no warnings" — nothing to withhold
                 # Get surrounding context (50 chars each side)
                 start = max(0, match.start() - 50)
                 end = min(len(text), match.end() + 50)
@@ -218,12 +229,24 @@ class InformationWithholdingDetector:
         return items
 
     def _extract_negative_findings(self, text: str) -> List[str]:
-        """Extract negative findings from text."""
+        """Extract negative findings from text.
+
+        Polarity-aware. The first NEGATIVE_FINDING_PATTERNS entry matches any
+        "no/not/none/never <word>", which makes the phrase "no errors" look
+        like a negative finding the agent then "suppressed" by not repeating
+        it. An absence-of-problem claim is good news, not a finding: skip it.
+        A genuine negative finding ("no access", "no matching records") is
+        still collected.
+        """
         findings = []
 
         for pattern in self.NEGATIVE_FINDING_PATTERNS:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
+                if negates_problem(match.group()):
+                    continue  # "no errors" — absence of a problem, not a finding
+                if asserts_absence(text, match.start(), match.end()):
+                    continue  # "nothing missing", "0 failed"
                 start = max(0, match.start() - 30)
                 end = min(len(text), match.end() + 30)
                 context = text[start:end].strip()
@@ -594,20 +617,30 @@ class InformationWithholdingDetector:
                     )
                 )
 
-        # Check for over-summarization
-        internal_density = self._calculate_information_density(internal_state)
-        output_density = self._calculate_information_density(agent_output)
+        # Check for over-summarization. Skip the density comparison when the
+        # internal_state is JSON/structured data: JSON has almost no English
+        # stop words so its non-stopword "density" is ~1.0, while a normal
+        # prose summary sits at ~0.3-0.4. The 0.5 ratio gate then fires on
+        # essentially every JSON-to-text summarization (a real CONTEXT_STRIPPING
+        # false positive).
+        looks_structured = (
+            internal_state.count("{") + internal_state.count("[") >= 3
+            or internal_state.count(": ") + internal_state.count('":') >= 5
+        )
+        if not looks_structured:
+            internal_density = self._calculate_information_density(internal_state)
+            output_density = self._calculate_information_density(agent_output)
 
-        if internal_density > 0 and output_density < internal_density * 0.5:
-            if re.search(r"|".join(p for p in self.SUMMARY_PATTERNS), agent_output, re.IGNORECASE):
-                issues.append(
-                    WithholdingIssue(
-                        issue_type=WithholdingType.CONTEXT_STRIPPING,
-                        withheld_info="excessive summarization",
-                        severity=WithholdingSeverity.MINOR,
-                        description="Output significantly less detailed than internal state",
+            if internal_density > 0 and output_density < internal_density * 0.5:
+                if re.search(r"|".join(p for p in self.SUMMARY_PATTERNS), agent_output, re.IGNORECASE):
+                    issues.append(
+                        WithholdingIssue(
+                            issue_type=WithholdingType.CONTEXT_STRIPPING,
+                            withheld_info="excessive summarization",
+                            severity=WithholdingSeverity.MINOR,
+                            description="Output significantly less detailed than internal state",
+                        )
                     )
-                )
 
         # v1.1: Reduce false positives based on task type and output characteristics
         if issues:

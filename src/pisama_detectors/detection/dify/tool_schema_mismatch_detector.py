@@ -156,8 +156,11 @@ class DifyToolSchemaMismatchDetector(TurnAwareDetector):
                 f"Tool schema mismatch: {len(issues)} issue(s) across "
                 f"{len(tool_nodes)} tool node(s)"
             ),
-            affected_turns=list(range(len(set(affected_node_ids)))),
+            # affected_turns=[] — was a count masquerading as indices; real
+            # node IDs go in evidence below.
+            affected_turns=[],
             evidence={
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "issues": issues,
                 "total_tool_nodes": len(tool_nodes),
             },

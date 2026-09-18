@@ -577,32 +577,36 @@ class N8NTimeoutDetector(TurnAwareDetector):
         if not issues:
             return TurnAwareDetectionResult(
                 detected=False,
+                # A non-detection carries LOW detection-confidence (a clean
+                # workflow is ~0, matching the runtime detect() path which
+                # returns 0.0 here). A high non-detection confidence (0.9) would
+                # rank clean workflows ABOVE the advisory positive findings below
+                # (<=0.45), which makes a calibration threshold-optimizer that
+                # ranks by confidence degenerate.
                 severity=TurnAwareSeverity.NONE,
-                confidence=0.9,
+                confidence=0.1,
                 failure_mode=None,
                 explanation="No timeout risks detected in workflow JSON",
                 detector_name=self.name,
             )
 
-        # Determine severity
-        has_stall_risk = any(
-            i["type"] in ("merge_wait_stall_risk", "missing_workflow_timeout") for i in issues
-        )
-        has_external_risk = any(
-            i["type"] in ("webhook_no_response_timeout", "http_no_timeout", "ai_no_timeout")
-            for i in issues
-        )
-
-        if has_stall_risk and has_external_risk:
-            severity = TurnAwareSeverity.SEVERE
-        elif has_stall_risk or (has_external_risk and len(issues) >= 3):
-            severity = TurnAwareSeverity.MODERATE
-        elif has_external_risk:
-            severity = TurnAwareSeverity.MINOR
-        else:
-            severity = TurnAwareSeverity.MINOR
-
-        confidence = min(0.95, 0.70 + len(issues) * 0.06)
+        # These are *static, preventive* configuration-hygiene findings: the
+        # workflow merely *lacks* timeout settings -- no timeout has actually
+        # occurred (detecting that is the job of the runtime detect() path,
+        # which fires at full confidence on real duration/stall evidence).
+        # Surfacing them as high-confidence SEVERE failures makes n8n_timeout
+        # fire at 0.88-0.95 on essentially every n8n workflow (almost none
+        # configure explicit timeouts), drowning the real per-trace signals.
+        # Keep them as a low-confidence advisory that stays UNDER the 0.50
+        # persistence floor, so the same hardening guidance still reaches users
+        # via the workflow quality assessment / suggested_fix without polluting
+        # the failure stream. Scales slightly with the number of distinct gaps.
+        # NOTE: the no-issues branch above is paired at confidence 0.1 so the
+        # advisory positives still rank ABOVE clean negatives -- required for a
+        # confidence-ranking calibration threshold-optimizer to stay well-defined
+        # under this cap.
+        severity = TurnAwareSeverity.MINOR
+        confidence = min(0.45, 0.20 + len(issues) * 0.05)
 
         explanations = [issue["explanation"] for issue in issues]
         full_explanation = "; ".join(explanations)

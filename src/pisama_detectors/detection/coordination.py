@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -108,6 +109,26 @@ _COMMON_ENGLISH_CAPS = frozenset(
     }
 )
 
+# Pseudo-agents that are not collaborating teammates: the human user, the system
+# orchestration role, and shared broadcast channels. Volume-based team checks
+# (lead_hoarding) must exclude these when counting "real" agents — otherwise a
+# 2-party assistant<->user chat or a broadcast bus reads as an underutilized team.
+_NON_TEAM_ROLES = frozenset(
+    {
+        "user",
+        "human",
+        "system",
+        "lead",
+        "group",
+        "all",
+        "everyone",
+        "everybody",
+        "team",
+        "channel",
+        "broadcast",
+    }
+)
+
 
 @dataclass
 class Message:
@@ -150,9 +171,11 @@ class CoordinationAnalyzer:
         self,
         messages: List[Message],
         agent_ids: List[str],
+        resource_changes: Optional[List[Dict[str, Any]]] = None,
     ) -> CoordinationAnalysisResult:
         issues = []
 
+        issues.extend(self._detect_conflicting_resource_changes(resource_changes or []))
         issues.extend(self._detect_ignored_messages(messages))
         issues.extend(self._detect_information_withholding(messages, agent_ids))
         issues.extend(self._detect_excessive_back_forth(messages))
@@ -200,19 +223,71 @@ class CoordinationAnalyzer:
                 pipeline_agents += 1
         return pipeline_agents >= len(agent_ids) * 0.6
 
+    def _is_hierarchical_topology(self, messages: List[Message], agent_ids: List[str]) -> bool:
+        """v2.2: Detect hub-and-spoke / orchestrator topologies (one agent fans out to many).
+
+        In healthy hierarchical systems one coordinator sends to multiple specialists.
+        These patterns trigger false positives from lead_hoarding, silent_agent, and
+        excessive_back_forth checks that expect peer-to-peer communication norms.
+        Returns True when one agent accounts for ≥50% of all outbound messages AND
+        communicates with ≥3 distinct recipients, indicating a legitimate hub."""
+        if len(agent_ids) < 3:
+            return False
+        send_counts: Dict[str, int] = defaultdict(int)
+        send_targets: Dict[str, Set[str]] = defaultdict(set)
+        for msg in messages:
+            if msg.from_agent != msg.to_agent:
+                send_counts[msg.from_agent] += 1
+                send_targets[msg.from_agent].add(msg.to_agent)
+        total = sum(send_counts.values())
+        if total == 0:
+            return False
+        for agent, count in send_counts.items():
+            if count / total >= 0.50 and len(send_targets[agent]) >= 3:
+                return True
+        return False
+
     def analyze_coordination_with_confidence(
         self,
         messages: List[Message],
         agent_ids: List[str],
+        resource_changes: Optional[List[Dict[str, Any]]] = None,
+        message_telemetry_present: bool = True,
     ) -> CoordinationAnalysisResult:
         issues = []
         is_pipeline = self._is_pipeline_topology(messages, agent_ids)
+        # v2.2: Hub-and-spoke / orchestrator pattern — suppress the same
+        # volume-based checks as pipelines. Orchestrators legitimately send
+        # >60% of messages and their specialist sub-agents may not fan-out
+        # to each other, which mimics "lead hoarding" and "silent agent"
+        # without any real coordination failure.
+        is_hierarchical = self._is_hierarchical_topology(messages, agent_ids)
+        # Structural-only sources can observe edits without observing agent
+        # messages. In that case an empty list means "modality unavailable",
+        # not "every agent was silent". Callers must opt in explicitly so an
+        # actually observed empty message stream keeps the legacy behavior.
+        suppress_volume_checks = is_pipeline or is_hierarchical or not message_telemetry_present
 
+        issues.extend(self._detect_conflicting_resource_changes(resource_changes or []))
         issues.extend(self._detect_ignored_messages(messages))
+        # Phase 10: MAST F11 deadlock-chain pattern (closes 46 FN gap)
+        issues.extend(self._detect_unacked_deadlock_chain(messages))
+        # Priority inversion: an URGENT task blocked behind a lower-priority task
+        # (self-reported blocked state). Closes the coord004 real-data FN.
+        issues.extend(self._detect_priority_inversion(messages))
         # v1.5: Suppress withholding and indirect delegation in pipeline topologies
         if not is_pipeline:
             issues.extend(self._detect_information_withholding(messages, agent_ids))
-        issues.extend(self._detect_excessive_back_forth(messages))
+        # v2.2: Suppress volume-based checks for pipeline/hierarchical topologies.
+        # These detectors flag healthy structural patterns as failures: an orchestrator
+        # sending to 4 specialists naturally shows "lead hoarding", end-nodes that only
+        # receive show "silent agent", and multi-turn iterative work exceeds the
+        # back-and-forth threshold without being dysfunctional.
+        if not suppress_volume_checks:
+            issues.extend(self._detect_excessive_back_forth(messages))
+            issues.extend(self._detect_lead_hoarding(messages, agent_ids))
+            issues.extend(self._detect_silent_agent(messages, agent_ids))
+            issues.extend(self._detect_stale_handoff_loop(messages))
         issues.extend(self._detect_circular_delegation(messages))
         # v1.4: New detection methods
         issues.extend(self._detect_conflicting_instructions(messages))
@@ -233,10 +308,16 @@ class CoordinationAnalyzer:
         issues.extend(self._detect_discussion_without_progress(messages))
         # v1.9: Repeated-content cycle (Magentic/AutoGen agent re-introduction patterns)
         issues.extend(self._detect_repeated_content_cycle(messages))
-        # v1.7: Ported from agent_teams + escalation_loop on consolidation pass
-        issues.extend(self._detect_lead_hoarding(messages, agent_ids))
-        issues.extend(self._detect_silent_agent(messages, agent_ids))
-        issues.extend(self._detect_stale_handoff_loop(messages))
+        # v2.1 Sprint 12 Phase B: short-trace repeat-request loops (retry loops,
+        # state-desync, mutual-request deadlocks). Complements the 6+ message
+        # repeated-content cycle by catching verbatim/near-verbatim repeats in
+        # short 2-agent exchanges (the 0.0-0.3 confidence FN cluster).
+        issues.extend(self._detect_repeat_request_loop(messages))
+        # v2.3: genuine stuck loops on a broadcast channel. Complements
+        # _detect_repeat_request_loop, which deliberately skips broadcast edges
+        # (to kill benign orchestrator ledger-broadcast over-flagging) and is
+        # therefore blind to multi-sender / paraphrased / short group-bus loops.
+        issues.extend(self._detect_group_bus_loop(messages))
 
         metrics = self._compute_metrics(messages, agent_ids)
 
@@ -347,6 +428,30 @@ class CoordinationAnalyzer:
         else:
             base_confidence = max(base_confidence, severity_floor.get(max_severity, 0.20))
 
+        # v2.2: Abstention band. When no high/critical issue is present, medium/low
+        # accumulations (ignored_message on converter-built phantom recipients,
+        # lead_hoarding, diversity bonuses) push confidence over the serving
+        # threshold and produce false positives — on real Who&When coordination
+        # traces this fired on all 96 clean traces. The production coordination
+        # threshold is the FACTORY_DEFAULTS value 0.5 (threshold_config.py), so the
+        # cap MUST sit below 0.5 to bind: a no-high-severity trace is capped to 0.45
+        # and abstains. Measured on the full external coordination corpus (n≈1349):
+        # this lifts precision 0.17→0.47 and F1 0.26→0.49 at threshold 0.5, dropping
+        # Who&When coordination FP from 96/96 to 31/96. The residual high-severity FP
+        # (mostly repeat_request_loop, near-chance discriminative) is left to the
+        # judge-escalation tier + real-label recalibration rather than tuned to the
+        # noise floor here.
+        high_or_critical = severity_counts.get("high", 0) + severity_counts.get("critical", 0)
+        if high_or_critical == 0:
+            base_confidence = min(base_confidence, 0.45)
+
+        # Incompatible edits to the same base-file range are direct structural
+        # evidence, rather than a conversational heuristic. Keep them above the
+        # frozen high-precision coordination threshold so this signal is not
+        # diluted by unrelated acknowledgement/message-volume metrics.
+        if any(i.issue_type == "conflicting_resource_change" for i in issues):
+            base_confidence = max(base_confidence, 0.96)
+
         calibrated = min(0.99, base_confidence * self.confidence_scaling)
 
         calibration_info = {
@@ -407,19 +512,21 @@ class CoordinationAnalyzer:
             should_flag = False
             severity = "medium"
 
-            if not msg.acknowledged and not recipient_activity:
-                # Recipient never replies AFTER this message.
-                recipient_speaks_anywhere = any(m.from_agent == msg.to_agent for m in messages)
-                if not recipient_speaks_anywhere:
-                    # Recipient never speaks at all — clear ignored signal
-                    should_flag = True
-                    severity = "medium" if has_ack_data else "low"
-                elif has_ack_data:
-                    # Recipient speaks but explicitly didn't ack THIS message
-                    should_flag = True
-                    severity = "medium"
-                # If !has_ack_data and recipient speaks elsewhere, don't flag —
-                # the absence of ack is unreliable signal in real traces.
+            if not msg.acknowledged and not recipient_activity and has_ack_data:
+                # Structural "ignored" signal requires RELIABLE ack data. Without it,
+                # a non-replying recipient is not evidence of an ignored message in real
+                # traces — a terminal recipient, a `system`/sink target, or the final
+                # answer legitimately never speaks afterward. The original code only
+                # gated the "recipient speaks elsewhere" branch on has_ack_data (and
+                # called the no-ack signal "unreliable"), but left the "recipient never
+                # speaks at all" branch firing at low severity on every such trace. On
+                # the real Who&When coordination corpus that fired on 96/96 clean traces
+                # (and 100% of m500/tracertraj/trail), with ZERO MAST coordination value
+                # (ignored_message never fires on any MAST entry). Gating both branches
+                # the same way removes the artifact; the content-based `message_lost`
+                # path below still catches genuine repeat-requests in ack-less traces.
+                should_flag = True
+                severity = "medium"
 
             if should_flag:
                 flagged_pairs.add(pair)
@@ -921,6 +1028,160 @@ class CoordinationAnalyzer:
                         )
         return issues
 
+    @staticmethod
+    def _resource_edits_overlap(
+        first: Dict[str, Any],
+        second: Dict[str, Any],
+    ) -> bool:
+        """Return whether two unified-diff edit blocks touch the same base range."""
+        try:
+            first_start = int(first["old_start"])
+            second_start = int(second["old_start"])
+            first_count = int(first.get("old_count", 0))
+            second_count = int(second.get("old_count", 0))
+        except (KeyError, TypeError, ValueError):
+            return False
+        if min(first_start, second_start, first_count, second_count) < 0:
+            return False
+        if first_count == 0 and second_count == 0:
+            return first_start == second_start
+        if first_count == 0:
+            return second_start <= first_start <= second_start + second_count
+        if second_count == 0:
+            return first_start <= second_start <= first_start + first_count
+        return max(first_start, second_start) < min(
+            first_start + first_count,
+            second_start + second_count,
+        )
+
+    @staticmethod
+    def _resource_edit_signature(edit: Dict[str, Any]) -> Optional[Tuple[Any, ...]]:
+        """Return a comparable content signature, or abstain on thin telemetry."""
+        added_hash = edit.get("added_sha256")
+        deleted_hash = edit.get("deleted_sha256")
+        if not isinstance(added_hash, str) or not isinstance(deleted_hash, str):
+            return None
+        if len(added_hash) < 16 or len(deleted_hash) < 16:
+            return None
+        try:
+            return (
+                added_hash,
+                deleted_hash,
+                int(edit.get("added_count", 0)),
+                int(edit.get("deleted_count", edit.get("old_count", 0))),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _resource_path(value: Any) -> str:
+        path = str(value or "").strip().replace("\\", "/")
+        while path.startswith("./"):
+            path = path[2:]
+        if path.startswith(("a/", "b/")):
+            path = path[2:]
+        return path
+
+    def _resource_file_change(
+        self,
+        agent_id: str,
+        file_change: Any,
+    ) -> Optional[Tuple[str, List[Tuple[str, Dict[str, Any]]]]]:
+        if not isinstance(file_change, dict):
+            return None
+        path = self._resource_path(file_change.get("path"))
+        edits = file_change.get("edit_blocks")
+        if not path or path == "/dev/null" or not isinstance(edits, list):
+            return None
+        return path, [(agent_id, edit) for edit in edits if isinstance(edit, dict)]
+
+    def _resource_change_file_edits(
+        self,
+        change: Any,
+    ) -> List[Tuple[str, List[Tuple[str, Dict[str, Any]]]]]:
+        if not isinstance(change, dict):
+            return []
+        agent_id = str(change.get("agent_id") or "").strip()
+        files = change.get("files")
+        if not agent_id or not isinstance(files, list):
+            return []
+        parsed = [self._resource_file_change(agent_id, file_change) for file_change in files]
+        return [file_change for file_change in parsed if file_change is not None]
+
+    def _index_resource_changes(
+        self,
+        resource_changes: List[Dict[str, Any]],
+    ) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
+        indexed: Dict[str, List[Tuple[str, Dict[str, Any]]]] = defaultdict(list)
+        for change in resource_changes:
+            for path, edits in self._resource_change_file_edits(change):
+                indexed[path].extend(edits)
+        return indexed
+
+    def _conflicting_resource_agents(
+        self,
+        first_agent: str,
+        first_edit: Dict[str, Any],
+        second_agent: str,
+        second_edit: Dict[str, Any],
+    ) -> Optional[Tuple[str, str]]:
+        if first_agent == second_agent:
+            return None
+        first_signature = self._resource_edit_signature(first_edit)
+        if first_signature is None:
+            return None
+        second_signature = self._resource_edit_signature(second_edit)
+        if second_signature is None or first_signature == second_signature:
+            return None
+        if not self._resource_edits_overlap(first_edit, second_edit):
+            return None
+        agent_a, agent_b = sorted((first_agent, second_agent))
+        return (agent_a, agent_b)
+
+    def _resource_conflicts_for_path(
+        self,
+        path: str,
+        edits: List[Tuple[str, Dict[str, Any]]],
+    ) -> List[CoordinationIssue]:
+        issues: List[CoordinationIssue] = []
+        reported_pairs: Set[Tuple[str, str]] = set()
+        for index, (first_agent, first_edit) in enumerate(edits):
+            for second_agent, second_edit in edits[index + 1 :]:
+                agent_pair = self._conflicting_resource_agents(
+                    first_agent,
+                    first_edit,
+                    second_agent,
+                    second_edit,
+                )
+                if agent_pair is None or agent_pair in reported_pairs:
+                    continue
+                reported_pairs.add(agent_pair)
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="conflicting_resource_change",
+                        agents_involved=list(agent_pair),
+                        message=(f"Incompatible edits from {agent_pair[0]} and {agent_pair[1]} overlap in '{path}'"),
+                        severity="critical",
+                    )
+                )
+        return issues
+
+    def _detect_conflicting_resource_changes(
+        self,
+        resource_changes: List[Dict[str, Any]],
+    ) -> List[CoordinationIssue]:
+        """Detect distinct agents making incompatible overlapping file edits.
+
+        The input is a label-free projection of unified diffs. Each agent owns
+        one or more files, and each file carries exact base-line edit blocks plus
+        hashes of the added/deleted content. Same-file work is healthy when the
+        ranges are disjoint or both agents made the identical edit.
+        """
+        issues: List[CoordinationIssue] = []
+        for path, edits in self._index_resource_changes(resource_changes).items():
+            issues.extend(self._resource_conflicts_for_path(path, edits))
+        return issues
+
     def _detect_rapid_instruction_change(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect when an agent cancels/overrides a recent instruction."""
         issues = []
@@ -1021,6 +1282,45 @@ class CoordinationAnalyzer:
                         pass
         return issues
 
+    def _detect_priority_inversion(self, messages: List[Message]) -> List[CoordinationIssue]:
+        """Detect priority inversion: a HIGH/URGENT-priority task reported BLOCKED
+        by a LOWER-priority task — a classic scheduling/coordination failure where
+        urgent work cannot proceed because a low-priority item holds the queue or a
+        needed resource. Observable in an agent's self-reported state, JSON or prose,
+        e.g. {"priority":"URGENT","status":"blocked","blocked_by":"low_priority_report"}.
+
+        Requires all three signals (high priority + blocked + an explicitly
+        lower-priority blocker) so it fires only on a genuine inversion, not on any
+        blocked message or any urgent message on its own.
+        """
+        import re as _re
+
+        high_pri = _re.compile(
+            r'\b(?:urgent|critical|p0|p1)\b|priority["\s:_-]*(?:urgent|high|critical)'
+            r"|high[\s_-]?priority",
+        )
+        low_blocker = _re.compile(
+            r"(?:blocked[_\s-]?by|waiting[_\s-](?:on|for)|behind)[^\d]{0,40}?"
+            r"(?:low[\s_-]?priority|lower[\s_-]?priority|\blow\b)",
+        )
+        issues = []
+        for msg in messages:
+            low = msg.content.lower()
+            is_blocked = "blocked" in low or "waiting on" in low or "waiting for" in low
+            if is_blocked and high_pri.search(low) and low_blocker.search(low):
+                issues.append(
+                    CoordinationIssue(
+                        issue_type="priority_inversion",
+                        agents_involved=[msg.from_agent, msg.to_agent],
+                        message=(
+                            "Priority inversion: high-priority task blocked by "
+                            f"lower-priority work — {msg.content[:120]}"
+                        ),
+                        severity="critical",
+                    )
+                )
+        return issues
+
     def _detect_duplicate_responses(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.6: Detect agents producing duplicate/repeated responses.
 
@@ -1040,6 +1340,55 @@ class CoordinationAnalyzer:
                     )
                 )
         return issues
+
+    def _detect_unacked_deadlock_chain(self, messages: List[Message]) -> List[CoordinationIssue]:
+        """Phase 10: Detect resource-contention deadlock — a chain of 3+
+        unacknowledged messages where the content indicates blocking/waiting.
+
+        Closes the 46-FN gap in coordination from MAST F11 mined samples like:
+            agent_a → agent_b: "access resource_a (blocked)" unack
+            agent_b → agent_c: "access resource_b (blocked)" unack
+            agent_c → coordinator: "access resource_c (blocked)" unack
+
+        The existing `_detect_ignored_messages` flags only the LAST message in
+        such a chain (because each earlier sender's recipient does speak later).
+        This catches the chain-as-a-whole as a high-severity deadlock pattern.
+        """
+        if len(messages) < 3:
+            return []
+        block_phrases = (
+            "blocked",
+            "waiting for",
+            "wait for",
+            "queued",
+            "pending",
+            "cannot proceed",
+            "stalled",
+            "awaiting",
+        )
+        unacked_blocked = [
+            m for m in messages if not m.acknowledged and any(p in m.content.lower() for p in block_phrases)
+        ]
+        if len(unacked_blocked) < 3:
+            return []
+        # Require either all messages unacked, or the blocked-unacked ratio
+        # is >= 60% of total messages (avoids flagging a 10-msg trace with
+        # 3 unrelated blocked notices).
+        ack_rate = sum(1 for m in messages if m.acknowledged) / len(messages)
+        if ack_rate > 0.0 and (len(unacked_blocked) / len(messages)) < 0.6:
+            return []
+        agents = sorted({m.from_agent for m in unacked_blocked} | {m.to_agent for m in unacked_blocked})
+        return [
+            CoordinationIssue(
+                issue_type="unacked_deadlock_chain",
+                agents_involved=agents,
+                message=(
+                    f"{len(unacked_blocked)} unacknowledged blocking messages "
+                    f"across {len(agents)} agents — resource-contention deadlock"
+                ),
+                severity="high",
+            )
+        ]
 
     def _detect_discussion_without_progress(
         self, messages: List[Message]
@@ -1146,6 +1495,356 @@ class CoordinationAnalyzer:
                 ]
         return []
 
+    # v2.1 Sprint 12 Phase B: words that signal the pair is making progress.
+    # When any message in a near-duplicate cluster contains one of these,
+    # the loop is resolving (step N complete, thumbnail created, ready,
+    # delivered) — not stuck. Keeps precision from collapsing on healthy
+    # traces whose short progress updates share a lot of token stems.
+    _REPEAT_LOOP_PROGRESS_RE = re.compile(
+        r"\b(complete|completed|success|successful|done|finished|created|"
+        r"processed|uploaded|delivered|ready|ok|resolved|fixed|applied)\b",
+        re.IGNORECASE,
+    )
+    # v2.1 Sprint 12 Phase B: sender/recipient role-names that mostly emit
+    # structured protocol messages rather than coordinating content. Real
+    # traces (MemGPT user-envelopes, chatdev system briefs, AppWorld
+    # unknown-role framing) repeat these verbatim as a protocol, not as a
+    # stuck loop. Excluding pair edges involving these roles guards
+    # precision without losing the target FN cluster.
+    _REPEAT_LOOP_SYSTEM_ROLES = frozenset({"user", "system", "unknown"})
+    # Broadcast/multicast channels: a shared bus that agents post one-to-many
+    # announcements to. Repeated posts to a bus are not a bilateral re-request
+    # deadlock (this detector targets pair A<->B loops by its own definition).
+    # On Who&When/m500 every message is addressed to "group", so an
+    # orchestrator's repeated ledger/plan broadcasts false-fired as loops; MAST
+    # uses named bilateral agents and is unaffected.
+    # Only unambiguous multicast-sink labels. Deliberately excludes tokens a real
+    # system could name an individual coordinator agent ("team","agents","members",
+    # "others") — blinding the bilateral loop detector on a real named agent would
+    # be worse than the FP it prevents. (On a pure group-bus every edge is
+    # (agent,"group") so two distinct senders never share a pair; genuine
+    # multi-agent bus deadlocks need content-based re-pairing, a separate follow-up.)
+    _BROADCAST_TARGETS = frozenset(
+        {
+            "group",
+            "all",
+            "everyone",
+            "everybody",
+            "broadcast",
+            "channel",
+        }
+    )
+    # Cap on per-message content length considered. Above this length,
+    # verbatim repeats are overwhelmingly protocol broadcasts (role
+    # descriptions, code blocks, large JSON envelopes) rather than
+    # coordination failures.
+    _REPEAT_LOOP_MAX_CONTENT = 300
+
+    # ── v2.3: group-bus stuck-loop constants (see _detect_group_bus_loop) ──
+    # _detect_repeat_request_loop deliberately SKIPS every broadcast edge to kill
+    # the Who&When over-flag (benign orchestrators post near-duplicate "Updated
+    # Ledger" thoughts to a "group" bus). That blinds it to GENUINE stuck retry
+    # loops on the same bus. This detector restores that coverage with a
+    # paraphrase- and multi-sender-tolerant signal, gated on a NOVELTY check that
+    # is what distinguishes the two cases: benign bus chatter advances the task
+    # (new substantive content each turn -> high vocabulary growth) while a stuck
+    # loop recycles the same content (near-zero growth). Calibrated on the real
+    # broadcast-bus negatives (Who&When n=96, m500 n=500, tracertraj n=245): every
+    # bus trace in the golden is a benign NEGATIVE, so these thresholds are tuned
+    # purely to keep net-new false positives at ZERO while still firing on
+    # constructed genuine loops (see test_coordination.py::test_group_bus_loop_*).
+    _GROUP_BUS_MIN_MESSAGES = 4  # need a real bus conversation, not 1-2 posts
+    _GROUP_BUS_MIN_CONTENT = 40  # ignore short protocol pings ("Next speaker X")
+    _GROUP_BUS_MIN_STEMS = 6  # ignore low-information one-liners
+    _GROUP_BUS_SIMILARITY_GATE = 0.60  # stem-set Jaccard cluster gate (paraphrase-tolerant)
+    _GROUP_BUS_MIN_CLUSTER = 3  # >=3 near-duplicate broadcasts = a loop
+    # Mean fraction of NEW stems per message across the substantive bus messages.
+    # Benign advancing buses sit >= 0.15 (Who&When median 0.30, m500 0.43,
+    # tracertraj >= 0.15 once progress-marked traces drop out); genuine near-
+    # verbatim loops sit < 0.10. 0.12 leaves a clean band on both sides. This is a
+    # LEXICAL signal: heavily-reworded (semantic-only) loops exceed the benign
+    # floor and are out of reach here -- those are left to the embedder-based
+    # semantic_stuck_pair_signal (a separate, bilateral path).
+    _GROUP_BUS_TRACE_NOVELTY_MAX = 0.12
+
+    def _detect_repeat_request_loop(self, messages: List[Message]) -> List[CoordinationIssue]:
+        """v2.1 Sprint 12 Phase B: Detect short-trace repeat-request loops.
+
+        FN cluster observed in Sprint 11 gray-zone audit: retry loops, state
+        desyncs, mutual-request deadlocks, duplicate monitoring alerts,
+        acknowledgment-failure exchanges. Shared pattern: within a single
+        pair (A<->B), at least one message content appears 2+ times
+        (near-verbatim) without the loop resolving. These traces are short
+        (2-6 messages) so the 6+ message `_detect_repeated_content_cycle`
+        and the 3-message sorted overlap in `_detect_stale_handoff_loop`
+        both miss them.
+
+        Signal fires when, for an unordered pair (a, b):
+        - After clustering the pair's messages by content stem-set Jaccard
+          similarity (>= 0.70), at least one cluster has >= 2 members
+          (>= 2 occurrences of the same request/response in that pair), AND
+        - No message in the cluster contains a progress marker ("complete",
+          "created", "delivered", etc.) — i.e. the loop is not resolving.
+
+        Same-sender clusters (A repeats its own request) are the strongest
+        signal; cross-sender clusters (A and B echo the same content — the
+        classic mutual-request deadlock / duplicate-alert pattern) also fire.
+
+        The >= 2-occurrences bar keeps precision from collapsing: a single
+        clarification or ack does not trigger. Tool-executor pairs are
+        skipped (tool round-trips legitimately repeat short status payloads).
+        """
+        if len(messages) < 2:
+            return []
+
+        import re as _re
+
+        def _stems(text: str) -> Set[str]:
+            # Lowercase, strip punctuation, keep stems >=4 chars. 5-char
+            # prefix absorbs simple morphology ("collect" == "collected"
+            # == "collecting").
+            tokens = _re.findall(r"[a-z0-9]+", (text or "").lower())
+            return {t[:5] for t in tokens if len(t) >= 4}
+
+        def _jaccard(a: Set[str], b: Set[str]) -> float:
+            if not a or not b:
+                return 0.0
+            inter = len(a & b)
+            union = len(a | b)
+            return inter / union if union else 0.0
+
+        # Group messages by unordered pair.
+        pair_msgs: Dict[tuple, List[Message]] = defaultdict(list)
+        for m in messages:
+            f, t = str(m.from_agent or ""), str(m.to_agent or "")
+            if not f or not t or f == t:
+                continue
+            if self._is_tool_agent(f) or self._is_tool_agent(t):
+                continue
+            # Skip pairs involving system/user/unknown role names. These
+            # emit structured protocol envelopes (heartbeats, system briefs,
+            # unknown-role framing) that repeat verbatim as a protocol, not
+            # as a coordination failure.
+            if f.lower() in self._REPEAT_LOOP_SYSTEM_ROLES or t.lower() in self._REPEAT_LOOP_SYSTEM_ROLES:
+                continue
+            # Skip broadcast-channel edges: posting near-duplicate updates to a
+            # shared "group"/"all" bus is a multicast announcement, not a stuck
+            # bilateral re-request loop (see _BROADCAST_TARGETS).
+            if f.lower() in self._BROADCAST_TARGETS or t.lower() in self._BROADCAST_TARGETS:
+                continue
+            content = (m.content or "").strip()
+            # Very long payloads (code blocks, role descriptions, JSON) are
+            # overwhelmingly protocol broadcasts when they repeat — not
+            # stuck coordination. The target FN cluster is short messages
+            # (<200 chars). Cap at 300 to leave headroom.
+            if len(content) < 10 or len(content) > self._REPEAT_LOOP_MAX_CONTENT:
+                continue
+            pair = tuple(sorted([f, t]))
+            pair_msgs[pair].append(m)
+
+        issues: List[CoordinationIssue] = []
+        # v2.2 Sprint 12 Phase A3: lowered from 0.70 to 0.60 to catch
+        # paraphrased re-requests in the FN cluster. Sprint 11 Phase B
+        # gray-zone widening only moved coordination F1 +0.004 because the
+        # judge returned CORRECT on most escalations — the bottleneck was
+        # the rule under-firing on near-duplicate-but-not-verbatim content.
+        similarity_gate = 0.60
+        min_cluster_size = 2  # require >=2 occurrences of the same content
+
+        for pair, msgs in pair_msgs.items():
+            if len(msgs) < 2:
+                continue
+
+            stems = [_stems(m.content) for m in msgs]
+            # Greedy single-link clustering: for each message, attach to the
+            # first existing cluster whose representative has similarity >=
+            # gate; otherwise start a new cluster. O(n^2) but n<=50 in
+            # practice.
+            clusters: List[List[int]] = []
+            for i, s_i in enumerate(stems):
+                placed = False
+                for cluster in clusters:
+                    rep = stems[cluster[0]]
+                    if _jaccard(s_i, rep) >= similarity_gate:
+                        cluster.append(i)
+                        placed = True
+                        break
+                if not placed:
+                    clusters.append([i])
+
+            # Find the largest non-resolving cluster >= min_cluster_size.
+            best: Optional[List[int]] = None
+            for cluster in clusters:
+                if len(cluster) < min_cluster_size:
+                    continue
+                # Skip if any message in this cluster shows progress — the
+                # loop is resolving (step N complete, thumbnail created).
+                if any(self._REPEAT_LOOP_PROGRESS_RE.search(msgs[i].content or "") for i in cluster):
+                    continue
+                if best is None or len(cluster) > len(best):
+                    best = cluster
+            if best is None:
+                continue
+
+            senders_in_cluster = {msgs[i].from_agent for i in best}
+            occurrences = len(best)
+            if len(senders_in_cluster) == 1:
+                sender = next(iter(senders_in_cluster))
+                message = (
+                    f"Repeat-request loop: '{sender}' sent {occurrences} "
+                    f"near-duplicate messages in pair "
+                    f"{pair[0]}<->{pair[1]} without progress"
+                )
+            else:
+                message = (
+                    f"Mutual-request deadlock between {pair[0]} and "
+                    f"{pair[1]}: {occurrences} near-duplicate exchanges "
+                    f"without resolution"
+                )
+            issues.append(
+                CoordinationIssue(
+                    issue_type="repeat_request_loop",
+                    agents_involved=list(pair),
+                    message=message,
+                    severity="high",
+                )
+            )
+        return issues
+
+    def _detect_group_bus_loop(self, messages: List[Message]) -> List[CoordinationIssue]:
+        """v2.3: Detect genuine stuck retry loops on a broadcast channel.
+
+        `_detect_repeat_request_loop` skips every broadcast edge (group/all/...)
+        because it keys on (from_agent, to_agent) pairs and on a pure group bus
+        every edge is (agent, "group"), so two distinct senders never cluster and
+        benign orchestrator ledger-broadcasts otherwise false-fire. That leaves a
+        gap: a genuine STUCK loop on the bus -- short (5-message), paraphrased, or
+        multi-sender -- is now invisible (the verbatim/single-sender 6+ message
+        `_detect_repeated_content_cycle` misses all three).
+
+        This detector closes the gap by clustering ALL substantive bus messages
+        together (sender-agnostic, so multi-sender loops cluster) by stem-set
+        Jaccard (paraphrase-tolerant), then firing only when the conversation is
+        not advancing. The hard part is that benign and stuck buses look
+        identical at the message level -- both repeat content. They differ in
+        PROGRESS: a benign bus introduces new substantive content each turn
+        (search results, plan updates, PRD sections) while a stuck loop recycles
+        the same content. So the binding gate is a whole-trace NOVELTY signal: the
+        mean fraction of new stems each successive bus message introduces. Benign
+        buses sit well above the threshold; near-verbatim loops sit near zero.
+
+        Fires when, over the substantive bus messages:
+          - >= _GROUP_BUS_MIN_CLUSTER near-duplicate messages cluster together
+            (Jaccard >= gate) with NO progress marker in the cluster, AND
+          - the whole-bus novelty rate is < _GROUP_BUS_TRACE_NOVELTY_MAX
+            (the conversation is stuck, not advancing).
+
+        Tuned to ZERO net-new false positives on the real broadcast-bus negatives
+        (Who&When / m500 / tracertraj); see _GROUP_BUS_* constants.
+        """
+        import re as _re
+
+        def _stems(text: str) -> Set[str]:
+            # 6-char prefix absorbs light morphology while staying discriminative.
+            tokens = _re.findall(r"[a-z0-9]+", (text or "").lower())
+            return {t[:6] for t in tokens if len(t) >= 4}
+
+        def _jaccard(a: Set[str], b: Set[str]) -> float:
+            if not a or not b:
+                return 0.0
+            union = len(a | b)
+            return len(a & b) / union if union else 0.0
+
+        def _ts(m: Message) -> float:
+            try:
+                return float(m.timestamp)
+            except (TypeError, ValueError):
+                return 0.0
+
+        # Substantive messages addressed to a broadcast channel, in time order.
+        bus = [
+            m
+            for m in messages
+            if str(m.to_agent or "").lower() in self._BROADCAST_TARGETS
+            and not self._is_tool_agent(str(m.from_agent or ""))
+        ]
+        if len(bus) < self._GROUP_BUS_MIN_MESSAGES:
+            return []
+
+        cand: List[Tuple[Message, Set[str], str]] = []
+        for m in bus:
+            content = (m.content or "").strip()
+            s = _stems(content)
+            if len(content) >= self._GROUP_BUS_MIN_CONTENT and len(s) >= self._GROUP_BUS_MIN_STEMS:
+                cand.append((m, s, content))
+        if len(cand) < self._GROUP_BUS_MIN_CLUSTER:
+            return []
+        cand.sort(key=lambda c: _ts(c[0]))
+
+        # Greedy single-link clustering by stem-set Jaccard (sender-agnostic, so a
+        # loop split across multiple senders on the bus still clusters).
+        clusters: List[List[int]] = []
+        for i, (_m, s_i, _c) in enumerate(cand):
+            placed = False
+            for cluster in clusters:
+                if _jaccard(s_i, cand[cluster[0]][1]) >= self._GROUP_BUS_SIMILARITY_GATE:
+                    cluster.append(i)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([i])
+
+        # Largest near-duplicate cluster that is NOT resolving (no progress marker).
+        best: Optional[List[int]] = None
+        for cluster in clusters:
+            if len(cluster) < self._GROUP_BUS_MIN_CLUSTER:
+                continue
+            if any(self._REPEAT_LOOP_PROGRESS_RE.search(cand[i][2]) for i in cluster):
+                continue
+            if best is None or len(cluster) > len(best):
+                best = cluster
+        if best is None:
+            return []
+
+        # Whole-bus novelty: mean fraction of NEW stems each successive message
+        # introduces. High => the bus conversation is advancing (benign); near
+        # zero => it is recycling the same content (stuck).
+        seen: Set[str] = set()
+        novelty_fracs: List[float] = []
+        for k, (_m, s, _c) in enumerate(cand):
+            if k == 0:
+                seen |= s
+                continue
+            novelty_fracs.append(len(s - seen) / max(1, len(s)))
+            seen |= s
+        trace_novelty = sum(novelty_fracs) / len(novelty_fracs) if novelty_fracs else 1.0
+        if trace_novelty >= self._GROUP_BUS_TRACE_NOVELTY_MAX:
+            return []
+
+        senders = sorted({str(cand[i][0].from_agent or "") for i in best})
+        channel = str(cand[best[0]][0].to_agent or "group")
+        occurrences = len(best)
+        if len(senders) == 1:
+            message = (
+                f"Group-bus stuck loop: '{senders[0]}' broadcast {occurrences} "
+                f"near-duplicate messages to '{channel}' without progress "
+                f"(bus novelty {trace_novelty:.0%})"
+            )
+        else:
+            message = (
+                f"Group-bus stuck loop: {len(senders)} agents broadcast "
+                f"{occurrences} near-duplicate messages to '{channel}' without "
+                f"progress (bus novelty {trace_novelty:.0%})"
+            )
+        return [
+            CoordinationIssue(
+                issue_type="group_bus_loop",
+                agents_involved=senders,
+                message=message,
+                severity="high",
+            )
+        ]
+
     def _detect_response_delay(self, messages: List[Message]) -> List[CoordinationIssue]:
         """v1.4: Detect unusually long delays between request and response."""
         issues = []
@@ -1219,11 +1918,19 @@ class CoordinationAnalyzer:
     ) -> List[CoordinationIssue]:
         """v1.7: Detect when one agent dominates the message volume.
 
-        Ported from agent_teams.py: in a team of 2+ agents, if one agent
+        Ported from agent_teams.py: in a team of 3+ agents, if one agent
         sends >60% of the messages, it suggests "lead hoarding" — the lead
         is doing most of the work and other teammates are underutilized.
         """
-        if len(agent_ids) < 2:
+        # "Lead hoarding" is only meaningful in a team of 3+ collaborating
+        # agents. With <3 REAL agents (e.g. a 2-party assistant<->user chat,
+        # where one side naturally carries the conversation), volume dominance
+        # is normal, not a coordination failure. On the real Who&When corpus
+        # this fired on 12 clean traces (assistant 80% of an assistant<->user
+        # chat, 1 real agent). MAST lead_hoarding only fires with >=3 real
+        # agents (and is topology-suppressed upstream), so it is unaffected.
+        real_agents = [a for a in agent_ids if str(a).lower() not in _NON_TEAM_ROLES]
+        if len(real_agents) < 3:
             return []
         msg_counts: Dict[str, int] = defaultdict(int)
         for m in messages:

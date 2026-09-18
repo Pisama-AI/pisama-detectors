@@ -203,7 +203,7 @@ N8N_CASES: dict[str, tuple[Callable[[dict[str, Any]], Any], dict[str, Any], dict
                     "name": "Generate",
                     "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
                     "parameters": {},
-                    "onError": "continueRegularOutput",
+                    "onError": "continueErrorOutput",
                 },
                 {
                     "name": "Errors",
@@ -282,30 +282,13 @@ N8N_CASES: dict[str, tuple[Callable[[dict[str, Any]], Any], dict[str, Any], dict
             "connections": {"Start": {"main": [[{"node": "Code"}]]}},
         },
     ),
-    "schema": (
-        pd.detect_n8n_schema,
-        {
-            "nodes": [
-                {
-                    "name": "Orphan expression",
-                    "type": "n8n-nodes-base.set",
-                    "parameters": {"value": "={{ $json.customer_id }}"},
-                }
-            ],
-            "connections": {},
-        },
-        {
-            "nodes": [
-                {
-                    "name": "Static value",
-                    "type": "n8n-nodes-base.set",
-                    "parameters": {"value": "customer-123"},
-                }
-            ],
-            "connections": {},
-        },
-    ),
 }
+
+
+# n8n_timeout's static config-hygiene findings are a deliberately low-confidence
+# advisory (capped at 0.45) so they stay under the persistence floor and don't
+# drown the detector's high-confidence runtime signals. See timeout_detector.py.
+N8N_MIN_CONFIDENCE = {"timeout": 0.25}
 
 
 @pytest.mark.parametrize(
@@ -314,16 +297,74 @@ N8N_CASES: dict[str, tuple[Callable[[dict[str, Any]], Any], dict[str, Any], dict
     ids=N8N_CASES.keys(),
 )
 def test_n8n_detectors_separate_risky_from_bounded_workflow(
+    request: pytest.FixtureRequest,
     detector: Callable[[dict[str, Any]], Any],
     risky_workflow: dict[str, Any],
     bounded_workflow: dict[str, Any],
 ) -> None:
+    case_id = request.node.callspec.id
     risky = detector(risky_workflow)
     bounded = detector(bounded_workflow)
 
     assert risky.detected, risky.explanation
-    assert risky.confidence >= 0.6
+    assert risky.confidence >= N8N_MIN_CONFIDENCE.get(case_id, 0.6)
     assert not bounded.detected, bounded.explanation
+
+
+def test_n8n_schema_detector_static_check_is_disabled() -> None:
+    """Static schema-mismatch detection is intentionally disabled.
+
+    Validated against 2,348 real community n8n workflows: the static
+    connected-node type check fired on ~31% of workflows at ~0% precision,
+    because n8n's data model is dynamic JSON with no static type contract
+    between nodes. Genuine schema/type errors surface at runtime and are
+    covered by the error detector instead.
+    """
+    workflow = {
+        "nodes": [
+            {
+                "name": "Orphan expression",
+                "type": "n8n-nodes-base.set",
+                "parameters": {"value": "={{ $json.customer_id }}"},
+            }
+        ],
+        "connections": {},
+    }
+
+    result = pd.detect_n8n_schema(workflow)
+
+    assert not result.detected, result.explanation
+
+
+def _cyclic_workflow(node_a_params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "nodes": [
+            {"name": "A", "type": "n8n-nodes-base.code", "parameters": node_a_params},
+            {"name": "B", "type": "n8n-nodes-base.code", "parameters": {}},
+        ],
+        "connections": {
+            "A": {"main": [[{"node": "B"}]]},
+            "B": {"main": [[{"node": "A"}]]},
+        },
+    }
+
+
+def test_n8n_cycle_detector_recognizes_credible_iteration_cap_as_bound() -> None:
+    """A cycle through a node with a genuine, finite iteration cap is intentional
+    (e.g. a retry loop bounded at N attempts), not an infinite-loop risk."""
+    result = pd.detect_n8n_cycle(_cyclic_workflow({"maxIterations": 50}))
+
+    cycle_issues = [i for i in result.evidence["issues"] if i["type"] == "graph_cycle"]
+    assert cycle_issues and not cycle_issues[0]["potentially_infinite"]
+
+
+def test_n8n_cycle_detector_rejects_gamed_iteration_cap() -> None:
+    """A cap must be CREDIBLE, not merely positive: `maxIterations: 1e9` doesn't
+    actually bound the loop and must still be flagged as an infinite-loop risk."""
+    result = pd.detect_n8n_cycle(_cyclic_workflow({"maxIterations": 1_000_000_000}))
+
+    cycle_issues = [i for i in result.evidence["issues"] if i["type"] == "graph_cycle"]
+    assert cycle_issues and cycle_issues[0]["potentially_infinite"]
 
 
 def test_run_all_detectors_skips_inapplicable_inputs_and_runs_matching_detector() -> None:

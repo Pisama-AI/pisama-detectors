@@ -31,7 +31,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 # Detector version for tracking
-DETECTOR_VERSION = "2.2"
+DETECTOR_VERSION = "2.3"
 DETECTOR_NAME = "TaskDecompositionDetector"
 
 # v1.1: Words that indicate vague/non-actionable steps
@@ -136,6 +136,95 @@ DIRECT_IMPLEMENTATION_PATTERNS = [
     r"\b(?:no\s+need\s+(?:to|for)|without\s+(?:the\s+)?need)\b",
     r"\bstraightforward\s+approach\b",
 ]
+
+# v2.3: Decomposition-presence gate (see `looks_like_decomposition`).
+# Phrases in the *task* that explicitly request a plan / breakdown.
+DECOMP_TASK_SIGNALS = (
+    "break down",
+    "break this down",
+    "break it down",
+    "break into",
+    "broken down",
+    "decompose",
+    "decomposition",
+    "subtask",
+    "sub-task",
+    "step-by-step",
+    "step by step",
+    "outline the steps",
+    "list the steps",
+    "list the tasks",
+    "what are the steps",
+    "steps to ",
+    "steps for ",
+    "steps needed",
+    "steps involved",
+    "implementation plan",
+    "project plan",
+    "create a plan",
+    "make a plan",
+    "plan out",
+    "plan to ",
+    "plan for ",
+    "roadmap",
+    "milestones",
+    "high-level plan",
+    "action items",
+    "how would you build",
+    "how would you implement",
+    "how to build",
+    "how to implement",
+)
+
+# Phrases in the *output* that frame it as a plan / decomposition.
+DECOMP_OUTPUT_SIGNALS = (
+    "subtask",
+    "sub-task",
+    "implementation plan",
+    "high-level plan",
+    "the plan is",
+    "here's the plan",
+    "here is the plan",
+    "my plan",
+    "decompose",
+    "decomposition",
+    "i'll break",
+    "i will break",
+    "we'll break",
+    "we will break",
+    "break this into",
+    "break it into",
+    "broken into",
+    "first step",
+    "next step",
+    "final step",
+    "following steps",
+)
+# "Step 1" / "Phase 2" / "Stage 3" — numbered plan markers.
+DECOMP_STEP_MARKER_RE = re.compile(r"\b(?:step|phase|stage)\s*\d", re.IGNORECASE)
+
+# Action verbs that begin an imperative task step. A list whose items mostly
+# start with one of these reads as a breakdown of work, not bulleted facts or
+# labeled advice. Mirrors the action-verb vocabulary `_detect_vague_subtasks`
+# already trusts, plus planning/research verbs common in agent decompositions.
+IMPERATIVE_STEP_VERBS = frozenset(
+    {
+        "create", "build", "implement", "write", "configure", "set", "install",
+        "deploy", "test", "validate", "define", "design", "develop", "add",
+        "remove", "update", "modify", "fix", "integrate", "connect", "display",
+        "show", "render", "format", "parse", "fetch", "load", "save", "store",
+        "delete", "call", "invoke", "execute", "run", "process", "handle", "index",
+        "evaluate", "filter", "send", "register", "check", "apply", "generate",
+        "schedule", "compress", "upload", "scan", "trigger", "track", "calculate",
+        "archive", "stream", "provide", "return", "verify", "migrate", "optimize",
+        "monitor", "extract", "transform", "publish", "subscribe", "query",
+        "export", "import", "search", "identify", "gather", "retrieve", "determine",
+        "review", "classify", "compute", "setup", "plan", "analyze", "compile",
+        "package", "lint", "authenticate", "authorize", "refactor", "document",
+        "select", "choose", "collect", "prepare", "enroll", "notify", "iterate",
+        "ensure", "find", "locate", "map", "assign", "merge", "split", "group",
+    }
+)
 
 
 class DecompositionIssue(str, Enum):
@@ -552,6 +641,56 @@ class TaskDecompositionDetector:
         for pattern in DIRECT_IMPLEMENTATION_PATTERNS:
             if re.search(pattern, output_lower):
                 return True
+        return False
+
+    def looks_like_decomposition(self, task_description: str, decomposition: str) -> bool:
+        """v2.3: Gate — does this (task, output) pair actually contain a task
+        decomposition / plan, or just a direct prose answer that happens to use
+        markdown bullets or headings?
+
+        A caller that extracts "the first LLM response" of *any* trace and hands
+        it here without this gate would have the parser treat a bulleted weather
+        forecast ("- High: 72F - Low: 48F") or a headed bookkeeping answer as a
+        set of subtasks, manufacturing vague_subtask / irrelevant_step /
+        missing_requirement findings on benign formatted prose.
+
+        Returns True only when there is a genuine multi-step decomposition
+        signal — list markup alone is NOT enough:
+          1. the task explicitly asks for a plan / breakdown / steps, OR
+          2. the output frames itself as a plan (Step N:, subtask, "the plan is"), OR
+          3. the output is a list of >= 2 items that are predominantly (>= 60%)
+             imperative action steps (start with an action verb).
+
+        This is a *caller-side precondition*, not part of `detect()` — the
+        calibration/external lane feeds the detector explicit decomposition
+        plans directly, so its F1 is unaffected.
+        """
+        task_l = (task_description or "").lower()
+        decomp = decomposition if isinstance(decomposition, str) else str(decomposition or "")
+        decomp_l = decomp.lower()
+
+        # 1. Task explicitly requests a decomposition / plan.
+        if any(sig in task_l for sig in DECOMP_TASK_SIGNALS):
+            return True
+
+        # 2. Output frames itself as a plan / decomposition.
+        if DECOMP_STEP_MARKER_RE.search(decomp):
+            return True
+        if any(sig in decomp_l for sig in DECOMP_OUTPUT_SIGNALS):
+            return True
+
+        # 3. Output is a list of imperative action steps (a real breakdown),
+        #    not bulleted facts or labeled advice.
+        subtasks = self._parse_subtasks(decomp)
+        if len(subtasks) >= 2:
+            imperative = 0
+            for st in subtasks:
+                words = re.findall(r"[a-z]+", st.description.lower())
+                if words and words[0] in IMPERATIVE_STEP_VERBS:
+                    imperative += 1
+            if imperative >= 2 and imperative / len(subtasks) >= 0.6:
+                return True
+
         return False
 
     def _get_min_subtasks_for_task(self, task_description: str) -> int:

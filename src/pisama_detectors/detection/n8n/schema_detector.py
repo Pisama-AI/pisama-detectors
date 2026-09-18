@@ -16,6 +16,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from pisama_detectors.detection.precision_guards import asserts_absence, reports_clean_outcome
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -78,6 +79,28 @@ BENIGN_TYPE_PAIRS: Set[tuple] = {
     ("items", "any"),
     # ("any", *) is handled separately — any source is always compatible
 }
+
+
+def _safe_count_connections(connections: dict) -> int:
+    """Count outgoing edges in an n8n connections dict.
+
+    n8n's `connections` shape: {source_node: {output_label: [[{node, type, index}, ...], ...]}}
+    Replaces a fragile triple-nested generator that would crash on any
+    branch with an unexpected shape.
+    """
+    total = 0
+    if not isinstance(connections, dict):
+        return 0
+    for outputs in connections.values():
+        if not isinstance(outputs, dict):
+            continue
+        for output_branches in outputs.values():
+            if not isinstance(output_branches, list):
+                continue
+            for branch in output_branches:
+                if isinstance(branch, list):
+                    total += len(branch)
+    return total
 
 
 class N8NSchemaDetector(TurnAwareDetector):
@@ -243,6 +266,25 @@ class N8NSchemaDetector(TurnAwareDetector):
                 detector_name=self.name,
             )
 
+        # Static schema-mismatch detection is DISABLED for the workflow-JSON path.
+        # Real-world validation (2,348 community workflows + adversarial judging) found
+        # it fired on ~31% of workflows at ~0 precision: n8n's data model is dynamic JSON,
+        # so there is no static type contract between connected nodes to violate. Genuine
+        # type/schema errors surface at RUNTIME (an execution's error state) and are the
+        # error detector's domain. The inference code below is retained but unreachable;
+        # re-enable only behind a runtime-grounded rework.
+        return TurnAwareDetectionResult(
+            detected=False,
+            severity=TurnAwareSeverity.NONE,
+            confidence=0.0,
+            failure_mode=None,
+            explanation=(
+                "Static schema-mismatch detection is disabled — unreliable for n8n's "
+                "dynamic JSON data model. Real type errors are caught at runtime."
+            ),
+            detector_name=self.name,
+        )
+
         # Build node lookup dict keyed by node name
         node_lookup: Dict[str, Dict[str, Any]] = {}
         for node in nodes:
@@ -386,18 +428,7 @@ class N8NSchemaDetector(TurnAwareDetector):
             evidence={
                 "issues": issues,
                 "total_nodes": len(nodes),
-                "total_connections": sum(
-                    sum(
-                        len(conn_list)
-                        for branch in output_branches
-                        if isinstance(branch, list)
-                        for conn_list in [branch]
-                    )
-                    for outputs in connections.values()
-                    if isinstance(outputs, dict)
-                    for output_branches in outputs.values()
-                    if isinstance(output_branches, list)
-                ),
+                "total_connections": _safe_count_connections(connections),
             },
             suggested_fix=(
                 "Ensure consistent data types between connected nodes. "
@@ -669,7 +700,20 @@ class N8NSchemaDetector(TurnAwareDetector):
         return None
 
     def _detect_schema_errors(self, content: str) -> List[str]:
-        """Detect error patterns indicating schema issues."""
+        """Detect error patterns indicating schema issues.
+
+        Outcome-aware. These are bare case-insensitive SUBSTRING matches over
+        free-text node output, so a node that PASSES validation and says so
+        ("Validation passed for all 3 items. Every required field is present")
+        scores identically to one that crashed — the substring "required
+        field" is present either way. A node reporting a clean outcome with no
+        failure marker is not mined for error substrings, and because firing
+        here also unlocks the otherwise-gated schema-drift pass, this removes
+        a compounding false positive.
+        """
+        if reports_clean_outcome(content):
+            return []
+
         errors = []
         content_lower = content.lower()
 
@@ -688,10 +732,39 @@ class N8NSchemaDetector(TurnAwareDetector):
         ]
 
         for pattern, description in error_patterns:
-            if pattern in content_lower:
-                errors.append(description)
+            index = content_lower.find(pattern)
+            while index != -1:
+                if (
+                    not asserts_absence(content, index, index + len(pattern))
+                    and not self._documents_optional_default(content, index, pattern)
+                ):
+                    errors.append(description)
+                    break
+                index = content_lower.find(pattern, index + 1)
 
         return errors
+
+    @staticmethod
+    def _documents_optional_default(content: str, index: int, pattern: str) -> bool:
+        """Recognize an explicitly documented optional-field fallback.
+
+        Logging that an optional key was absent/undefined and its configured
+        default was applied is evidence of successful defensive handling, not
+        a schema crash. Scope this exception to the undefined patterns and
+        require both the optional declaration and an applied default nearby.
+        """
+        if pattern not in {"undefined", "is not defined"}:
+            return False
+        before = content[max(0, index - 100):index].lower()
+        after = content[index:index + 180].lower()
+        return bool(
+            re.search(r"\boptional\b", before)
+            and re.search(
+                r"\b(?:documented|configured)?\s*(?:default|fallback)\b"
+                r".{0,60}\b(?:applied|used|substituted)\b",
+                after,
+            )
+        )
 
     def _detect_schema_drift(self, turns: List[TurnSnapshot]) -> Dict[str, Any]:
         """Detect progressive schema drift over workflow execution.

@@ -44,13 +44,81 @@ RISKY_TOOLS_EXACT: Set[str] = {
 # Keyword-based risky tool detection — sourced from the shared safety taxonomy.
 from pisama_detectors.detection.safety import OPENCLAW_RISKY_KEYWORDS as RISKY_KEYWORDS
 
-# Risky patterns in tool input data
+# Risky patterns in tool input data. These fire on the input REGARDLESS of what
+# the tool does, so anything here must describe an ACTION, not a topic.
 RISKY_INPUT_PATTERNS = [
     re.compile(r"(?:rm|del|remove)\s+.*-(?:rf|r)", re.IGNORECASE),
     re.compile(r"/etc/(?:passwd|shadow|sudoers)", re.IGNORECASE),
-    re.compile(r"(?:ssn|social.security|credit.card)", re.IGNORECASE),
     re.compile(r"(?:bulk|mass|all)\s+(?:delete|remove|ban|reset)", re.IGNORECASE),
 ]
+
+# Regulated-data VOCABULARY. Naming one of these is a topic, not an operation:
+# an HR agent answering "what is the 2026 social security contribution rate?"
+# out of the employee handbook is doing read-only lookup work. These only
+# indicate elevated risk when paired with an egress or mutation verb, so they
+# are matched as (topic AND action) rather than on their own.
+SENSITIVE_TOPIC_PATTERN = re.compile(
+    r"(?:\bssns?\b|social[\s._-]*security|credit[\s._-]*cards?|passports?|"
+    r"tax[\s._-]*ids?|bank[\s._-]*accounts?|routing[\s._-]*numbers?)",
+    re.IGNORECASE,
+)
+SENSITIVE_ACTION_PATTERN = re.compile(
+    r"\b(?:export|dump|download|exfiltrat\w*|extract|scrape|harvest|"
+    r"bulk|mass|all[\s._-]*(?:users?|employees?|records?|rows?)|"
+    # Deliberately excludes noun-shaped words (share, post, email): "employee
+    # share" and "email address" are topics, not egress actions.
+    r"select\s+\*|list[\s._-]*all|upload|forward|transmit|"
+    r"delete|drop|truncate|update|modify|overwrite)\b",
+    re.IGNORECASE,
+)
+
+# Unambiguous verbs that can move or mutate regulated data. Deliberately omit
+# noun/verb homonyms such as ``email``, ``post`` and ``share``: tool names like
+# ``email_address`` and ``employee_share`` are not actions by themselves.
+SENSITIVE_ACTION_VERBS = frozenset({
+    "send", "resend", "forward", "upload", "transmit", "export", "dump",
+    "download", "extract", "scrape", "harvest", "delete", "drop",
+    "truncate", "update", "modify", "overwrite",
+})
+# Values stored under an explicitly action-shaped key are already
+# disambiguated as verbs, so noun/verb homonyms that remain unsafe in a tool
+# name can be recognized there without reviving ``email_address``-style FPs.
+SENSITIVE_EXPLICIT_ACTION_VERBS = SENSITIVE_ACTION_VERBS | frozenset({
+    "email", "post", "share",
+})
+SENSITIVE_ACTION_KEYS = frozenset({
+    "action", "operation", "verb", "command", "cmd", "method",
+})
+
+
+def _verb_tokens(value: str) -> List[str]:
+    return [token for token in re.split(r"[_\-.\s]+", value.lower()) if token]
+
+
+def _declares_sensitive_action(tool_name: str, tool_input: Any) -> bool:
+    """Find action verbs in a tool name or explicitly action-shaped input."""
+    if any(token in SENSITIVE_ACTION_VERBS for token in _verb_tokens(tool_name)):
+        return True
+    if isinstance(tool_input, dict):
+        for key, value in tool_input.items():
+            key_lower = str(key).lower()
+            if key_lower in SENSITIVE_ACTION_KEYS and isinstance(value, str):
+                if any(
+                    token in SENSITIVE_EXPLICIT_ACTION_VERBS
+                    for token in _verb_tokens(value)
+                ):
+                    return True
+            if isinstance(value, (dict, list)) and _declares_sensitive_action(
+                "", value
+            ):
+                return True
+    elif isinstance(tool_input, list):
+        return any(
+            _declares_sensitive_action("", item)
+            for item in tool_input
+            if isinstance(item, (dict, list))
+        )
+    return False
 
 
 class OpenClawElevatedRiskDetector(TurnAwareDetector):
@@ -195,6 +263,17 @@ class OpenClawElevatedRiskDetector(TurnAwareDetector):
                         "category": "risky_input",
                         "reason": f"Tool input matches risky pattern: {pattern.pattern}",
                     }
+
+            # Regulated-data vocabulary counts only alongside an action that
+            # could move or change the data. Mentioning the topic does not.
+            if SENSITIVE_TOPIC_PATTERN.search(input_str) and (
+                SENSITIVE_ACTION_PATTERN.search(input_str)
+                or _declares_sensitive_action(tool_name, tool_input)
+            ):
+                return {
+                    "category": "risky_input",
+                    "reason": "Tool input pairs regulated-data terms with an egress/mutation action",
+                }
 
         return None
 

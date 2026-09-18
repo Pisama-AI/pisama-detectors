@@ -79,6 +79,12 @@ TASK_CLUSTERS = {
     "backend": ["backend", "back-end", "server-side", "api", "database", "server"],
     "unit test": ["unit test", "unit testing", "isolated test", "mock"],
     "integration test": ["integration test", "integration testing", "e2e", "end-to-end"],
+    # v2.4 (2026-05-27): same-shape regex-validator substitution
+    # (validate email vs validate phone). Eval-set FN derailment_tp_006
+    # showed agent given email-validation task delivering phone-validation
+    # code, with the existing _detect_task_substitution returning False.
+    "email": ["email", "e-mail", "smtp", "inbox", "sender", "recipient"],
+    "phone": ["phone number", "telephone", "mobile", "sms", "area code"],
 }
 
 # v1.3: Substitution pairs map task concept to commonly confused concept
@@ -95,6 +101,12 @@ SUBSTITUTION_PAIRS = [
     ("backend", "frontend"),
     ("unit test", "integration test"),
     ("integration test", "unit test"),
+    # v2.4 additions — eval-set TP_006 surfaced email->phone substitution.
+    # Narrower than first draft: read/write and encode/decode pairs were
+    # tested but caused +64 public-corpus FPs (read/write are common
+    # vocabulary words in legit chat); only the email/phone pair shipped.
+    ("email", "phone"),
+    ("phone", "email"),
 ]
 
 # v1.4: Research/analysis focus terms - what the task asks for vs what might be delivered
@@ -904,6 +916,33 @@ class TaskDerailmentDetector:
         task_words = len(task.split())
         output_words = len(output.split())
 
+        # v2.2: Skip scope creep on explicit content-generation requests. If
+        # the task asks for long-form output ("write a 1000 word post",
+        # "explain X in detail", "tell me about Y"), length and elaboration
+        # are the *response to the request*, not scope creep. Without this
+        # gate the heuristic fires on virtually every "write me a blog
+        # post / essay / article / story" prompt — the dominant FP family
+        # surfaced by the in-app trace benchmark on WildChat-1M (56%
+        # public-corpus fire rate before fix; pure conversational chat).
+        task_lower = task.lower()
+        content_gen_verb = bool(
+            _re.search(
+                r"\b(?:write|compose|draft|generate|create|produce|explain|describe|"
+                r"summarize|elaborate|tell me about|give me a|provide a)\b",
+                task_lower,
+            )
+        )
+        long_form_qualifier = bool(
+            _re.search(
+                r"\b(?:essay|post|article|story|blog|report|guide|tutorial|chapter|"
+                r"summary|overview|breakdown|paragraph|section|detailed|comprehensive|"
+                r"complete|full|in[- ]depth|thorough|extensive)\b|\d{2,5}\s*(?:word|page)",
+                task_lower,
+            )
+        )
+        if content_gen_verb and long_form_qualifier:
+            return False, None
+
         # Simple task (< 30 words) with disproportionately long output
         is_simple_task = task_words < 30
         length_ratio = output_words / max(task_words, 1)
@@ -1046,6 +1085,174 @@ class TaskDerailmentDetector:
                 task_coverage=1.0,
             )
 
+        # v2.3: Answer-shape exemptions from public-corpus FP analysis.
+        # WildChat n=1472 showed derailment firing on 310 traces (21.1%).
+        # Sampling surfaced recurring categories where the response IS
+        # on-task but has very low keyword overlap with the short
+        # conversational prompt:
+        #
+        #   1. Greeting -> greeting ("hi there!" -> "Hello!")
+        #   2. List-shaped task -> list-shaped response (movies, series,
+        #      titles)
+        #   3. Self-referential question -> self-referential answer
+        #      ("are you chat-gpt4?" -> "I am an AI language model...")
+        #   4. Translation task -> different-language output
+        #   5. List-shaped output regardless of task wording
+        #   6. Clarifying-response instead of an answer
+        #
+        # These exemptions are deliberately narrow — they're shape-checks
+        # on the task that gate the entire detector, not just one branch.
+        #
+        # NOTE: backend also exempts refusals here via
+        # app.detection.safety_v2.base.refusal_score. Canonical has no
+        # equivalent refusal-scoring helper anywhere in pisama_detectors
+        # (only detection/safety/destructive_keywords.py exists), so that
+        # exemption is intentionally NOT ported — needs a canonical
+        # refusal_score/is_refusal helper first.
+        import re as _re
+
+        task_stripped = task.strip()
+        task_short = len(task_stripped) < 40
+        output_short = len(output) < 200
+
+        # 1. Greeting / conversational opener -> conversational response.
+        # Both task and output need to be short greetings/openers.
+        _greeting_re = _re.compile(
+            r"^\s*(?:hi(?:\s+there)?|hello|hey|sup|greetings|howdy|good\s+(?:morning|afternoon|evening))[\s\!\.\,\?\+]",
+            _re.I,
+        )
+        if task_short and output_short and (
+            _greeting_re.search(task) or _greeting_re.search(output_stripped)
+        ):
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.95,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation="Conversational greeting/opener — no task to derail from",
+                task_coverage=1.0,
+            )
+
+        # 2. List-shaped task -> list-shaped response. When the user asks
+        # for a list / names / examples and the assistant delivers a
+        # numbered or bulleted list, that's on-task even when the list
+        # items have no keyword overlap with the prompt (e.g., "movies
+        # starring Arshad Warsi" -> "1. Munna Bhai...").
+        _list_task_re = _re.compile(
+            r"\b(?:list|name|provide|give\s+me|tell\s+me|show\s+me|"
+            r"examples?\s+of|series|movies?|titles?|books?|songs?|"
+            r"recommendations?|suggestions?|options?|ideas?)\b",
+            _re.I,
+        )
+        _list_output_re = _re.compile(
+            r"(?:^|\n)\s*(?:\d+[\.\)]|[-*•]\s+)",
+        )
+        # Need at least 3 list items to confirm list shape (otherwise
+        # casual numbering in prose triggers).
+        list_item_count = len(_list_output_re.findall(output))
+        if _list_task_re.search(task) and list_item_count >= 3:
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.9,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation=f"List-shaped task answered with {list_item_count}-item list — on-task",
+                task_coverage=1.0,
+            )
+
+        # 3. Self-referential question -> self-referential answer.
+        # "Are you chat-gpt4?", "what are you?", "can you do nsfw?" all
+        # ask the assistant ABOUT ITSELF. The on-task answer talks about
+        # the AI's identity / capabilities, which shares no domain
+        # keywords with the question.
+        _self_question_re = _re.compile(
+            r"\b(?:are\s+you\b|do\s+you\b|can\s+you\b|what\s+are\s+you\b|"
+            r"who\s+are\s+you\b|chat[\s\-]?gpt|gpt[\s\-]?\d|claude|gemini|"
+            r"language\s+model|are\s+you\s+an?\s+ai|your\s+(?:version|name|model))",
+            _re.I,
+        )
+        _self_answer_re = _re.compile(
+            r"\b(?:i\s+am\s+(?:an?\s+)?ai|i'?m\s+(?:an?\s+)?ai|as\s+an\s+ai|"
+            r"language\s+model|my\s+(?:purpose|role|design)|i\s+(?:was\s+)?(?:designed|created|programmed|built|trained))",
+            _re.I,
+        )
+        if _self_question_re.search(task) and _self_answer_re.search(output):
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.9,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation="Self-referential question answered with self-referential explanation",
+                task_coverage=1.0,
+            )
+
+        # 4. Translation task: zero source-language overlap with target
+        # language is inherent — translation outputs in language B for
+        # language A input. Match explicit translate verbs across major
+        # languages OR detect non-Latin script in output that wasn't in
+        # task. Translation tasks have F1_synth 0.633 BECAUSE this case
+        # is one of the biggest WildChat over-fires.
+        _translate_re = _re.compile(
+            r"\b(?:translate|translation|translated|перевед|переведи|"
+            r"traduce|traducir|traducción|traduisez|traduction|"
+            r"翻译|翻訳|번역|tłumacz|перекласти|terjem)",
+            _re.I,
+        )
+        if _translate_re.search(task):
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.9,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation="Translation task — different-language output has no keyword overlap by design",
+                task_coverage=1.0,
+            )
+
+        # 5. List-shaped output regardless of task wording. When the
+        # output is structured as 4+ numbered/bulleted items, it's
+        # almost certainly responding to an enumeration ask ("any
+        # legendary animes with good animation", "good foods for a
+        # picky skink") even when the task lacks the "list" / "name"
+        # keyword.
+        if list_item_count >= 4:
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.85,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation=f"Output is a {list_item_count}-item enumerated list — on-task list answer",
+                task_coverage=1.0,
+            )
+
+        # 6. Clarifying-response: agent asks for more info / details
+        # rather than answering. Common on vague prompts like "i have a
+        # task for you" where the agent can't yet derail because there's
+        # no task to derail from.
+        _clarify_re = _re.compile(
+            r"\b(?:please\s+(?:provide|share|give\s+me|let\s+me\s+know|tell\s+me|"
+            r"clarify|elaborate|specify|describe)|"
+            r"could\s+you\s+(?:provide|share|clarify|elaborate|specify|tell\s+me)|"
+            r"what\s+(?:would\s+you\s+like|do\s+you\s+(?:want|need)|task)|"
+            r"can\s+you\s+(?:provide|share|tell\s+me|clarify)|"
+            r"i'?d\s+be\s+happy\s+to\s+help.*?(?:please|what|let\s+me\s+know))",
+            _re.I,
+        )
+        if output_short and _clarify_re.search(output):
+            return DerailmentResult(
+                detected=False,
+                severity=DerailmentSeverity.NONE,
+                confidence=0.85,
+                task_output_similarity=1.0,
+                topic_drift_score=0.0,
+                explanation="Agent asked clarifying question — not derailment",
+                task_coverage=1.0,
+            )
+
         similarity = self._compute_similarity(task, output)
         drift_score, task_coverage = self._compute_topic_drift(task, output, context)
 
@@ -1147,13 +1354,34 @@ class TaskDerailmentDetector:
                 detected = similarity < 0.1  # Very strict threshold when task is addressed
                 scope_creep_info = {}
         else:
-            # Task not addressed - use standard thresholds
-            detected = similarity < self.similarity_threshold or drift_score > self.drift_threshold
+            # Task not addressed - use standard thresholds.
+            # v2.2: When semantic similarity is strong (> 0.55), trust the
+            # embedding over drift alone. The keyword-coverage-based
+            # `task_addressed` check returns False for free-form chat where
+            # the response uses different terminology than the question,
+            # but the embedding still recognizes topical alignment. Before
+            # this gate, ~93% of WildChat-1M traces fired here with
+            # similarity 0.55-0.85 + drift > 0.5 (in-app benchmark, 55%
+            # public-corpus fire rate; conversational chat is not
+            # derailment just because it elaborates beyond the question's
+            # surface vocabulary).
+            if similarity >= 0.55:
+                detected = similarity < self.similarity_threshold  # essentially never
+            else:
+                detected = similarity < self.similarity_threshold or drift_score > self.drift_threshold
 
             # v1.7: Topic sentence check — if the first sentence of the output
             # doesn't mention any key entity from the task, boost detection.
             # This catches outputs that start on a tangent and never return.
-            if not detected and len(output) > 100:
+            #
+            # v2.2: Skip when embedding similarity is decent (>= 0.45). The
+            # first-sentence keyword overlap heuristic frequently fails on
+            # conversational responses that lead with a hedge ("That's a
+            # great question — well...") before getting to the substance,
+            # producing FPs on WildChat. Embedding similarity already
+            # captures topical alignment more reliably than keyword
+            # matching on the opening clause.
+            if not detected and len(output) > 100 and similarity < 0.45:
                 import re as _re
 
                 first_sentence = _re.split(r"[.!?\n]", output)[0]

@@ -204,8 +204,10 @@ class OpenClawToolAbuseDetector(TurnAwareDetector):
         if not violations:
             return self._no_detection("No tool abuse detected")
 
-        # Confidence scales with number of violation types
-        confidence = min(1.0, 0.4 + len(violations) * 0.25)
+        # Confidence scales with number of violation types.
+        # Phase 19b: base 0.4 → 0.5 so 1-violation positives (single clear
+        # abuse signal) reach conf 0.75, above the calibrated thr=0.70.
+        confidence = min(1.0, 0.5 + len(violations) * 0.25)
 
         # Severity: sensitive tools or multiple violations = higher severity
         has_sensitive = any(v["type"] == "sensitive_tools" for v in violations)

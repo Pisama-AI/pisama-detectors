@@ -226,13 +226,17 @@ FRAMEWORK_POSITIVE_CASES: dict[str, Callable[[], Any]] = {
             ]
         }
     ),
+    # A lone contact address is not flagged on its own (single-address contact-PII
+    # is intentionally gated to avoid flagging normal CRM/helpdesk workflows) — use
+    # an actual leaked credential to exercise a genuine leak. See
+    # variable_leak_detector.py's `_gate_contact_pii`.
     "dify_variable_leak": lambda: pd.detect_dify_variable_leak(
         {
             "nodes": [
                 {
                     "node_id": "output",
                     "node_type": "answer",
-                    "outputs": {"contact": "operator@example.com"},
+                    "outputs": {"debug": "api key: sk-abcdefghijklmnopqrstuvwx"},
                 }
             ]
         }

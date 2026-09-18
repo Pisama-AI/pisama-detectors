@@ -18,7 +18,7 @@ Version History:
 """
 
 # Detector version for tracking
-DETECTOR_VERSION = "1.1"
+DETECTOR_VERSION = "1.2"
 DETECTOR_NAME = "SemanticCorruptionDetector"
 
 import re
@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from pisama_detectors.detection.precision_guards import is_lossless_coercion
+
 
 @dataclass
 class CorruptionIssue:
@@ -34,6 +36,15 @@ class CorruptionIssue:
     field: Optional[str]
     message: str
     severity: str
+
+
+@dataclass
+class ContaminationProfile:
+    """Uncertainty-marker profile of a single state's text content."""
+    hedge_count: int
+    contradiction_count: int
+    low_confidence_count: int
+    normalized_score: float
 
 
 @dataclass
@@ -275,6 +286,13 @@ class SemanticCorruptionDetector:
                 if {prev_type, curr_type} <= {int, float}:
                     continue
 
+                # A type change that PRESERVES the value is normalisation, not
+                # corruption: "68.00" -> 68.0, "2" -> 2, "true" -> True are an
+                # ETL/migration agent doing exactly its job. A change that
+                # alters the value ("68.00" -> "N/A") still fires.
+                if is_lossless_coercion(prev_val, curr_val):
+                    continue
+
                 issues.append(
                     CorruptionIssue(
                         issue_type="type_drift",
@@ -287,18 +305,19 @@ class SemanticCorruptionDetector:
         return issues
 
     @staticmethod
-    def _flatten_nested_dicts(state_delta: dict, prefix: str = "") -> dict:
+    def _flatten_nested_dicts(state_delta: dict, prefix: str = "", depth: int = 0) -> dict:
         """Flatten nested dicts so inner fields are exposed for corruption checks.
 
         E.g. ``{'json': {'salary': 125000}}`` → ``{'json.salary': 125000}``.
-        Only recurses one level deep to avoid excessive expansion.
+        Recurses at most one level deep; deeper structures are stored as-is.
         """
         flat: dict = {}
         for key, value in state_delta.items():
             full_key = f"{prefix}{key}" if not prefix else f"{prefix}.{key}"
-            if isinstance(value, dict) and value:
-                # Recurse one level into nested dicts
-                flat.update(SemanticCorruptionDetector._flatten_nested_dicts(value, full_key))
+            if depth < 1 and isinstance(value, dict) and value:
+                flat.update(
+                    SemanticCorruptionDetector._flatten_nested_dicts(value, full_key, depth + 1)
+                )
             else:
                 flat[full_key] = value
         return flat
@@ -342,9 +361,44 @@ class SemanticCorruptionDetector:
             # and schema checks (dotted keys don't match domain validators).
             issues.extend(self._detect_anomalous_value_changes(flat_prev, flat_curr))
 
+        # _detect_type_drift and the inline type check inside
+        # _detect_anomalous_value_changes both scan the SAME top-level fields,
+        # so every top-level type change was raised twice. That inflated
+        # raw_score and therefore confidence. The inline check cannot simply be
+        # removed — it is the only one that runs over flattened nested keys —
+        # so collapse duplicates by (issue_type, field) instead.
+        issues = self._dedupe_issues(issues)
+
         filtered_issues = self._apply_velocity_filtering(issues, current_state)
 
         return filtered_issues
+
+    @staticmethod
+    def _dedupe_issues(issues: List[CorruptionIssue]) -> List[CorruptionIssue]:
+        """Collapse issues that report the same problem on the same field."""
+        seen = set()
+        unique = []
+        for issue in issues:
+            key = (issue.issue_type, issue.field)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(issue)
+        return unique
+
+    _CONTAMINATION_TEXT_KEYS = (
+        "output", "content", "text", "answer", "response", "summary",
+        "current_state", "prev_state",
+    )
+
+    def _extract_contamination_text(self, state_delta: dict) -> str:
+        """Pull textual content from a state_delta for contamination scanning."""
+        parts: List[str] = []
+        for key in self._CONTAMINATION_TEXT_KEYS:
+            val = state_delta.get(key)
+            if isinstance(val, str) and val:
+                parts.append(val)
+        return "\n".join(parts)
 
     def detect_corruption_with_confidence(
         self,
@@ -353,6 +407,12 @@ class SemanticCorruptionDetector:
         schema: Optional[Schema] = None,
     ) -> CorruptionResult:
         issues = self.detect_corruption(prev_state, current_state, schema)
+
+        # Additive contamination-propagation signal (v1.2).
+        prev_text = self._extract_contamination_text(prev_state.state_delta)
+        curr_text = self._extract_contamination_text(current_state.state_delta)
+        _, contamination_issues = self._compute_contamination_propagation_score(prev_text, curr_text)
+        issues.extend(contamination_issues)
 
         max_severity = "low"
         severity_counts = {"low": 0, "medium": 0, "high": 0, "critical": 0}
@@ -604,8 +664,10 @@ class SemanticCorruptionDetector:
                 and prev_val is not None
                 and curr_val is not None
             ):
-                # Skip int↔float which is benign
-                if not (isinstance(prev_val, (int, float)) and isinstance(curr_val, (int, float))):
+                # Skip int↔float which is benign, and any value-preserving
+                # coercion (see _detect_type_drift).
+                if not (isinstance(prev_val, (int, float)) and isinstance(curr_val, (int, float))) \
+                        and not is_lossless_coercion(prev_val, curr_val):
                     issues.append(
                         CorruptionIssue(
                             issue_type="type_drift",
@@ -646,8 +708,14 @@ class SemanticCorruptionDetector:
                         )
 
                 # Monotonic field regression (version, build_number, etc.)
+                # Use word-boundary match: "version" should NOT match "conversion_rate".
                 key_lower = key.lower()
-                if any(mf in key_lower for mf in self.MONOTONIC_INCREASING_FIELDS):
+                if any(
+                    key_lower == mf
+                    or key_lower.endswith("_" + mf)
+                    or key_lower.startswith(mf + "_")
+                    for mf in self.MONOTONIC_INCREASING_FIELDS
+                ):
                     if curr_val < prev_val:
                         issues.append(
                             CorruptionIssue(
@@ -737,9 +805,10 @@ class SemanticCorruptionDetector:
                             )
 
                 # Status/enum regression detection
+                # Exact match so that "status" doesn't shadow "order_status" etc.
                 key_lower = key.lower()
                 for status_field, progression in self.STATUS_PROGRESSIONS.items():
-                    if status_field in key_lower:
+                    if key_lower == status_field:
                         prev_lower = prev_val.lower().strip()
                         curr_lower = curr_val.lower().strip()
                         if prev_lower in progression and curr_lower in progression:
@@ -757,7 +826,12 @@ class SemanticCorruptionDetector:
                         break
 
                 # Monotonic string fields (timestamps as strings)
-                if any(mf in key_lower for mf in self.MONOTONIC_INCREASING_FIELDS):
+                if any(
+                    key_lower == mf
+                    or key_lower.endswith("_" + mf)
+                    or key_lower.startswith(mf + "_")
+                    for mf in self.MONOTONIC_INCREASING_FIELDS
+                ):
                     if curr_val < prev_val:  # String comparison works for ISO dates
                         issues.append(
                             CorruptionIssue(
@@ -1292,6 +1366,190 @@ class SemanticCorruptionDetector:
         Convenience method that wraps detect_from_text.
         """
         return self.detect_from_text(task, output, context)
+
+    # =========================================================================
+    # v1.2: Information-contamination-propagation signal
+    # Cornell/UIUC, CAIS 2026: uncertainty in inputs propagates through
+    # multi-agent workflows. Catches the case where an upstream agent flags
+    # uncertainty (hedges, contradictions, low-confidence sources) and a
+    # downstream agent strips it and asserts the claim as fact.
+    # =========================================================================
+
+    HEDGE_PATTERNS = [
+        r'\bmight\b', r'\bmaybe\b', r'\bperhaps\b', r'\bpossibly\b',
+        r'\bprobably\b', r'\bunverified\b', r'\bpreliminary\b',
+        r'\bcould\s+be\b', r'\bappears?\s+to\s+be\b',
+        r'\bseems?\s+to\b', r'\bapproximately\b', r'\broughly\b',
+        r'\bas\s+far\s+as\s+(?:i|we)\s+can\s+tell\b',
+        r'\bnot\s+(?:entirely|fully)\s+(?:sure|certain)\b',
+        r'\buncertain\b', r'\btentative\b', r'\bsuspected\b',
+        r'\bunclear\b', r'\bambiguous\b',
+    ]
+
+    LOW_CONFIDENCE_PATTERNS = [
+        r'\baccording\s+to\s+an?\s+unverified\s+source\b',
+        r'\bunverified\s+sources?\b',
+        r'\brumored\b', r'\brumor(?:s|ed)?\s+(?:has|have)?\s*it\b',
+        r'\ballegedly\b', r'\bit\s+(?:has\s+been|is)\s+suggested\b',
+        r'\banonymous\s+sources?\b', r'\bunconfirmed\s+reports?\b',
+        r'\baccording\s+to\s+(?:a\s+)?leaked\b',
+        r'\bword\s+on\s+the\s+street\b',
+    ]
+
+    HEDGE_TOKEN_VOCAB = frozenset({
+        "might", "maybe", "perhaps", "possibly", "probably", "unverified",
+        "preliminary", "approximately", "roughly", "uncertain", "tentative",
+        "suspected", "unclear", "ambiguous", "could", "seems", "seem",
+        "appears", "appear", "rumored", "allegedly", "anonymous",
+        "unconfirmed", "leaked", "suggested",
+    })
+
+    _CONTRADICTION_TEMPLATES = [
+        # "X is true ... X is false" style, narrow window
+        (r'\bis\s+true\b', r'\bis\s+false\b'),
+        (r'\bwas\s+true\b', r'\bwas\s+false\b'),
+        (r'\bconfirmed\b', r'\bdenied\b'),
+        (r'\bsucceeded\b', r'\bfailed\b'),
+        (r'\bonline\b', r'\boffline\b'),
+        (r'\bavailable\b', r'\bunavailable\b'),
+    ]
+
+    def _count_hedges(self, text: str) -> int:
+        text_lower = text.lower()
+        return sum(len(re.findall(p, text_lower)) for p in self.HEDGE_PATTERNS)
+
+    def _count_low_confidence(self, text: str) -> int:
+        text_lower = text.lower()
+        return sum(len(re.findall(p, text_lower)) for p in self.LOW_CONFIDENCE_PATTERNS)
+
+    def _count_contradictions(self, text: str) -> int:
+        text_lower = text.lower()
+        count = 0
+        for pos_pat, neg_pat in self._CONTRADICTION_TEMPLATES:
+            if re.search(pos_pat, text_lower) and re.search(neg_pat, text_lower):
+                count += 1
+        # "not X ... X" with same trailing word, simple form
+        not_targets = re.findall(r'\bnot\s+([a-z]{4,})\b', text_lower)
+        for tgt in set(not_targets):
+            # require the bare token to appear separately (not as "not <tgt>")
+            bare = re.findall(rf'(?<!not )\b{re.escape(tgt)}\b', text_lower)
+            if len(bare) >= 1:
+                count += 1
+        return count
+
+    def _tokenize_words(self, text: str) -> List[str]:
+        return re.findall(r'\b[a-zA-Z][a-zA-Z\-]{1,}\b', text.lower())
+
+    def compute_contamination_profile(self, text: str) -> ContaminationProfile:
+        """Compute the uncertainty-marker profile for a single state's text."""
+        if not text:
+            return ContaminationProfile(0, 0, 0, 0.0)
+        hedges = self._count_hedges(text)
+        contradictions = self._count_contradictions(text)
+        low_conf = self._count_low_confidence(text)
+        tokens = self._tokenize_words(text)
+        denom = max(len(tokens), 1)
+        normalized = (hedges + 2 * contradictions + low_conf) / denom
+        return ContaminationProfile(hedges, contradictions, low_conf, normalized)
+
+    def _content_jaccard(self, prev_text: str, curr_text: str) -> float:
+        """Jaccard over content tokens after stripping hedge/low-conf vocab."""
+        prev_tokens = {t for t in self._tokenize_words(prev_text) if t not in self.HEDGE_TOKEN_VOCAB}
+        curr_tokens = {t for t in self._tokenize_words(curr_text) if t not in self.HEDGE_TOKEN_VOCAB}
+        if not prev_tokens or not curr_tokens:
+            return 0.0
+        inter = len(prev_tokens & curr_tokens)
+        union = len(prev_tokens | curr_tokens)
+        return inter / union if union else 0.0
+
+    def _compute_contamination_propagation_score(
+        self,
+        prev_state: str,
+        current_state: str,
+    ) -> Tuple[float, List[CorruptionIssue]]:
+        """Detect uncertainty stripping between an input and downstream output.
+
+        Returns (score in [0,1], list of contamination issues).
+        Skipped (returns 0) if the input has zero contamination markers.
+        """
+        if not prev_state or not current_state:
+            return 0.0, []
+
+        prev_profile = self.compute_contamination_profile(prev_state)
+        if prev_profile.hedge_count == 0 and prev_profile.contradiction_count == 0 and prev_profile.low_confidence_count == 0:
+            return 0.0, []
+
+        curr_profile = self.compute_contamination_profile(current_state)
+
+        prev_total = prev_profile.hedge_count + prev_profile.contradiction_count + prev_profile.low_confidence_count
+        curr_total = curr_profile.hedge_count + curr_profile.contradiction_count + curr_profile.low_confidence_count
+        if prev_total == 0:
+            return 0.0, []
+
+        drop_ratio = (prev_total - curr_total) / prev_total
+        if drop_ratio < 0.5:
+            return 0.0, []
+
+        overlap = self._content_jaccard(prev_state, current_state)
+        if overlap < 0.4:
+            return 0.0, []
+
+        score = min(1.0, drop_ratio * (0.5 + 0.5 * overlap))
+        severity = "high" if drop_ratio >= 0.9 and prev_total >= 2 else "medium"
+        msg = (
+            f"Uncertainty stripped downstream: input had {prev_total} markers "
+            f"(h={prev_profile.hedge_count}, c={prev_profile.contradiction_count}, "
+            f"lc={prev_profile.low_confidence_count}), output has {curr_total} "
+            f"(drop {drop_ratio:.0%}, content overlap {overlap:.0%})"
+        )
+        issue = CorruptionIssue(
+            issue_type="contamination_stripping",
+            field=None,
+            message=msg,
+            severity=severity,
+        )
+        return round(score, 4), [issue]
+
+    def detect_contamination_propagation(
+        self,
+        states: List[str],
+    ) -> CorruptionResult:
+        """Apply the contamination check pairwise across a chain of textual states.
+
+        Backwards-compat single-pair callers should use
+        `_compute_contamination_propagation_score(prev, curr)` directly or pass
+        a 2-element list here.
+        """
+        if not states or len(states) < 2:
+            return CorruptionResult(
+                detected=False, confidence=0.0, issues=[],
+                issue_count=0, max_severity="none",
+            )
+        all_issues: List[CorruptionIssue] = []
+        max_score = 0.0
+        for prev, curr in zip(states, states[1:]):
+            score, issues = self._compute_contamination_propagation_score(prev, curr)
+            if score > max_score:
+                max_score = score
+            all_issues.extend(issues)
+        if not all_issues:
+            return CorruptionResult(
+                detected=False, confidence=0.0, issues=[],
+                issue_count=0, max_severity="none",
+            )
+        max_severity = "low"
+        for issue in all_issues:
+            if self._severity_rank(issue.severity) > self._severity_rank(max_severity):
+                max_severity = issue.severity
+        confidence = round(min(0.99, max_score * self.confidence_scaling), 4)
+        return CorruptionResult(
+            detected=True,
+            confidence=confidence,
+            issues=all_issues,
+            issue_count=len(all_issues),
+            max_severity=max_severity,
+            raw_score=max_score,
+        )
 
 
 corruption_detector = SemanticCorruptionDetector()

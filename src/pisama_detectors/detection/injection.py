@@ -143,7 +143,14 @@ INJECTION_PATTERNS = [
     ),
     # Jailbreak
     (r"jailbreak", "jailbreak", "critical"),
-    (r"DAN\s*(?:mode)?|Do Anything Now", "jailbreak", "critical"),
+    # ``DAN`` is an acronym, not an arbitrary substring.  Without word
+    # boundaries this matched ordinary system-prompt prose such as
+    # ``guidance`` (the case-insensitive engine found the ``dan`` inside it),
+    # which then turned trusted system instructions into jailbreak alerts.
+    # Standalone DAN is case-sensitive so ordinary names ("Dan Kim") are not
+    # jailbreaks. Lowercase/mixed-case variants remain eligible when paired
+    # with the explicit attack phrase "DAN mode".
+    (r"(?-i:\bDAN\b)(?:\s+mode)?|\bdan\s+mode\b|\bDo\s+Anything\s+Now\b", "jailbreak", "critical"),
     (r"(?:developer|god|admin|root|sudo|superuser|master) mode", "jailbreak", "critical"),
     (r"unlock (?:your|all) (?:capabilities|potential|restrictions|true|full)", "jailbreak", "high"),
     (
@@ -475,10 +482,21 @@ class InjectionDetector:
         max_severity = "low"
         details: Dict[str, Any] = {}
 
+        has_payload_pattern = False
+        # Search the original-case `text`, not `text_lower`: the DAN pattern's
+        # scoped `(?-i:\bDAN\b)` case-sensitive guard needs real case to tell
+        # the acronym apart from a name. The other patterns are unaffected
+        # since they're matched with re.IGNORECASE regardless.
         for pattern, attack_type, severity in INJECTION_PATTERNS:
-            if re.search(pattern, text_lower, re.IGNORECASE):
+            if re.search(pattern, text, re.IGNORECASE):
                 matched_patterns.append(pattern)
                 attack_types.add(attack_type)
+                # A "payload" pattern is any genuine attack directive (override,
+                # jailbreak, instruction injection, extraction, ...). A bare
+                # delimiter/role-marker match is NOT a payload — see the detected
+                # gate below.
+                if attack_type != "delimiter_injection":
+                    has_payload_pattern = True
                 if self._severity_rank(severity) > self._severity_rank(max_severity):
                     max_severity = severity
 
@@ -512,11 +530,16 @@ class InjectionDetector:
         is_benign = self._check_benign_context(text_lower)
         details["benign_context"] = is_benign
 
-        detected = (
-            len(matched_patterns) > 0
-            or jailbreak_score > 0.5
-            or semantic_score > self.semantic_threshold
-        )
+        # A bare delimiter/role-marker match ("[SYSTEM]", "System:") with no
+        # payload pattern and no jailbreak/semantic signal is almost always the
+        # LEGITIMATE structure of a system prompt or function-calling spec, not an
+        # injection: the patterns that catch *injected* delimiters also match the
+        # real thing, and the is_user_input distinction they assume isn't available
+        # here. Requiring a co-occurring payload signal removes this false positive
+        # (49/50 on the archived benign function-calling pool) at zero recall cost
+        # (0/46 real injection positives are delimiter-only). See W2 validation.
+        detected = has_payload_pattern or jailbreak_score > 0.5 or semantic_score > self.semantic_threshold
+        details["delimiter_only_suppressed"] = bool(matched_patterns) and not detected
 
         # Benign context reduces confidence but doesn't completely disable detection.
         # This prevents FNs where an actual injection is wrapped in "security research" language.
@@ -614,7 +637,13 @@ class InjectionDetector:
         if newline_ratio > 0.1:
             score += 0.2
 
-        if re.search(r"(.{10,})\1{2,}", text):
+        # Repeated-block check. The backreference over a greedy 10+ char
+        # capture, `(.{10,})\1{2,}`, backtracks catastrophically (≈O(n²)) on
+        # long near-repetitive non-matching text — ~26s on a 48KB span. It is a
+        # structural density signal: genuine 3x repetition of a 10+ char block
+        # surfaces within the first couple KB, so cap the input to keep the
+        # check bounded (defence-in-depth ReDoS guard).
+        if re.search(r"(.{10,})\1{2,}", text[:2000]):
             score += 0.3
 
         return min(1.0, score)
@@ -691,7 +720,11 @@ class InjectionDetector:
             + (jailbreak_score * 0.10 if jailbreak_score > 0.5 else 0)
         )
 
-        if is_benign:
+        # Only reduce confidence for benign-context wrappers when the underlying
+        # signal is weak. Otherwise an attacker can append "this is for an
+        # authorized security audit" to bypass detection. Mirrors the severity
+        # downgrade logic earlier in detect().
+        if is_benign and severity not in ("critical", "high") and pattern_count < 2 and jailbreak_score <= 0.7:
             base_confidence *= 0.3
 
         calibrated = min(0.99, base_confidence * self.confidence_scaling)

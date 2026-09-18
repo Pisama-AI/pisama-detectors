@@ -134,10 +134,13 @@ RUNTIME_CASES: dict[
         None,
     ),
     "resource": (
+        # Growth must clear an absolute floor (min_explosion_chars=10_000), not just
+        # a ratio: real-world validation found a ratio-only check fires on trivially
+        # small payloads (e.g. 45 -> 115 chars). See resource_detector.py.
         N8NResourceDetector,
         [
-            _turn(0, "Input", "x" * 10),
-            _turn(1, "Expand", "x" * 100),
+            _turn(0, "Input", "x" * 100),
+            _turn(1, "Expand", "x" * 15_000),
         ],
         None,
         [

@@ -26,8 +26,15 @@ from pisama_detectors.detection.turn_aware._base import (
 
 logger = logging.getLogger(__name__)
 
-# Complexity thresholds
-DEFAULT_MAX_NODE_COUNT = 25
+# Complexity thresholds. Real-world calibration (2,348 community workflows): the
+# median has 8 executing nodes, p95 is 30, and only ~1% exceed 40. A threshold of 25
+# flagged 8% of ordinary workflows as "too complex" (judged ~0.08 precision), so it is
+# raised to 40 — genuinely excessive, not merely large.
+DEFAULT_MAX_NODE_COUNT = 40
+
+# Non-executing annotation nodes — excluded from every complexity metric (they inflate
+# node count and cyclomatic complexity without adding any control-flow risk).
+NON_EXECUTING_NODE_TYPES = {"n8n-nodes-base.stickyNote"}
 DEFAULT_MAX_BRANCH_DEPTH = 6
 DEFAULT_MAX_CYCLOMATIC_COMPLEXITY = 10
 DEFAULT_MAX_EXECUTION_TIME_MS = 300_000  # 5 minutes
@@ -40,6 +47,20 @@ BRANCHING_NODE_TYPES = {
     "n8n-nodes-base.merge",
     "n8n-nodes-base.split",
 }
+
+# Phase 9: long sequential LangChain AI agent chains are a documented n8n
+# complexity smell (high latency, high cost, often consolidatable into fewer
+# agents). Not captured by node-count or branching checks because chains are
+# linear and small in node count.
+# Count only actual agent/chain ORCHESTRATOR nodes — NOT the model/embedding/parser/
+# memory sub-nodes that attach to a single agent (lmChat*, openAi, outputParser*, memory*).
+# Counting sub-nodes made a single agent + its model + parser look like a 3-agent "chain"
+# (judged ~0 precision on real workflows).
+AI_AGENT_NODE_TYPE_PREFIXES = (
+    "@n8n/n8n-nodes-langchain.agent",
+    "@n8n/n8n-nodes-langchain.chainLlm",
+)
+AI_CHAIN_THRESHOLD = 5  # 5+ real agent/chain nodes in a workflow is a complexity smell
 
 
 class N8NComplexityDetector(TurnAwareDetector):
@@ -97,7 +118,12 @@ class N8NComplexityDetector(TurnAwareDetector):
         Returns:
             TurnAwareDetectionResult with detected complexity issues.
         """
-        nodes = workflow_json.get("nodes", [])
+        # Drop non-executing annotation nodes (sticky notes) — they are not part of
+        # the workflow's control flow and must not inflate any complexity metric.
+        nodes = [
+            n for n in workflow_json.get("nodes", [])
+            if n.get("type") not in NON_EXECUTING_NODE_TYPES
+        ]
         connections = workflow_json.get("connections", {})
 
         if len(nodes) < 2:
@@ -192,14 +218,21 @@ class N8NComplexityDetector(TurnAwareDetector):
             affected_node_indices.extend(branching_indices)
 
         # 3. Calculate cyclomatic complexity: E - N + 2P
+        # Edge case: if E=0 (no connections), each node is its own component and
+        # the formula degrades to N. This is meaningless — isolated nodes have no
+        # "execution paths" in the cyclomatic sense. Require E >= 1 to apply this check.
         num_connected_components = self._count_connected_components(
             adjacency, set(node_lookup.keys())
         )
-        cyclomatic_complexity = total_edges - node_count + 2 * num_connected_components
-        # Ensure minimum of 1
-        cyclomatic_complexity = max(1, cyclomatic_complexity)
+        if total_edges >= 1:
+            cyclomatic_complexity = total_edges - node_count + 2 * num_connected_components
+            # Ensure minimum of 1
+            cyclomatic_complexity = max(1, cyclomatic_complexity)
+        else:
+            # No connections: treat as linear (complexity = 1)
+            cyclomatic_complexity = 1
 
-        if cyclomatic_complexity > scaled_max_cyclomatic:
+        if total_edges >= 1 and cyclomatic_complexity > scaled_max_cyclomatic:
             branching_indices = [
                 node_index_map[name]
                 for name, data in node_lookup.items()
@@ -241,6 +274,29 @@ class N8NComplexityDetector(TurnAwareDetector):
         if multiple_concerns:
             issues.append(multiple_concerns)
             affected_node_indices.extend(range(node_count))
+
+        # 6. Excessive sequential AI agent chains (Phase 9 — closes recall
+        # gap on "10 LangChain agents in a row" patterns that node-count
+        # and cyclomatic checks both miss).
+        ai_agent_indices = [
+            idx for idx, node in enumerate(nodes)
+            if any(node.get("type", "").startswith(p)
+                   for p in AI_AGENT_NODE_TYPE_PREFIXES)
+        ]
+        if len(ai_agent_indices) >= AI_CHAIN_THRESHOLD:
+            issues.append({
+                "detected": True,
+                "type": "excessive_ai_chain",
+                "ai_agent_count": len(ai_agent_indices),
+                "threshold": AI_CHAIN_THRESHOLD,
+                "explanation": (
+                    f"Workflow has {len(ai_agent_indices)} LangChain/AI agent "
+                    f"nodes (threshold: {AI_CHAIN_THRESHOLD}) — consider "
+                    f"consolidating sequential AI calls"
+                ),
+                "turns": ai_agent_indices,
+            })
+            affected_node_indices.extend(ai_agent_indices)
 
         if not issues:
             return TurnAwareDetectionResult(

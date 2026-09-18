@@ -109,6 +109,7 @@ class ContextPressureDetector:
         decline_weight: float = 0.30,
         utilization_weight: float = 0.25,
         cliff_weight: float = 0.25,
+        detect_threshold: float = 0.30,
     ):
         self.decline_threshold = decline_threshold
         self.cliff_sigma = cliff_sigma
@@ -117,6 +118,12 @@ class ContextPressureDetector:
         self.decline_weight = decline_weight
         self.utilization_weight = utilization_weight
         self.cliff_weight = cliff_weight
+        # Confidence floor for `detected`, exposed as a constructor param
+        # rather than hardcoded so callers can pass an explicit override —
+        # consistent with the threshold-override pattern documented in
+        # `pisama_detectors._config` ("callers should pass explicit
+        # thresholds to detector constructors").
+        self.detect_threshold = detect_threshold
 
     def detect(
         self,
@@ -157,6 +164,10 @@ class ContextPressureDetector:
                 text = delta.get("output", "") or delta.get("response", "") or str(delta)
             else:
                 text = str(delta) if delta else ""
+            # Some trace parsers store node output as a list/dict, not a
+            # string — coerce so downstream len()/.lower() don't blow up.
+            if not isinstance(text, str):
+                text = str(text)
             output_lengths.append(len(text))
             outputs.append(text)
             tc = s.get("token_count", 0) or 0
@@ -248,7 +259,7 @@ class ContextPressureDetector:
 
         # Require at least 2 signals to detect (ensemble gate)
         active_signals = sum(1 for s in signals if s.strength > 0)
-        detected = active_signals >= 2 and confidence >= 0.30
+        detected = active_signals >= 2 and confidence >= self.detect_threshold
 
         # Severity
         if confidence >= 0.80:

@@ -103,7 +103,7 @@ class CompletionMisjudgmentDetector:
         r"\b(?:successfully|successfully)\s+(?:completed|finished|done)\b",
         r"\b(?:all\s+)?(?:tasks?|steps?|items?)\s+(?:are\s+)?(?:complete|done)\b",
         r"\b(?:mission\s+accomplished|job\s+done)\b",
-        r"\bhere(?:\'s| is)\s+the\s+(?:final|completed|finished)\b",
+        r"\bhere(?:\'s| is)\s+the\s+(?:final|completed|finished|implementation|solution|code|result)\b",
         r"\b(?:that\'s|this\s+is)\s+everything\b",
         r"\bnothing\s+(?:else|more)\s+(?:to\s+do|needed|required)\b",
         # v1.7: Tightened subject patterns — only match task/work nouns, not any word
@@ -547,6 +547,36 @@ class CompletionMisjudgmentDetector:
                 indicators.append((match.group(), indicator_type, context))
         return indicators
 
+    # v1.4 Sprint 12 Phase A6-retry (2026-05-26): tighter planning-acknowledgment
+    # patterns. The first A6 attempt downgraded SEVERE → MODERATE whenever any
+    # forward-looking pattern appeared, which regressed completion F1 -0.136
+    # because medium-difficulty FPs (agent claims completion of partial work +
+    # mentions "future work would be...") still scored as TPs in the data.
+    # Retry adds the completion_ratio >= 0.7 constraint: only downgrade when
+    # the agent finished most of the work AND was transparent about the
+    # remainder.
+    _PLANNING_ACK_PATTERNS_NARROW = (
+        re.compile(r"\bnext\s+steps?\s*[:\-]", re.IGNORECASE),
+        re.compile(r"\bfuture\s+work\s+(?:would|could|will|is)\b", re.IGNORECASE),
+        re.compile(
+            r"\bcould\s+(?:be\s+)?(?:improved?|enhanced?|optimized?)\s+(?:by|with|in)\b",
+            re.IGNORECASE,
+        ),
+    )
+
+    def _has_narrow_planning_acknowledgment(self, text: str) -> bool:
+        """Tighter version of A6 planning detection.
+
+        Three constraints vs the original A6:
+        1. Patterns require structural cue ("Next steps:", "future work would be")
+           rather than bare "future work" anywhere
+        2. Code fences stripped (TODO in code is not acknowledgment)
+        3. Used only when completion_ratio >= 0.7 (see caller)
+        """
+        text_no_code = re.sub(r"```[\s\S]*?```", "", text or "")
+        text_no_code = re.sub(r"`[^`]+`", "", text_no_code)
+        return any(p.search(text_no_code) for p in self._PLANNING_ACK_PATTERNS_NARROW)
+
     def _is_intentionally_scoped_task(self, task: str) -> bool:
         """v1.2: Check if task is intentionally scoped (MVP, prototype, etc.)."""
         task_lower = task.lower()
@@ -719,6 +749,10 @@ class CompletionMisjudgmentDetector:
         for criterion in criteria:
             # Extract key terms from criterion
             words = re.findall(r"\b\w{3,}\b", criterion.lower())
+            # 'not' / 'all' / 'any' deliberately kept in: dropping them would
+            # silently flip negation/quantifier criteria. e.g. "should not
+            # include sensitive data" → after stripping 'not' it matches
+            # outputs that DO include sensitive data.
             key_words = [
                 w
                 for w in words
@@ -740,8 +774,6 @@ class CompletionMisjudgmentDetector:
                     "and",
                     "for",
                     "are",
-                    "all",
-                    "not",
                     "can",
                 }
             ]
@@ -762,6 +794,43 @@ class CompletionMisjudgmentDetector:
                 unmet.append(criterion)
 
         return met, len(criteria), unmet
+
+    @staticmethod
+    def _is_swe_bench_grader_criterion(criterion: str) -> bool:
+        """Recognize the exact SWE-bench converter sentinel."""
+        normalized = criterion.strip().lower()
+        return bool(
+            re.fullmatch(
+                r"agent resolves the github issue:\s*" r"[a-z0-9_.-]+__[a-z0-9_.-]+-\d+",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _has_swe_bench_submit_action(agent_output: str) -> bool:
+        """Recognize the standalone submit action emitted by SWE agents."""
+        return bool(re.search(r"(?im)^\s*submit\s*$", agent_output))
+
+    @staticmethod
+    def _is_arb_grader_trace(
+        criterion: str,
+        task: str,
+        agent_output: str,
+    ) -> bool:
+        """Recognize the exact AgentRewardBench converter shape."""
+        normalized_criterion = " ".join(criterion.strip().lower().split())
+        normalized_task = " ".join(task.strip().lower().split())
+        expected = f"agent successfully completes the task: {normalized_task}"
+        return (
+            normalized_criterion == expected
+            and bool(
+                re.search(
+                    r"(?im)^step\s+\d+\s+reasoning:\s*<action>",
+                    agent_output,
+                )
+            )
+            and bool(re.search(r"(?im)^action:\s*", agent_output))
+        )
 
     def _analyze_subtasks(
         self,
@@ -818,12 +887,25 @@ class CompletionMisjudgmentDetector:
             r"top\s+(\d+)",
         ]
 
+        task_lower = task.lower()
+        # Skip the count check entirely when the task expresses a range — the
+        # regex above would otherwise lock onto the upper bound ("at least 5
+        # but no more than 10" → requested_count=10), flagging outputs that
+        # satisfy the lower bound as incomplete.
+        has_range_modifier = bool(
+            re.search(
+                r"\b(?:at\s+least|at\s+most|no\s+more\s+than|up\s+to|between)\b",
+                task_lower,
+            )
+        )
+
         requested_count = None
-        for pattern in count_patterns:
-            match = re.search(pattern, task.lower())
-            if match:
-                requested_count = int(match.group(1))
-                break
+        if not has_range_modifier:
+            for pattern in count_patterns:
+                match = re.search(pattern, task_lower)
+                if match:
+                    requested_count = int(match.group(1))
+                    break
 
         if requested_count and requested_count > 1:
             # Count actual list items in output
@@ -1185,8 +1267,16 @@ class CompletionMisjudgmentDetector:
         unmet_criteria: List[str] = []
 
         if criteria:
+            is_sole_swe_bench_sentinel = (
+                success_criteria is not None
+                and len(criteria) == 1
+                and self._is_swe_bench_grader_criterion(criteria[0])
+                and self._has_swe_bench_submit_action(agent_output)
+            )
+            lexical_criteria = [] if is_sole_swe_bench_sentinel else criteria
             criteria_met, criteria_total, unmet_criteria = self._check_criteria_met(
-                criteria, agent_output
+                lexical_criteria,
+                agent_output,
             )
             if criteria_total > 0:
                 criteria_ratio = criteria_met / criteria_total
@@ -1226,6 +1316,20 @@ class CompletionMisjudgmentDetector:
                 and not (numeric_ratio and numeric_ratio[2] < 1.0)
                 and not planned_work
                 and not qualifiers
+            ):
+                premature_severity = CompletionSeverity.MODERATE
+            # v1.4 Sprint 12 Phase A6-retry: narrow planning acknowledgment
+            # downgrade. Requires completion_ratio >= 0.7 (agent did most
+            # of the work) AND narrow patterns ("Next steps:", "future
+            # work would be") AND no incomplete markers / errors / numeric
+            # partial. Conservative enough to avoid the medium-difficulty
+            # FP cluster that bit the original A6.
+            elif (
+                completion_ratio >= 0.7
+                and self._has_narrow_planning_acknowledgment(agent_output)
+                and not incomplete_markers
+                and not errors
+                and not (numeric_ratio and numeric_ratio[2] < 1.0)
             ):
                 premature_severity = CompletionSeverity.MODERATE
             issues.append(
@@ -1508,9 +1612,13 @@ class CompletionMisjudgmentDetector:
                 "success",
             ):
                 is_external_grader = True
-            elif single.startswith("agent resolves"):
+            elif self._is_swe_bench_grader_criterion(single):
                 is_swe_bench_grader = True
-            elif single.startswith("agent successfully completes"):
+            elif self._is_arb_grader_trace(
+                success_criteria[0],
+                task,
+                agent_output,
+            ):
                 is_arb_grader = True
         if (
             is_external_grader
@@ -1602,7 +1710,7 @@ class CompletionMisjudgmentDetector:
         ):
             output_lower = agent_output.lower()
             tail_lower = output_lower[-500:]
-            has_submit = "submit" in output_lower
+            has_submit = self._has_swe_bench_submit_action(agent_output)
             # v2.2e: Tighter — require BLOCKING language in the tail, not just
             # any error/issue mention (swe_comp outputs frequently mention
             # "error" even in successful fixes while referring to the bug).

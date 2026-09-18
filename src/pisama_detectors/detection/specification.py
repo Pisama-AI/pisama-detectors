@@ -37,10 +37,25 @@ Version History:
     the previously bimodal confidence distribution.
   - Existing-mismatch confidence floored by divergence so threshold grid
     search can find a stable optimum in the 0.30-0.50 band.
+- v2.11: Ported fixes from backend's independent evolution (v2.7/v2.10/v2.11):
+  - Wired the (previously-defined-but-unused) requirement negation check
+    into detect() so "without any alerting functionality" style exclusions
+    are caught even when semantic coverage is 1.0.
+  - Tightened the identical/extension short-circuit to require the spec be
+    a close reformulation (length expansion <= 3x) so long multi-agent
+    transcripts that merely open with the user's question still reach the
+    divergence gate.
+  - Divergence gate: override the reformulation skip for long transcripts
+    with high divergence, and added a terse-elaboration carve-out so a
+    short intent multiplicatively elaborated into a longer (but clean,
+    high-coverage) spec doesn't trip a spurious SCOPE_DRIFT.
+  - Fixed a confidence-polarity bug on the "not detected" path: `coverage`
+    is negative-class evidence, so `confidence` was mapped to `1 - coverage`
+    instead of `coverage` directly.
 """
 
 # Detector version for tracking
-DETECTOR_VERSION = "2.9"
+DETECTOR_VERSION = "2.11"
 DETECTOR_NAME = "SpecificationMismatchDetector"
 
 import logging
@@ -1292,18 +1307,33 @@ class SpecificationMismatchDetector:
 
         # v2.8: Identical inputs are always clean. A textual extension is only
         # clean when the appended clauses do not reverse an existing constraint.
+        #
+        # v2.10 (Sprint 11 Phase E, ported from backend): tighten the
+        # "extension" branch further. Real multi-agent traces (e.g. MAST
+        # AG2/AppWorld) often embed the original user question at the start
+        # of a 2-3kB agent transcript that then proceeds to fail the task.
+        # An unconditional `ts_norm.startswith(ui_norm)` short-circuit kills
+        # those before the divergence gate can fire, producing false
+        # negatives. Require the spec to be a close reformulation (length
+        # expansion <= 3x) to keep the swebench protection without masking
+        # transcript-style specs.
         ui_norm = " ".join(user_intent.split())
         ts_norm = " ".join(task_specification.split())
+        ui_len = len(ui_norm)
+        ts_len = len(ts_norm)
         extension_contradictions: list[str] = []
         if ui_norm and ts_norm.startswith(ui_norm) and ui_norm != ts_norm:
             extension_contradictions = self._detect_direct_contradictions(
                 user_intent,
                 task_specification,
             )
-        if ui_norm and (
-            ui_norm == ts_norm
-            or (ts_norm.startswith(ui_norm) and not extension_contradictions)
-        ):
+        is_verbatim_extension = (
+            bool(ui_norm)
+            and ts_norm.startswith(ui_norm)
+            and (ui_len == 0 or ts_len <= ui_len * 3)
+            and not extension_contradictions
+        )
+        if ui_norm and (ui_norm == ts_norm or is_verbatim_extension):
             return SpecificationMismatchResult(
                 detected=False,
                 mismatch_type=None,
@@ -1312,7 +1342,7 @@ class SpecificationMismatchDetector:
                 requirement_coverage=1.0,
                 missing_requirements=[],
                 ambiguous_elements=[],
-                explanation="task_specification is identical to (or an extension of) user_intent — no mismatch possible",
+                explanation="task_specification is identical to (or a near-verbatim extension of) user_intent — no mismatch possible",
             )
 
         # v2.5: Detect Q&A "Answer:" format for reduced sensitivity
@@ -1457,6 +1487,22 @@ class SpecificationMismatchDetector:
                 mismatch_type = MismatchType.SCOPE_DRIFT
                 missing.append(scope_expansion)
 
+        # v2.7 (ported from backend): Requirement negation — spec explicitly
+        # excludes a user-intent requirement via phrases like "without X",
+        # "no X", "bypass X". Topical embedding similarity cannot catch this
+        # (both texts are about the same domain), so the deterministic
+        # negation check fires even when semantic coverage is 1.0.
+        if not detected and not is_qa_answer:
+            negations = self._detect_requirement_negation(user_intent, task_specification)
+            if negations:
+                detected = True
+                mismatch_type = MismatchType.MISSING_REQUIREMENT
+                for neg in negations[:3]:
+                    missing.append(f"requirement negated: {neg}")
+                # Requirement negation is a severe, deterministic signal (not
+                # borderline) — cap coverage to ensure severe severity.
+                coverage = min(coverage, 0.25)
+
         # Direct reversals use almost identical vocabulary, so keyword and
         # embedding coverage can score them as perfect matches. Check explicit
         # polarity, numeric, language, and scope conflicts deterministically.
@@ -1481,10 +1527,38 @@ class SpecificationMismatchDetector:
         # direction reversals, scale inflation, automation-vs-manual flips).
         # Skip for Q&A answers and for reformulations (those legitimately
         # rephrase the task using intent vocabulary).
+        #
+        # v2.10 (Sprint 11 Phase E, ported from backend): the reformulation
+        # markers fire spuriously on long multi-agent transcripts that
+        # happen to contain restatement phrases mid-dialogue. Two overrides:
+        #   (a) At divergence >= 0.35 the meaning has shifted enough that
+        #       reformulation cannot be charitably assumed.
+        #   (b) When the spec is much longer than the intent (>= 3x) AND
+        #       divergence clears the base gate, it is almost certainly a
+        #       transcript — not a charitable rephrase.
+        _reformulation_override_divergence = 0.35
+        is_long_transcript = ts_len >= max(ui_len, 1) * 3 and ts_len >= 600
+        ignore_reformulation = is_reformulation and (
+            divergence >= _reformulation_override_divergence
+            or (is_long_transcript and divergence >= self._DIVERGENCE_GATE)
+        )
+        # v2.11 (ported from backend): a terse intent elaborated into a much
+        # longer spec diverges in whole-text embedding space purely from the
+        # added detail — not from scope drift. When coverage is high (the
+        # spec covers everything the intent asked for), the intent is terse,
+        # and the spec is a clean (non-ambiguous) multiplicative elaboration,
+        # the divergence-only SCOPE_DRIFT is suppressed.
+        is_terse_elaboration = (
+            coverage >= 0.90
+            and ui_len <= 120
+            and ts_len >= ui_len * 3
+            and len(ambiguities) < self.ambiguity_threshold
+        )
         if (
             not detected
             and not is_qa_answer
-            and not is_reformulation
+            and not is_terse_elaboration
+            and (not is_reformulation or ignore_reformulation)
             and divergence >= self._DIVERGENCE_GATE
         ):
             detected = True
@@ -1495,11 +1569,18 @@ class SpecificationMismatchDetector:
             )
 
         if not detected:
+            # Phase 10 (ported from backend): was confidence=coverage, but
+            # `coverage` is the strength of NEGATIVE evidence (full coverage
+            # -> spec matches intent). The calibration framework treats
+            # `confidence` as positive-class likelihood, so high coverage
+            # incorrectly looked like high positive confidence. Map to
+            # `1 - coverage` so strong negatives sit near 0 and the
+            # calibrator can pick sensible thresholds.
             return SpecificationMismatchResult(
                 detected=False,
                 mismatch_type=None,
                 severity=MismatchSeverity.NONE,
-                confidence=coverage,
+                confidence=max(0.0, 1.0 - coverage),
                 requirement_coverage=coverage,
                 missing_requirements=[],
                 ambiguous_elements=[],
