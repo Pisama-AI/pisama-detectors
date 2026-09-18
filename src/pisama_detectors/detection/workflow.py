@@ -59,6 +59,11 @@ class WorkflowAnalysisResult:
     problematic_nodes: list[str]
     explanation: str
     suggested_fix: Optional[str] = None
+    # True when every issue is a baseline artifact of linearizing a
+    # conversation/tool stream into nodes (MISSING_TERMINATION + DEAD_END +
+    # EXCESSIVE_DEPTH) with no real design issue present. Callers that know
+    # their channel produces linear streams (claude_code) gate on this.
+    artifact_only: bool = False
 
 
 class FlawedWorkflowDetector:
@@ -143,27 +148,80 @@ class FlawedWorkflowDetector:
         nodes: list[WorkflowNode],
         forward: dict,
     ) -> list[str]:
-        risky = []
+        """Nodes that can reach a cycle (the loop-risk set), in O(V + E).
 
-        for node in nodes:
-            if node.id in forward.get(node.id, []):
-                risky.append(node.id)
+        A node is risky iff a forward walk from it can revisit a node already
+        on its path — i.e. it can reach a cycle — or it has a self-loop.
 
-        def find_cycles(node_id: str, path: set[str]) -> bool:
-            if node_id in path:
-                return True
-            path = path | {node_id}
-            for neighbor in forward.get(node_id, []):
-                if find_cycles(neighbor, path):
-                    return True
-            return False
+        The previous implementation enumerated every simple path from every
+        node (a per-path ``visited`` set with no global "fully explored" memo).
+        On a cycle-free DAG it never short-circuits, so it walks all paths,
+        which is exponential in node count when fan-out > 1. This computes the
+        same result by finding cycle members via an iterative three-colour DFS,
+        then taking reverse-reachability to every node that can reach one.
+        """
+        node_ids = [n.id for n in nodes]
+        # Explicit self-loops are trivially on a cycle.
+        on_cycle: set[str] = {nid for nid in node_ids if nid in forward.get(nid, [])}
 
-        for node in nodes:
-            if node.id not in risky:
-                if find_cycles(node.id, set()):
-                    risky.append(node.id)
+        white, gray, black = 0, 1, 2
+        color: dict[str, int] = {nid: white for nid in node_ids}
 
-        return list(set(risky))
+        for root in node_ids:
+            if color[root] != white:
+                continue
+            # Iterative DFS. ``path`` mirrors the GRAY stack (the simple path
+            # from root); ``path_pos`` maps a node to its index so a back-edge
+            # can mark the whole cycle segment with one slice. Each edge is
+            # traversed once and each node coloured BLACK once → O(V + E).
+            color[root] = gray
+            path: list[str] = [root]
+            path_pos: dict[str, int] = {root: 0}
+            stack = [(root, iter(forward.get(root, [])))]
+            while stack:
+                node, it = stack[-1]
+                descended = False
+                for nb in it:
+                    c = color.get(nb)
+                    if c is None:
+                        continue  # edge to an unknown node id; ignore
+                    if c == white:
+                        color[nb] = gray
+                        path_pos[nb] = len(path)
+                        path.append(nb)
+                        stack.append((nb, iter(forward.get(nb, []))))
+                        descended = True
+                        break
+                    if c == gray:
+                        # Back-edge: nb .. current top are all on a cycle.
+                        for member in path[path_pos[nb] :]:
+                            on_cycle.add(member)
+                    # BLACK neighbour: fully explored, no new cycle via it.
+                if not descended:
+                    color[node] = black
+                    path.pop()
+                    path_pos.pop(node, None)
+                    stack.pop()
+
+        if not on_cycle:
+            return []
+
+        # Reverse-reachability: any node that can reach a cycle member is risky.
+        reverse: dict[str, list[str]] = defaultdict(list)
+        for src, targets in forward.items():
+            for tgt in targets:
+                reverse[tgt].append(src)
+
+        risky: set[str] = set(on_cycle)
+        work = list(on_cycle)
+        while work:
+            cur = work.pop()
+            for pred in reverse.get(cur, []):
+                if pred not in risky:
+                    risky.add(pred)
+                    work.append(pred)
+
+        return list(risky)
 
     def _detect_bottlenecks(
         self,
@@ -363,9 +421,22 @@ class FlawedWorkflowDetector:
                 explanation="Workflow structure appears valid",
             )
 
-        if (
-            WorkflowIssue.INFINITE_LOOP_RISK in issues
-            or WorkflowIssue.MISSING_TERMINATION in issues
+        # Separate structural artifacts (present in any linear sequential trace)
+        # from real workflow design issues that indicate intentional flaws.
+        # MISSING_TERMINATION, DEAD_END, and EXCESSIVE_DEPTH arise from the
+        # node-building logic for conversation traces, not from design choices.
+        baseline_artifacts = frozenset(
+            {
+                WorkflowIssue.MISSING_TERMINATION,
+                WorkflowIssue.DEAD_END,
+                WorkflowIssue.EXCESSIVE_DEPTH,
+            }
+        )
+        real_issues = [i for i in issues if i not in baseline_artifacts]
+        artifacts_only = len(real_issues) == 0
+
+        if WorkflowIssue.INFINITE_LOOP_RISK in issues or (
+            WorkflowIssue.MISSING_TERMINATION in issues and real_issues
         ):
             severity = WorkflowSeverity.SEVERE
         elif len(issues) >= 3:
@@ -374,9 +445,14 @@ class FlawedWorkflowDetector:
             severity = WorkflowSeverity.MINOR
 
         # v1.1: Confidence based on severity and issue count.
-        # Severe issues (loops, missing termination) get high confidence.
-        # Minor issues (single dead-end, bottleneck) get lower confidence.
-        if severity == WorkflowSeverity.SEVERE:
+        # v1.2: Artifact-only traces (linear conversations that always fire
+        # MISSING_TERMINATION + DEAD_END + EXCESSIVE_DEPTH) get a lower,
+        # depth-scaled confidence — they're not genuine design flaws.
+        # v1.3: Floor raised so deeper traces stay at HIGH severity (conf≥0.80)
+        # while still being graded below the previous constant 0.90.
+        if artifacts_only:
+            confidence = min(0.90, 0.65 + max_depth * 0.020)
+        elif severity == WorkflowSeverity.SEVERE:
             confidence = min(0.75 + len(issues) * 0.05, 0.95)
         elif len(issues) >= 3:
             confidence = min(0.6 + len(issues) * 0.05, 0.90)
@@ -390,7 +466,9 @@ class FlawedWorkflowDetector:
             if single_issue in (WorkflowIssue.DEAD_END, WorkflowIssue.UNREACHABLE_NODE):
                 confidence = 0.70
             elif single_issue == WorkflowIssue.EXCESSIVE_DEPTH:
-                confidence = 0.60
+                # Scale with actual depth: deeper sequential chains are more
+                # concerning than marginally-over-threshold ones.
+                confidence = min(0.75, 0.40 + max_depth * 0.025)
             elif single_issue in (
                 WorkflowIssue.ORPHAN_NODE,
                 WorkflowIssue.BOTTLENECK,
@@ -401,7 +479,7 @@ class FlawedWorkflowDetector:
                 confidence = 0.55
 
         issue_names = [i.value for i in issues]
-        unique_problematic = list(set(problematic))[:5]
+        unique_problematic = sorted(set(problematic))[:5]
         explanation = (
             f"Workflow has {len(issues)} structural issues: {', '.join(issue_names)}. "
             f"Affected nodes: {', '.join(unique_problematic)}"
@@ -426,9 +504,10 @@ class FlawedWorkflowDetector:
             confidence=confidence,
             node_count=len(nodes),
             edge_count=edge_count,
-            problematic_nodes=list(set(problematic)),
+            problematic_nodes=sorted(set(problematic)),
             explanation=explanation,
             suggested_fix="; ".join(fixes) if fixes else None,
+            artifact_only=artifacts_only,
         )
 
     def detect_from_trace(

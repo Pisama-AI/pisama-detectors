@@ -136,9 +136,12 @@ class DifyRagPoisoningDetector(TurnAwareDetector):
                 f"{len(retrieval_nodes)} retrieval node(s)"
                 + ("; LLM echoed injected content" if has_echo else "")
             ),
-            affected_turns=list(range(len(affected_node_ids))),
+            # affected_turns=[] — was a count masquerading as indices; real
+            # node IDs go in evidence below.
+            affected_turns=[],
             evidence={
                 "issues": issues,
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "total_retrieval_nodes": len(retrieval_nodes),
                 "pattern_count": pattern_count,
                 "llm_echo_detected": has_echo,

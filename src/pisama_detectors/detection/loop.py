@@ -20,10 +20,51 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from pisama_detectors._config import get_settings, get_tenant_thresholds
+from pisama_detectors.detection.precision_guards import (
+    outcome_is_success,
+    reports_explicit_failure,
+)
 from pisama_detectors.detection.shared_embedder import get_shared_embedder as get_embedder
 
 # Detector version
-DETECTOR_VERSION = "1.6"
+# v1.9: content fingerprint tier — catches loops with empty state_deltas where
+# the same content prefix repeats 3+ times (MAST ChatDev/MetaGPT pattern);
+# structural matching with empty deltas now requires content similarity to
+# avoid false positives on healthy tool-call iteration.
+# v2.0: extend structural-tier guard for empty-delta traces from agent_id=="unknown"
+# to ALL agents. Use embedding cosine similarity (threshold 0.65) instead of
+# Jaccard: cosine separates real loops (same-stuck-problem, median 0.83) from
+# AG2-style topic-switching FPs (different sub-tasks, median 0.65) much better
+# than word overlap. Grid search on cleaned corpus confirmed 0.65 as best F1 point.
+# v2.1: structural-tier recurrence requirement — a key-set match alone is not a
+# loop. Each structural match must be a genuine return to the same state
+# (bookkeeping-stripped work payload recurs, or — for a trivial payload — the
+# content also repeats). Kills systemic over-firing on all-distinct-state traces
+# (e.g. a planner→…→planner workflow whose key-set is identical every step but
+# whose work differs) while preserving every genuine recurrence, including stuck
+# retry loops whose only-changing field is a counter. The content tiers
+# (semantic/lexical/content_fingerprint) keep their own guards and are untouched,
+# so paraphrased loops with no shared state_delta still fire.
+# v2.2: a state_delta only counts as loop evidence if it carries WORK. v2.1 got
+# this right for the structural tier but expressed it in two incomplete places:
+# (a) the hash tier keyed on raw state_delta identity, guarded only against the
+# empty delta, and (b) "substantive" was judged on key names alone. So a producer
+# that stamps a fixed channel label on every snapshot — {"step": "work"},
+# {"event_type": ..., "category": ...}, or a trace_only delta whose only varying
+# key was the content that got nulled to None — collided with itself by
+# construction and fired at 0.90-0.98 on traces that obviously progressed.
+# Channel/type keys and None-valued keys are now non-work, and the hash tier
+# demands the same content confirmation the empty delta always got. Deltas that
+# name actual work ({"query": "inventory SKU-1001"}, a static last_error under a
+# ticking retry counter) are untouched and still fire on paraphrased content.
+# v2.3: no-signal guard. A snapshot whose state_delta carries no work AND whose
+# content is unreadable is not evidence of anything, but such snapshots are all
+# identical to each other, so a trace made entirely of them read as a perfect
+# loop. Detection now requires at least one snapshot in the trace to carry some
+# signal. Any trace with real content or a real payload is unaffected.
+# v2.4: exact-output fan-out suppression requires structured, distinct external
+# work input (not changing peer prose/counters), or explicit terminal progress.
+DETECTOR_VERSION = "2.4"
 
 # v1.6: Monotonic-counter keys that are bookkeeping, not work progress.
 # When these are the ONLY strictly-distinct keys, the agent is still looping
@@ -33,16 +74,35 @@ _BOOKKEEPING_KEYS = frozenset(
         "iteration_count",
         "iteration_index",
         "iteration",
+        "iteration_num",
+        "iter",
+        "iter_num",
         "turn_count",
         "turn",
         "step",
+        "step_num",
         "superstep",
         "retry",
         "retry_count",
         "retries",
         "attempt",
         "attempts",
+        "attempt_num",
+        "attempt_n",
+        "num_attempts",
         "format_attempts",
+        "cycle",
+        "cycle_num",
+        "cycle_count",
+        "loop_count",
+        "loop_index",
+        "loop_num",
+        "epoch",
+        "epoch_num",
+        "round",
+        "round_num",
+        "round_count",
+        "tick",
         "execution_time_ms",
         "timestamp_ms",
         "timestamp",
@@ -50,6 +110,84 @@ _BOOKKEEPING_KEYS = frozenset(
         "sequence",
         "seq",
     }
+)
+
+# v1.7: Status-like state_delta keys and the terminal/success values that mean
+# the run *resolved*. A sequence that reaches one of these made progress
+# (e.g. pending→retry→retry→success) — it terminated, so it must not be flagged
+# as a stuck loop even though its structure repeats. Keyed on the structured
+# status field (not free-text content) and gated on an actual transition so a
+# constant "status: ok" on every step is not mistaken for progress.
+_STATUS_KEYS = frozenset(
+    {
+        "status",
+        "state",
+        "outcome",
+        "result",
+        "phase",
+        "stage",
+        "task_status",
+        "job_status",
+        "step_status",
+        "run_status",
+    }
+)
+_TERMINAL_SUCCESS_VALUES = frozenset(
+    {
+        "success",
+        "succeeded",
+        "successful",
+        "complete",
+        "completed",
+        "done",
+        "finished",
+        "resolved",
+        "passed",
+        "pass",
+        "ok",
+        "fulfilled",
+    }
+)
+
+# v2.3: content values that are placeholders for absent data rather than
+# something the agent said. Compared case-insensitively after stripping.
+_UNINFORMATIVE_CONTENT = frozenset(
+    {"", "none", "null", "nil", "n/a", "na", "-", "{}", "[]", "()"}
+)
+
+# v2.4: Fields that can change during a peer-to-peer bounce without supplying
+# new work. They must not turn changing counters or rephrased hand-off chatter
+# into the "distinct input" needed to excuse an otherwise exact repetition.
+_NON_INPUT_DELTA_KEYS = frozenset(
+    {
+        *_BOOKKEEPING_KEYS,
+        *_STATUS_KEYS,
+        "agent", "agent_id", "agent_name", "agent_role", "role", "speaker",
+        "author", "sender", "actor", "participant", "participant_id", "from", "to",
+        "event_type", "event", "event_name", "type", "kind", "category", "channel",
+        "node", "node_name", "span_kind", "message_type",
+        "bounce", "bounces", "bounce_count", "peer_bounce", "handoff", "handoffs",
+        "handoff_count", "handoff_target", "delegate_to", "delegation_target",
+        "next_agent", "recipient",
+        "message", "content", "text", "prose", "reply", "response_text", "note",
+        "notes", "summary", "description", "explanation", "thought", "reasoning",
+        # Per-attempt telemetry IDs are not workload identities. A retry gets a new
+        # call/request/span ID even when it is doing exactly the same work.
+        "call_id", "request_id", "response_id", "event_id", "execution_id", "run_id",
+        "span_id", "trace_id",
+    }
+)
+_COUNTERISH_INPUT_KEY_RE = re.compile(
+    r"(?:^|_)(?:attempt|bounce|cycle|handoff|iteration|retry|round|step|turn)"
+    r"(?:s|_count|_index|_num|_number|$)",
+    re.IGNORECASE,
+)
+_TERMINAL_PROGRESS_RE = re.compile(
+    r"\b(?:all\s+)?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+"
+    r"(?:[\w-]+\s+){0,2}"
+    r"(?:checked|completed|delivered|finished|indexed|processed|reviewed|screened|"
+    r"submitted|validated)\b",
+    re.IGNORECASE,
 )
 
 settings = get_settings()
@@ -97,6 +235,101 @@ class StateSnapshot:
     state_delta: dict
     content: str
     sequence_num: int
+
+
+def _strip_non_input_fields(value):
+    """Remove coordination/telemetry-only fields from an input payload."""
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, child in value.items():
+            key_text = str(key).strip().lower()
+            if (
+                key_text in _NON_INPUT_DELTA_KEYS
+                or _COUNTERISH_INPUT_KEY_RE.search(key_text)
+            ):
+                continue
+            child_clean = _strip_non_input_fields(child)
+            if child_clean not in (None, "", {}, []):
+                cleaned[str(key)] = child_clean
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        cleaned_items = [_strip_non_input_fields(child) for child in value]
+        return [child for child in cleaned_items if child not in (None, "", {}, [])]
+    return value
+
+
+def _structured_external_input_fingerprint(state: "StateSnapshot") -> Optional[str]:
+    """Fingerprint real structured work supplied by an intervening participant."""
+    if not isinstance(state.state_delta, dict) or not state.state_delta:
+        return None
+    if outcome_is_success(state.state_delta) is False:
+        return None
+    if reports_explicit_failure(state.content or ""):
+        return None
+    cleaned = _strip_non_input_fields(state.state_delta)
+    if not cleaned:
+        return None
+    if reports_explicit_failure(json.dumps(cleaned, sort_keys=True, default=str)):
+        return None
+    return json.dumps(cleaned, sort_keys=True, default=str)
+
+
+def _has_terminal_progress_after(
+    states: List["StateSnapshot"], index: int, repeated_agent: Optional[str]
+) -> bool:
+    """Require explicit terminal status or quantified completion after a repeat."""
+    tail = states[index + 1:]
+    for state in reversed(tail):
+        # A successful telemetry write or another participant's unrelated work
+        # cannot retroactively turn this agent's repeated output into progress.
+        if state.agent_id != repeated_agent:
+            continue
+        verdict = outcome_is_success(state.state_delta)
+        if verdict is not None:
+            return verdict
+
+    # Some adapters retain only text. Keep this fallback narrow: a quantified
+    # completed-work statement from the repeating agent is useful terminal
+    # evidence; generic "progress" or peer hand-off prose is not.
+    return any(
+        state.agent_id == repeated_agent
+        and not reports_explicit_failure(state.content or "")
+        and _TERMINAL_PROGRESS_RE.search(state.content or "")
+        for state in tail
+    )
+
+
+def _repeats_driven_by_distinct_inputs(
+    states: List["StateSnapshot"], indices: List[int]
+) -> bool:
+    """Return whether repeats have trustworthy evidence of distinct work.
+
+    A different participant plus different prose is not enough: two agents can
+    bounce the same task forever while changing round numbers and wording. The
+    exemption requires either structured, non-bookkeeping external/tool input
+    in every interval, or explicit terminal/quantified progress after the last
+    repetition.
+    """
+    if len(indices) < 2:
+        return False
+    repeated_agent = states[indices[0]].agent_id if indices else None
+    if _has_terminal_progress_after(states, indices[-1], repeated_agent):
+        return True
+
+    intervening = [states[start + 1:end] for start, end in zip(indices, indices[1:])]
+    fingerprints = []
+    for window in intervening:
+        external_inputs = sorted({
+            fingerprint
+            for state in window
+            if state.agent_id != repeated_agent
+            for fingerprint in [_structured_external_input_fingerprint(state)]
+            if fingerprint is not None
+        })
+        if not external_inputs:
+            return False
+        fingerprints.append(json.dumps(external_inputs, sort_keys=True))
+    return len(set(fingerprints)) == len(fingerprints)
 
 
 class MultiLevelLoopDetector:
@@ -311,6 +544,19 @@ class MultiLevelLoopDetector:
         # wrapping up) AND earlier states don't already look like a loop. A
         # single word match on the last state while earlier states clearly
         # repeat the same work should still flag as a loop.
+        # v2.3: A loop is a claim about what the agent DID. If no snapshot in the
+        # trace carries either a work payload or readable content, the trace says
+        # nothing about the agent's behaviour and the uniformity of its snapshots
+        # is an artifact of the data being absent — not a repetition. Deliberately
+        # whole-trace and not per-snapshot: a single blank step inside a real
+        # trace is still legitimate loop evidence, so this only suppresses traces
+        # that are entirely signal-free.
+        if not any(
+            self._delta_is_substantive(s.state_delta) or self._content_is_informative(s.content)
+            for s in states
+        ):
+            return self._no_loop(evidence={"no_signal": True})
+
         current = states[-1]
         if self._is_summary_or_progress(current.content):
             if not self._earlier_states_look_like_loop(states[:-1]):
@@ -330,6 +576,7 @@ class MultiLevelLoopDetector:
         return (
             self._detect_structural_loop(current, window, states)
             or self._detect_hash_loop(current, window, states)
+            or self._detect_content_fingerprint_loop(states)
             or self._detect_semantic_loop(current, window, states)
             or self._detect_lexical_loop(current, window, states)
             or self.detect_semantic_loop_with_clustering(states)
@@ -349,6 +596,46 @@ class MultiLevelLoopDetector:
         if not matches:
             return None
 
+        # v2.0: When state_deltas are empty, structural matching is vacuous regardless
+        # of agent name. Use embedding cosine similarity to confirm real content
+        # repetition. Threshold 0.65 was chosen by grid search on the cleaned corpus:
+        # separates real loops (same-agent content repeating, median cosine 0.83) from
+        # AG2-style topic-switching FPs (different sub-tasks each turn, median 0.65).
+        # Falls back to Jaccard if embedder is unavailable.
+        if not current.state_delta:
+            try:
+                cur_content = current.content or ""
+                window_contents = [window[i].content or "" for i in matches]
+                all_contents = [cur_content] + window_contents
+                embs = self.embedder.encode(all_contents)
+                cur_emb = embs[0]
+                matches = [
+                    matches[j] for j, emb in enumerate(embs[1:])
+                    if self.embedder.similarity(cur_emb, emb) >= 0.65
+                ]
+            except Exception:
+                # Embedder unavailable: fall back to Jaccard
+                matches = [
+                    i for i in matches
+                    if self._content_similar(current.content, window[i].content, threshold=0.5)
+                ]
+            if not matches:
+                return None
+
+        # v2.1: Structural recurrence requirement — key-set similarity alone is
+        # not a loop. Require each remaining match to be a genuine return to the
+        # same state (``_is_loop_repeat``): the bookkeeping-stripped work payload
+        # recurs (a stuck retry, only a counter ticking) OR, for a trivial
+        # payload, the content also repeats. This drops the systemic over-fire on
+        # all-distinct traces — e.g. a planner→…→planner workflow whose key-set is
+        # identical every step but whose work (response) differs — while keeping
+        # genuine recurrences. The empty-state_delta path above already applies
+        # its own cosine guard, so only non-empty deltas need this filter.
+        if current.state_delta:
+            matches = [i for i in matches if self._is_loop_repeat(current, window[i])]
+            if not matches:
+                return None
+
         # v1.4: Batch-iteration guard. A genuine loop cycles through repeating
         # state values (e.g. thermostat 72→68→72→68); batch iteration produces
         # strictly distinct values per key (doc: 1,2,3,4…). If every key in the
@@ -358,7 +645,7 @@ class MultiLevelLoopDetector:
 
         first_match = matches[0]
         loop_length = len(window) - first_match
-        window_start = len(states) - 1 - len(window)
+        window_start = max(0, len(states) - self.window_size)
         raw_score = len(matches) / len(window)
 
         return LoopDetectionResult(
@@ -390,21 +677,36 @@ class MultiLevelLoopDetector:
         if not matches:
             return None
 
-        # v1.6: Hash of empty state_delta ({}) is trivially constant. If all
-        # matched states have empty deltas, require that the content itself
-        # also repeats — otherwise the "hash match" is spurious (different
-        # agents/content happen to share an empty delta).
-        if not current.state_delta:
-            matched_contents = [window[i].content for i in matches if not window[i].state_delta]
-            if matched_contents and not any(
-                c == current.content
-                or (
-                    len(c) > 20
-                    and len(current.content) > 20
-                    and (c.startswith(current.content[:40]) or current.content.startswith(c[:40]))
+        # v1.6: Hash of empty state_delta ({}) is trivially constant. Require
+        # content similarity to confirm the hash match is real.
+        # v1.8: Also require same agent_id — different agents sharing an empty
+        # state_delta and a common prompt prefix (e.g. a shared task description)
+        # produce spurious cross-agent matches that don't indicate a loop.
+        # v2.2: an EMPTY delta is only the loudest case of a delta with no work in
+        # it. One that carries nothing but a channel label ({"step": "work"},
+        # {"event_type": ...}) or nulled-out content collides with itself on every
+        # snapshot the producer emits, so the hash says nothing about the agent —
+        # it fired at 0.90 on six snapshots describing six different actions.
+        # Both cases now take the same content confirmation. The structural tier
+        # already applies this rule via _is_loop_repeat; this is the hash tier's
+        # equivalent, which had been keying on the raw delta.
+        if not self._delta_is_substantive(current.state_delta):
+            matches = [
+                i
+                for i in matches
+                if (
+                    window[i].agent_id == current.agent_id
+                    and (
+                        window[i].content == current.content
+                        or (
+                            len(window[i].content) > 20
+                            and len(current.content) > 20
+                            and window[i].content[:40] == current.content[:40]
+                        )
+                    )
                 )
-                for c in matched_contents
-            ):
+            ]
+            if not matches:
                 return None
 
         first_match = matches[0]
@@ -422,6 +724,117 @@ class MultiLevelLoopDetector:
             loop_length=loop_length,
             raw_score=raw_score,
             evidence={"hash_matches": len(matches), "window_size": len(window)},
+            framework=self.framework,
+        )
+
+    def _detect_content_fingerprint_loop(
+        self, states: List[StateSnapshot]
+    ) -> Optional[LoopDetectionResult]:
+        """v1.9: Content fingerprint detection — catches loops where the same
+        content prefix appears 3+ times, even across different agents.
+
+        MAST ChatDev/MetaGPT traces have empty state_deltas but clear content
+        repetition (Code_Reviewer asking for same fix, Programmer submitting same
+        code). Structural/hash tiers miss these because they require state_delta
+        signals. This tier uses content prefix fingerprints to detect repetition.
+
+        Progress guards:
+        1. If the RESPONSE states (between repeating requests) differ, it's healthy
+           iteration (skip→different song→skip→different song), not a loop.
+        2. Fingerprints must match on more than just a short command prefix.
+        """
+        if len(states) < 4:
+            return None
+
+        # Build fingerprints: first 80 chars, normalized
+        def fingerprint(s: StateSnapshot) -> str:
+            c = s.content.strip()[:80].lower()
+            c = re.sub(r"\s+", " ", c)
+            return c
+
+        fps = [fingerprint(s) for s in states]
+        from collections import Counter
+
+        fp_counts = Counter(fps)
+
+        # Find fingerprints appearing 3+ times (loop signal)
+        repeated = [(fp, cnt) for fp, cnt in fp_counts.items() if cnt >= 3 and len(fp) > 20]
+        if not repeated:
+            return None
+
+        # v1.9: Same-agent + full-content guard. A stuck loop has the SAME
+        # agent repeating IDENTICAL full content. Just matching prefixes is not
+        # enough — healthy code generation often shares the same prefix/structure
+        # but produces different full output each time.
+        #
+        # Strategy: find states where ONE agent produces the same FULL content
+        # 2+ times. That's the loop signal — an agent truly stuck.
+        loop_agent = None
+        loop_indices = []
+
+        # Group states by agent
+        from collections import defaultdict
+
+        agent_states = defaultdict(list)
+        for i, s in enumerate(states):
+            agent_states[s.agent_id].append((i, s.content))
+
+        # Find an agent with repeated full content
+        for agent, indexed_contents in agent_states.items():
+            if len(indexed_contents) < 2:
+                continue
+            content_to_indices = defaultdict(list)
+            for idx, content in indexed_contents:
+                content_to_indices[content].append(idx)
+            # Find content that appears 2+ times
+            for content, indices in content_to_indices.items():
+                if len(indices) >= 2 and len(content) > 50:
+                    loop_agent = agent
+                    loop_indices = indices
+                    break
+            if loop_agent:
+                break
+
+        if not loop_agent or len(loop_indices) < 2:
+            return None
+
+        # Identical output can be healthy fan-out when each repeat answers a
+        # different intervening input. Empty or identical windows remain loop
+        # evidence, so this suppresses only explicit progress.
+        if _repeats_driven_by_distinct_inputs(states, loop_indices):
+            return None
+
+        indices = loop_indices
+        match_count = len(indices)
+
+        loop_start = indices[0]
+        loop_length = indices[-1] - indices[0]
+        # v1.9: Exact content duplication is a strong signal. Score based on
+        # match count, not ratio to total states (3 exact dups in 25 states is
+        # just as bad as 3 in 6). Min 0.5 for 2 matches, scaling up to 1.0.
+        raw_score = min(1.0, 0.3 + 0.2 * match_count)
+
+        # Get a preview of the repeated content
+        repeated_content = states[indices[0]].content
+        preview = repeated_content[:40] if repeated_content else ""
+
+        return LoopDetectionResult(
+            detected=True,
+            # Use structural base confidence — exact content match is strong evidence
+            confidence=self._calibrate_confidence(
+                raw_score, "structural", min(1.0, match_count / 3), loop_length
+            ),
+            method="content_fingerprint",
+            cost=0.0,
+            loop_start_index=loop_start,
+            loop_length=loop_length,
+            raw_score=raw_score,
+            evidence={
+                "exact_content_matches": match_count,
+                "content_preview": preview,
+                "loop_agent": loop_agent,
+                "total_states": len(states),
+            },
             framework=self.framework,
         )
 
@@ -447,6 +860,15 @@ class MultiLevelLoopDetector:
                 if sim > self.semantic_threshold
                 and not self._has_meaningful_progress(window[i], current)
             ]
+
+            # v1.8: Same-agent guard — when all spans lack state_delta, cross-agent
+            # semantic similarity is driven by shared prompt context, not repetition.
+            if not current.state_delta:
+                high_sim_matches = [
+                    (i, sim)
+                    for i, sim in high_sim_matches
+                    if not window[i].state_delta and window[i].agent_id == current.agent_id
+                ]
 
             # v1.2: If current state is a summary/recap, don't flag as loop
             if self._is_summary_or_progress(current.content):
@@ -647,6 +1069,26 @@ class MultiLevelLoopDetector:
             framework=self.framework,
         )
 
+    def _content_similar(self, a: str, b: str, threshold: float = 0.6) -> bool:
+        """v1.9: Check if two content strings are similar enough to indicate
+        repetition. Uses prefix match + Jaccard on word tokens. Threshold 0.6
+        balances catching real loops (same error message rephrased) vs. healthy
+        iteration (distinct results each step)."""
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        # Prefix match (first 50 chars) catches exact-same-message loops
+        if len(a) > 40 and len(b) > 40 and a[:50] == b[:50]:
+            return True
+        # Jaccard on word tokens for paraphrased loops
+        words_a = set(a.lower().split())
+        words_b = set(b.lower().split())
+        if not words_a or not words_b:
+            return False
+        jaccard = len(words_a & words_b) / len(words_a | words_b)
+        return jaccard >= threshold
+
     def _earlier_states_look_like_loop(self, earlier: List["StateSnapshot"]) -> bool:
         """v1.6: Cheap check — do earlier states in the sequence already
         exhibit loop-like repetition (same content, same delta ignoring
@@ -737,13 +1179,47 @@ class MultiLevelLoopDetector:
         return False
 
     def _structural_match(self, a: StateSnapshot, b: StateSnapshot) -> bool:
-        return a.agent_id == b.agent_id and set(a.state_delta.keys()) == set(b.state_delta.keys())
+        if a.agent_id != b.agent_id:
+            return False
+        keys_a = set(a.state_delta.keys())
+        keys_b = set(b.state_delta.keys())
+        # Exact key-set equality is the structural_threshold == 1.0 case and is
+        # the fast path / prior behavior. The per-framework structural_threshold
+        # (0.88-0.98, set in _config.py) relaxes this to a Jaccard key-overlap
+        # floor so the knob is actually live: n8n (0.98) stays near-exact for its
+        # deterministic DAG state, looser frameworks (crewai 0.88) tolerate minor
+        # key drift between iterations. Tenant overrides flow through the same
+        # self.structural_threshold. At threshold 1.0 only exact matches pass, so
+        # callers that want the old strict behavior keep it.
+        if keys_a == keys_b:
+            return True
+        union = keys_a | keys_b
+        if not union:
+            return True
+        if self.structural_threshold >= 1.0:
+            return False
+        return (len(keys_a & keys_b) / len(union)) >= self.structural_threshold
 
     def _has_meaningful_progress(self, prev: StateSnapshot, current: StateSnapshot) -> bool:
         # v1.6: Bookkeeping keys (iteration counters, timestamps) change on
         # every step regardless of work progress — exclude from progress check.
         prev_keys = set(prev.state_delta.keys()) - _BOOKKEEPING_KEYS
         curr_keys = set(current.state_delta.keys()) - _BOOKKEEPING_KEYS
+
+        # v1.7: A status-like field transitioning into a terminal/success value
+        # is unambiguous progress — the run resolved. A healthy retry sequence
+        # (status: pending→retry→retry→success) repeats structurally but is not
+        # a stuck loop. Gated on a real transition (prev value differs) so a
+        # constant success status across every step is not counted as progress.
+        for k in curr_keys:
+            if k.lower() not in _STATUS_KEYS:
+                continue
+            cur_val = str(current.state_delta.get(k, "")).strip().lower()
+            if cur_val in _TERMINAL_SUCCESS_VALUES:
+                prev_val = str(prev.state_delta.get(k, "")).strip().lower()
+                if prev_val != cur_val:
+                    return True
+
         delta_keys = curr_keys - prev_keys
         value_changes = sum(
             1 for k in curr_keys if k in prev_keys and current.state_delta[k] != prev.state_delta[k]
@@ -756,8 +1232,131 @@ class MultiLevelLoopDetector:
                 return True
         return False
 
+    # v2.1: state_delta keys that only restate WHO is acting, not WHAT work is
+    # being done. Within a per-agent group these are constant (= the group key)
+    # or status chatter, so a delta consisting solely of them is not a work
+    # payload: its recurrence alone never makes a loop.
+    _IDENTITY_DELTA_KEYS = frozenset(
+        {
+            "agent", "agent_id", "agent_name", "agent_role", "role",
+            "speaker", "author", "sender", "actor",
+            "participant", "participant_id", "from", "to",
+        }
+    )
+
+    # v2.2: keys that name the KIND of event or the channel it came down, not the
+    # work in it. Ingestion stamps these on every snapshot it emits, so they are
+    # constant by construction within a run and their recurrence is a property of
+    # the adapter rather than of the agent. Note the contrast with real work keys
+    # that happen to hold a verb: {"action": "check_inventory"} says WHAT is being
+    # done and stays substantive; {"event_type": "agent.message"} only says which
+    # pipe the snapshot arrived on.
+    _CHANNEL_DELTA_KEYS = frozenset(
+        {
+            "event_type", "event", "event_name", "type", "kind", "category",
+            "channel", "node", "node_name", "span_kind", "message_type",
+        }
+    )
+    # Deliberately NOT here: "source". In RAG/grounding traces it names the
+    # retrieved document, which is real work — an agent pinned on one source is
+    # the loop, not the framing.
+
+    def _meaningful_delta(self, state_delta: dict) -> dict:
+        """state_delta with bookkeeping keys (iteration/retry/attempt counters,
+        timestamps, step counters) stripped. A stuck retry loop ticks only its
+        counter while the work payload (tool_args, error_code, http_status…)
+        stays identical, so two such states share a meaningful delta even though
+        their raw state_hash differs."""
+        return {k: v for k, v in state_delta.items() if k not in _BOOKKEEPING_KEYS}
+
+    def _meaningful_delta_hash(self, state: StateSnapshot) -> str:
+        """Canonical hash of the bookkeeping-stripped state_delta. Returns ""
+        when nothing remains (all-bookkeeping delta)."""
+        meaningful = self._meaningful_delta(state.state_delta)
+        if not meaningful:
+            return ""
+        return json.dumps(self._deep_canonicalize(meaningful), sort_keys=True, default=str)
+
+    def _content_is_informative(self, content: str) -> bool:
+        """v2.3: whether a snapshot's content says anything at all.
+
+        Some adapters emit a placeholder string rather than an empty one when a
+        span carries no prompt/response/tool fields. Treating that as text would
+        make every such snapshot identical to every other, which is a loop by
+        every measure the detector has."""
+        return bool(content) and content.strip().lower() not in _UNINFORMATIVE_CONTENT
+
+    def _delta_is_substantive(self, state_delta: dict) -> bool:
+        """True when the bookkeeping-stripped delta carries an actual work key —
+        something beyond agent identity, event channel and status.
+        ``{query: 'inventory'}`` is substantive (a stuck re-query);
+        ``{agent: planner, status: ok}`` is not (just identity + a generic OK),
+        and neither is ``{event_type: agent.message, category: chat}`` (v2.2:
+        which pipe the snapshot came down, stamped identically on every one).
+
+        v2.2: a key whose value carries no information — ``None``, or an empty
+        string/dict/list — does not make a delta substantive either. Ingestion
+        that nulls content fields while keeping the keys produces a delta with
+        nothing in it, not a work payload recurring."""
+        meaningful = self._meaningful_delta(state_delta)
+        return any(
+            k.lower() not in self._IDENTITY_DELTA_KEYS
+            and k.lower() not in self._CHANNEL_DELTA_KEYS
+            and k.lower() not in _STATUS_KEYS
+            and v is not None
+            and v != ""
+            and v != {}
+            and v != []
+            for k, v in meaningful.items()
+        )
+
+    def _is_loop_repeat(self, a: StateSnapshot, b: StateSnapshot) -> bool:
+        """Whether two same-agent snapshots are a genuine return to the same
+        state (the loop precondition):
+
+        1. Their bookkeeping-stripped work payloads match (same tool/error/args,
+           only a counter ticking). If that payload is SUBSTANTIVE (a real work
+           key, not just agent-identity + status), it is a genuine recurrence
+           regardless of content paraphrase — an agent re-issuing the same query.
+           If the payload is TRIVIAL (``{agent, status: ok}``), require the
+           content to also be similar: a planner→…→planner workflow whose key-set
+           is identical but whose response differs each step is progress, not a
+           loop.
+        2. No matching work payload (differing deltas): fall back to content
+           repetition — the signal the semantic/content/lexical tiers loop on."""
+        ha, hb = self._meaningful_delta_hash(a), self._meaningful_delta_hash(b)
+        if ha and ha == hb:
+            if self._delta_is_substantive(a.state_delta):
+                return True
+            if a.content and b.content and not self._content_similar(a.content, b.content, threshold=0.5):
+                return False
+            return True
+        return self._content_similar(a.content, b.content, threshold=0.5)
+
+    @staticmethod
+    def _deep_canonicalize(value):
+        """Recursively canonicalize a value so that semantically-equal
+        structures hash identically.
+
+        json.dumps(sort_keys=True) sorts dict keys but NOT list elements,
+        so [{"id":"a"},{"id":"b"}] and [{"id":"b"},{"id":"a"}] hash
+        differently even though the agent state is the same. That made
+        the cheap O(1) loop detector silently miss many loops, pushing
+        traffic to the expensive O(N²) semantic clustering tier.
+        """
+        if isinstance(value, dict):
+            return {k: MultiLevelLoopDetector._deep_canonicalize(value[k]) for k in sorted(value)}
+        if isinstance(value, (list, tuple)):
+            canonical = [MultiLevelLoopDetector._deep_canonicalize(v) for v in value]
+            try:
+                return sorted(canonical, key=lambda v: json.dumps(v, sort_keys=True, default=str))
+            except TypeError:
+                return canonical
+        return value
+
     def _compute_state_hash(self, state: StateSnapshot) -> str:
-        normalized = json.dumps(state.state_delta, sort_keys=True)
+        canon = self._deep_canonicalize(state.state_delta)
+        normalized = json.dumps(canon, sort_keys=True, default=str)
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
     def detect_semantic_loop_with_clustering(
@@ -796,7 +1395,24 @@ class MultiLevelLoopDetector:
             # dominant/cycling cluster the states carry a non-bookkeeping
             # state_delta key whose values are strictly distinct, the agent is
             # processing a batch of different items — not looping.
-            if self._cluster_is_batch_iteration(states, cluster_labels, evidence):
+            # v1.7: A cluster *cycle* (A→B→A→B) returns to a prior semantic
+            # state — lack of progress, the defining trait of a loop — even when
+            # each step's surface text (and therefore its state_delta
+            # fingerprint) differs. But the same 2-cycle shape is also produced
+            # by ordinary tool use: call→result→call→result, where each cycle
+            # advances through a *distinct work item* (record_id 5001/5002/5003,
+            # app-001/002/003). That is batch progress, not a loop.
+            #
+            # Discriminator (the task's "lack of progress" framing): batch
+            # iteration carries a strictly-distinct *identifier-like* work key
+            # (numbers or single-token IDs); a genuine oscillation's only
+            # distinct values are free-text restatements of the same decision.
+            # Dominance keeps the original (looser) veto unchanged.
+            is_cycle = bool(evidence.get("cycle_length"))
+            veto = self._cluster_is_batch_iteration(
+                states, cluster_labels, evidence, require_identifier_like=is_cycle
+            )
+            if veto:
                 return None
 
             return self._build_clustering_result(
@@ -805,11 +1421,21 @@ class MultiLevelLoopDetector:
         except Exception:
             return None
 
-    def _cluster_is_batch_iteration(self, states, cluster_labels, evidence) -> bool:
+    def _cluster_is_batch_iteration(
+        self, states, cluster_labels, evidence, *, require_identifier_like: bool = False
+    ) -> bool:
         """v1.6: Return True if the clusters look like batch iteration rather
         than a loop. Batch iteration: within a cluster (same kind of work),
         there is a non-bookkeeping state_delta key whose values are all
-        strictly distinct — the agent is processing item 1, item 2, item 3…"""
+        strictly distinct — the agent is processing item 1, item 2, item 3…
+
+        v1.7: When ``require_identifier_like`` is set, the strictly-distinct key
+        must also be *identifier-like* (numbers, single-token IDs, or a
+        templated counter) to count. Used for cluster cycles, where a genuine
+        oscillation loop restates the same decision in free text each turn
+        (distinct but not identifier-like) while real call→result batch
+        iteration advances a work-item id/counter.
+        """
         target_clusters = set()
         if "dominant_cluster" in evidence:
             target_clusters.add(evidence["dominant_cluster"])
@@ -828,18 +1454,59 @@ class MultiLevelLoopDetector:
                 all_keys |= set(s.state_delta.keys())
             work_keys = {k for k in all_keys if k not in _BOOKKEEPING_KEYS}
             for k in work_keys:
-                values = []
+                raw_values = []
+                hashable = []
                 for s in cluster_states:
                     if k not in s.state_delta:
                         continue
                     v = s.state_delta[k]
+                    raw_values.append(v)
                     try:
                         hash(v)
-                        values.append(v)
+                        hashable.append(v)
                     except TypeError:
-                        values.append(json.dumps(v, sort_keys=True, default=str))
-                if len(values) == len(cluster_states) and len(set(values)) == len(values):
+                        hashable.append(json.dumps(v, sort_keys=True, default=str))
+                if len(hashable) == len(cluster_states) and len(set(hashable)) == len(hashable):
+                    if require_identifier_like and not self._values_are_identifier_like(raw_values):
+                        continue
                     return True
+        return False
+
+    @staticmethod
+    def _values_are_identifier_like(values) -> bool:
+        """v1.7: True when every value is a work-item identifier — a number or a
+        single-token string (record ids like 'tick-5001', slugs, counters). A
+        free-text value (multi-word, e.g. an agent restating "approach A is
+        more suitable") is NOT identifier-like: distinct free-text across a
+        cluster is paraphrase, not batch progress. Booleans are rejected
+        (True/False flip-flop is not a work-item sequence).
+
+        v1.8: a templated counter is also identifier-like — distinct values that
+        share one skeleton once digit runs are blanked ("step 0".."step 5",
+        "page 2"/"page 3") are a prefix+counter work sequence, not paraphrase.
+        Without this the cluster-cycle veto flagged monotonically advancing
+        steps (which only differ by an incrementing number) as an oscillation."""
+        if not values:
+            return False
+
+        def _atomic_id(v) -> bool:
+            if isinstance(v, bool):
+                return False
+            if isinstance(v, (int, float)):
+                return True
+            return isinstance(v, str) and len(v.split()) == 1
+
+        if all(_atomic_id(v) for v in values):
+            return True
+
+        # Templated counter: every value is a string reducing to the same
+        # digit-blanked skeleton, the values are distinct, and at least one
+        # carries a digit (a real counter, not constant free text).
+        if all(isinstance(v, str) for v in values):
+            skeletons = {re.sub(r"\d+", "#", v).strip() for v in values}
+            has_digit = any(ch.isdigit() for v in values for ch in v)
+            if len(skeletons) == 1 and has_digit and len(set(values)) == len(values):
+                return True
         return False
 
     def _find_cluster_pattern(self, recent_labels, cluster_labels) -> Optional[dict]:
@@ -976,31 +1643,14 @@ class MultiLevelLoopDetector:
         )
 
     def detect_loop_enhanced(self, states: List[StateSnapshot]) -> LoopDetectionResult:
-        """Enhanced loop detection with all methods including clustering.
+        """Alias for detect_loop — kept for backward compatibility.
 
-        Order of detection (cheapest to most expensive):
-        1. Structural matching (O(n), no API calls)
-        2. Hash collision (O(n), no API calls)
-        3. Basic semantic similarity (embedding generation + pairwise comparison)
-        4. Clustering-based semantic (embedding generation + KMeans)
+        detect_loop() already runs structural → hash → content_fingerprint →
+        semantic → lexical → clustering in that order; this used to re-call
+        clustering after, which paid the embedding+KMeans cost twice on traces
+        that didn't loop.
         """
-        # First try the standard methods
-        result = self.detect_loop(states)
-        if result.detected:
-            return result
-
-        # If standard methods didn't detect, try clustering-based semantic
-        clustering_result = self.detect_semantic_loop_with_clustering(states)
-        if clustering_result:
-            return clustering_result
-
-        return LoopDetectionResult(
-            detected=False,
-            confidence=0.0,
-            method=None,
-            cost=0.0,
-            framework=self.framework,
-        )
+        return self.detect_loop(states)
 
 
 loop_detector = MultiLevelLoopDetector()

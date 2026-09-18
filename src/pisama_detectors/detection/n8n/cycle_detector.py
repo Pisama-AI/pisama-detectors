@@ -19,6 +19,7 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from pisama_detectors.detection.precision_guards import driven_by_distinct_inputs
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -68,6 +69,50 @@ BENIGN_LOOP_PATTERNS: Set[str] = {
     "webhook response",
     "respond to webhook",
 }
+
+# n8n Loop Over Items / SplitInBatches always terminate on item exhaustion, so a
+# cycle through one is intentional, not an infinite-loop risk. Real-world
+# validation (2,348 community workflows) showed the graph-cycle path flagged
+# 237/238 of these benign loops before this guard.
+BOUNDED_LOOP_NODE_MARKERS = ("splitinbatches", "loopoveritems")
+
+# n8n stores iteration caps as plain positive numbers, but nothing stops a
+# workflow author from setting maxIterations to an astronomically large value
+# to game the "bounded" check without actually bounding anything. This ceiling
+# is far above any real n8n loop's legitimate needs.
+MAX_CREDIBLE_ITERATIONS = 100_000
+
+
+def _coerce_positive_number(value: Any) -> Optional[float]:
+    """Return *value* as a positive number, or None.
+
+    Rejects bools explicitly: ``isinstance(True, int)`` is True in Python, and
+    ``maxIterations: true`` is not a bound.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+    if isinstance(value, str):
+        try:
+            parsed = float(value.strip())
+        except (ValueError, AttributeError):
+            return None
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _is_credible_bound(value: Any, ceiling: float) -> bool:
+    """True if *value* is a positive bound small enough to actually bound."""
+    parsed = _coerce_positive_number(value)
+    return parsed is not None and parsed <= ceiling
+
+
+def _first_credible_bound(source: Dict[str, Any], keys: Tuple[str, ...], ceiling: float) -> bool:
+    """True if any of *keys* in *source* carries a credible bound."""
+    if not isinstance(source, dict):
+        return False
+    return any(_is_credible_bound(source.get(k), ceiling) for k in keys)
 
 
 def content_similarity(a: str, b: str) -> float:
@@ -262,23 +307,35 @@ class N8NCycleDetector(TurnAwareDetector):
             issues.append(semantic)
             affected_turns.extend(semantic.get("turns", []))
 
+        # Rules 2-4 below key purely on the sequence of node NAMES and never
+        # look at what those nodes carried. An AI Agent that queries its
+        # catalogue tool four times with four DIFFERENT narrowing queries
+        # therefore trips sequence_cycle, circular_delegation AND pingpong at
+        # once, all marked potentially_infinite. When every revisit of a node
+        # was driven by materially distinct intervening content the workflow
+        # is iterating productively, so those three name-only rules are
+        # skipped. Rule 1 (semantic loop) and rule 5 (retry storm) have their
+        # own guards and still run.
+        productive_iteration = self._revisits_carry_distinct_content(turns)
+
         # 2. Detect exact node sequence repetition
-        sequence_cycle = self._detect_sequence_cycle(turns)
-        if sequence_cycle["detected"]:
-            issues.append(sequence_cycle)
-            affected_turns.extend(sequence_cycle.get("turns", []))
+        if not productive_iteration:
+            sequence_cycle = self._detect_sequence_cycle(turns)
+            if sequence_cycle["detected"]:
+                issues.append(sequence_cycle)
+                affected_turns.extend(sequence_cycle.get("turns", []))
 
-        # 3. Detect circular delegation (A->B->C->A)
-        circular = self._detect_circular_delegation(turns)
-        if circular["detected"]:
-            issues.append(circular)
-            affected_turns.extend(circular.get("turns", []))
+            # 3. Detect circular delegation (A->B->C->A)
+            circular = self._detect_circular_delegation(turns)
+            if circular["detected"]:
+                issues.append(circular)
+                affected_turns.extend(circular.get("turns", []))
 
-        # 4. Detect ping-pong pattern (A->B->A->B)
-        pingpong = self._detect_pingpong(turns)
-        if pingpong["detected"]:
-            issues.append(pingpong)
-            affected_turns.extend(pingpong.get("turns", []))
+            # 4. Detect ping-pong pattern (A->B->A->B)
+            pingpong = self._detect_pingpong(turns)
+            if pingpong["detected"]:
+                issues.append(pingpong)
+                affected_turns.extend(pingpong.get("turns", []))
 
         # 5. Detect retry storms
         retry = self._detect_retry_storm(turns)
@@ -427,15 +484,20 @@ class N8NCycleDetector(TurnAwareDetector):
         # 1. Detect self-loops (node connected to itself)
         for node_name, neighbors in adjacency.items():
             if node_name in neighbors:
-                node_type = node_lookup.get(node_name, {}).get("type", "")
+                node = node_lookup.get(node_name, {})
+                node_type = node.get("type", "")
+                bounded = self._node_is_bounded_loop(node)
                 issues.append(
                     {
                         "type": "self_loop",
                         "node": node_name,
                         "node_type": node_type,
-                        "has_break_condition": False,
-                        "potentially_infinite": True,
-                        "description": f"Self-loop: node '{node_name}' is connected to itself",
+                        "has_break_condition": bounded,
+                        "potentially_infinite": not bounded,
+                        "description": (
+                            f"Self-loop: node '{node_name}' is connected to itself"
+                            + (" (bounded by a finite maxIterations)" if bounded else "")
+                        ),
                     }
                 )
                 affected_node_names.append(node_name)
@@ -476,8 +538,13 @@ class N8NCycleDetector(TurnAwareDetector):
             has_break_condition = self._cycle_has_break_condition(
                 cycle_nodes, node_lookup, adjacency
             )
-
-            potentially_infinite = not has_break_condition
+            # A cycle through an n8n bounded-loop node (Loop Over Items /
+            # SplitInBatches) or a node with a finite iteration cap is intentional
+            # and terminates on item exhaustion — not an infinite-loop risk.
+            has_bounded_loop_node = any(
+                self._node_is_bounded_loop(node_lookup.get(n, {})) for n in cycle_nodes
+            )
+            potentially_infinite = not (has_break_condition or has_bounded_loop_node)
 
             issues.append(
                 {
@@ -550,6 +617,34 @@ class N8NCycleDetector(TurnAwareDetector):
             detector_name=self.name,
         )
 
+    @staticmethod
+    def _node_is_bounded_loop(node: Dict[str, Any]) -> bool:
+        """True if the node is an n8n bounded-loop construct (Loop Over Items /
+        SplitInBatches — always terminates on item exhaustion) or carries a finite
+        iteration cap. Such a node makes any cycle through it intentional, not infinite."""
+        ntype = (node.get("type") or "").lower()
+        if any(marker in ntype for marker in BOUNDED_LOOP_NODE_MARKERS):
+            return True
+        return N8NCycleDetector._node_has_iteration_bound(node)
+
+    @staticmethod
+    def _node_has_iteration_bound(node: Dict[str, Any]) -> bool:
+        """A node with a finite, positive iteration cap cannot loop forever, so
+        the cap is itself a break condition even without an IF/Switch exit branch.
+
+        n8n's Loop Over Items / SplitInBatches expose this as ``maxIterations``
+        (``maxTries`` / ``limit`` on some node versions).
+
+        The cap must be CREDIBLE, not merely positive. Accepting any positive
+        integer would let ``maxIterations: 1000000000`` prove termination while
+        bounding nothing. A cap at or under ``MAX_CREDIBLE_ITERATIONS`` genuinely
+        does bound the loop.
+        """
+        params = node.get("parameters") or {}
+        return _first_credible_bound(
+            params, ("maxIterations", "maxTries", "limit"), MAX_CREDIBLE_ITERATIONS
+        )
+
     def _cycle_has_break_condition(
         self,
         cycle_nodes: List[str],
@@ -558,8 +653,10 @@ class N8NCycleDetector(TurnAwareDetector):
     ) -> bool:
         """Check if a detected cycle has an explicit loop-break condition.
 
-        A break condition exists if there is an IF node in the cycle that has
-        at least one output branch leading outside the cycle (an exit path).
+        A break condition exists if either (a) an IF/Switch node in the cycle has
+        at least one output branch leading outside the cycle (an exit path), or
+        (b) a node in the cycle carries a finite, positive iteration cap
+        (``maxIterations``) that bounds the loop.
 
         Args:
             cycle_nodes: List of node names forming the cycle.
@@ -574,6 +671,10 @@ class N8NCycleDetector(TurnAwareDetector):
         for node_name in cycle_nodes:
             node_data = node_lookup.get(node_name, {})
             node_type = node_data.get("type", "")
+
+            # A finite iteration cap on any node in the cycle bounds the loop.
+            if self._node_has_iteration_bound(node_data):
+                return True
 
             # IF and Switch nodes can serve as break conditions
             if node_type in ("n8n-nodes-base.if", "n8n-nodes-base.switch"):
@@ -686,6 +787,41 @@ class N8NCycleDetector(TurnAwareDetector):
                     }
 
         return {"detected": False}
+
+    def _revisits_carry_distinct_content(self, turns: List[TurnSnapshot]) -> bool:
+        """Were all node revisits driven by materially different input windows?
+
+        A node's own output cannot prove that its next execution had new input:
+        a stuck loop can add a changing attempt number to otherwise identical
+        output. Inspect the turns *between* consecutive executions instead and
+        require both exact distinctness and low semantic similarity. Missing,
+        repeated, or near-identical windows fail closed so genuine cycles keep
+        reporting.
+        """
+        positions: Dict[str, List[int]] = {}
+        for index, turn in enumerate(turns):
+            positions.setdefault(turn.participant_id, []).append(index)
+
+        repeated = [indices for indices in positions.values() if len(indices) >= 2]
+        if not repeated:
+            return False
+
+        for indices in repeated:
+            windows = [
+                [turn.content or "" for turn in turns[start + 1 : end]]
+                for start, end in zip(indices, indices[1:])
+            ]
+            if not driven_by_distinct_inputs(windows):
+                return False
+
+            joined = [" ".join(part.strip() for part in window) for window in windows]
+            for index, current in enumerate(joined):
+                if any(
+                    content_similarity(current, previous) >= self.content_similarity_threshold
+                    for previous in joined[:index]
+                ):
+                    return False
+        return True
 
     def _detect_sequence_cycle(self, turns: List[TurnSnapshot]) -> Dict[str, Any]:
         """Detect exact sequence repetition in node execution.

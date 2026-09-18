@@ -111,8 +111,11 @@ class DifyModelFallbackDetector(TurnAwareDetector):
             confidence=confidence,
             failure_mode="F15",
             explanation=(f"Model fallback: {len(issues)} issue(s) in {len(llm_nodes)} LLM node(s)"),
-            affected_turns=list(range(len(set(affected_node_ids)))),
+            # affected_turns=[] — was a count masquerading as indices; real
+            # node IDs go in evidence below.
+            affected_turns=[],
             evidence={
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "issues": issues,
                 "total_llm_nodes": len(llm_nodes),
             },

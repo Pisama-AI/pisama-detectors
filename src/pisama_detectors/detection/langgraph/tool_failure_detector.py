@@ -71,17 +71,56 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
                 detector_name=self.name,
             )
 
-        # Find failed tool nodes
+        # Find failed tool nodes via status, soft errors, or output truncation.
+        # Phase 18: the strict status=='failed' check missed v1-lite subtle-
+        # failure positives where a tool reports success but its output dict
+        # contains (a) truncated=True, (b) an `error` field with timeout/
+        # partial-results language, or (c) silent-failure markers. These are
+        # documented "tool failure" patterns where the framework masks the
+        # failure as a success.
+        _failure_keywords = (
+            "timeout",
+            "partial",
+            "failed",
+            "error",
+            "unavailable",
+            "rate limit",
+            "throttle",
+            "incomplete",
+        )
+
+        def _is_soft_failure(t: Dict[str, Any]) -> bool:
+            outputs = t.get("outputs") or {}
+            if not isinstance(outputs, dict):
+                return False
+            if outputs.get("truncated") is True:
+                return True
+            err = outputs.get("error")
+            if isinstance(err, str) and err:
+                err_l = err.lower()
+                if any(kw in err_l for kw in _failure_keywords):
+                    return True
+            return False
+
         failed_tools = [t for t in tool_nodes if t.get("status") == "failed"]
-        if not failed_tools:
+        soft_failures = [
+            t for t in tool_nodes if t.get("status") != "failed" and _is_soft_failure(t)
+        ]
+        all_failures = failed_tools + soft_failures
+        if not all_failures:
             return TurnAwareDetectionResult(
                 detected=False,
                 severity=TurnAwareSeverity.NONE,
-                confidence=0.85,
+                confidence=0.10,  # Phase 18: negative case is verdict-confidence ~0, not 0.85 (was forcing threshold up, blocking single-signal v1-lite positives)
                 failure_mode=None,
                 explanation="All tool nodes succeeded",
                 detector_name=self.name,
             )
+        # If only soft failures were found, treat them as failures for the
+        # downstream issue-detection logic. (failed_tools list expected by
+        # the rest of the function; alias it.)
+        if not failed_tools and soft_failures:
+            failed_tools = soft_failures
 
         # Build superstep -> nodes mapping for recovery analysis
         superstep_nodes: Dict[int, List[Dict[str, Any]]] = {}
@@ -165,7 +204,7 @@ class LangGraphToolFailureDetector(TurnAwareDetector):
             return TurnAwareDetectionResult(
                 detected=False,
                 severity=TurnAwareSeverity.NONE,
-                confidence=0.85,
+                confidence=0.10,  # Phase 18: negative case is verdict-confidence ~0, not 0.85 (was forcing threshold up, blocking single-signal v1-lite positives)
                 failure_mode=None,
                 explanation="No tool failure issues detected",
                 detector_name=self.name,

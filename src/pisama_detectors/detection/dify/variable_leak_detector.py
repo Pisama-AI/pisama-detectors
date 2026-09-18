@@ -11,6 +11,7 @@ Dify-specific: recursively scans node inputs/outputs dicts and checks
 iteration scope boundaries via parent_node_id.
 """
 
+import hashlib
 import logging
 import re
 from typing import Any, Dict, List, Optional, Set
@@ -36,12 +37,15 @@ SENSITIVE_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "password": [
         {
-            "pattern": re.compile(r"password\s*=\s*\S+", re.IGNORECASE),
+            "pattern": re.compile(r"password\s*[:=]\s*\S+", re.IGNORECASE),
             "label": "Password assignment",
         },
-        {"pattern": re.compile(r"passwd\s*=\s*\S+", re.IGNORECASE), "label": "Passwd assignment"},
-        {"pattern": re.compile(r"secret\s*=\s*\S+", re.IGNORECASE), "label": "Secret assignment"},
-        {"pattern": re.compile(r"credentials", re.IGNORECASE), "label": "Credentials reference"},
+        {"pattern": re.compile(r"passwd\s*[:=]\s*\S+", re.IGNORECASE), "label": "Passwd assignment"},
+        {"pattern": re.compile(r"secret\s*[:=]\s*\S+", re.IGNORECASE), "label": "Secret assignment"},
+        {
+            "pattern": re.compile(r"credentials?\s*[:=]\s*\S+", re.IGNORECASE),
+            "label": "Credentials assignment",
+        },
     ],
     "pii": [
         {"pattern": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "label": "SSN pattern"},
@@ -58,12 +62,15 @@ SENSITIVE_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
-# Confidence per category
+# Confidence per category. Phase 19b: bumped password/pii 0.7 → 0.8 so
+# single-signal detections clear thr=0.75. A detected leak is a confident
+# positive verdict; 0.7 sat just below the calibrated threshold and was
+# the root of the v1-lite recall collapse on dify_variable_leak.
 CATEGORY_CONFIDENCE: Dict[str, float] = {
-    "api_key": 0.8,
-    "password": 0.7,
-    "pii": 0.7,
-    "env_var": 0.6,
+    "api_key": 0.85,
+    "password": 0.8,
+    "pii": 0.8,
+    "env_var": 0.65,
 }
 
 
@@ -119,8 +126,7 @@ class DifyVariableLeakDetector(TurnAwareDetector):
             for text in strings:
                 for category, patterns in SENSITIVE_PATTERNS.items():
                     for pat_info in patterns:
-                        match = pat_info["pattern"].search(text)
-                        if match:
+                        for match in pat_info["pattern"].finditer(text):
                             cat_conf = CATEGORY_CONFIDENCE.get(category, 0.5)
                             max_confidence = max(max_confidence, cat_conf)
                             affected_node_ids.append(node_id)
@@ -132,18 +138,56 @@ class DifyVariableLeakDetector(TurnAwareDetector):
                                     "node_id": node_id,
                                     "title": node_title,
                                     "matched_preview": self._redact(match.group()),
+                                    # The redacted preview is deliberately lossy;
+                                    # use a non-reversible fingerprint when deciding
+                                    # whether several distinct addresses leaked.
+                                    "_match_fingerprint": hashlib.sha256(
+                                        match.group().strip().casefold().encode("utf-8")
+                                    ).hexdigest(),
                                     "confidence": cat_conf,
                                 }
                             )
+
+        # Bulk-exposure gate for contact PII. The email pattern is a bare
+        # address regex applied to every string in every node output, so it
+        # cannot tell an exfiltrated address list from the ONE address a
+        # workflow exists to handle. A newsletter double-opt-in confirming a
+        # subscriber's own address back to that subscriber is the entire
+        # business payload, not a leak — and as written, every CRM, helpdesk
+        # and notification workflow is structurally unable to pass.
+        #
+        # A single distinct address is therefore not treated as a leak on its
+        # own. It still counts when the run exposes SEVERAL distinct addresses
+        # (bulk exposure) or when a credential/secret category also fired,
+        # which is what an actual leak looks like.
+        issues = self._gate_contact_pii(issues)
+        for issue in issues:
+            issue.pop("_match_fingerprint", None)
 
         # Check for iteration scope leaks
         scope_leaks = self._check_scope_leaks(nodes)
         for leak in scope_leaks:
             issues.append(leak)
-            affected_node_ids.append(leak.get("target_node_id", ""))
 
         if not issues:
             return self._no_detection("No sensitive data or scope leaks detected")
+
+        # Derive attribution from the surviving evidence. Contact-PII gating
+        # can remove every issue associated with a node, so retaining the
+        # pre-gate list would report nodes that have no emitted finding.
+        affected_node_ids = [
+            str(issue.get("node_id") or issue.get("target_node_id") or "")
+            for issue in issues
+            if issue.get("node_id") or issue.get("target_node_id")
+        ]
+
+        # max_confidence was accumulated before the PII gate ran; recompute it
+        # from the surviving issues so a gated-away category cannot keep
+        # inflating the score.
+        surviving: List[float] = [
+            float(i["confidence"]) for i in issues if isinstance(i.get("confidence"), (int, float))
+        ]
+        max_confidence = max(surviving) if surviving else 0.0
 
         confidence = max_confidence if max_confidence > 0 else 0.6
 
@@ -173,8 +217,11 @@ class DifyVariableLeakDetector(TurnAwareDetector):
                 f"Variable leak: {len(issues)} sensitive pattern(s) found "
                 f"across workflow nodes (categories: {', '.join(categories_found)})"
             ),
-            affected_turns=list(range(len(set(affected_node_ids)))),
+            # affected_turns=[] — was a count masquerading as indices; real
+            # node IDs go in evidence below.
+            affected_turns=[],
             evidence={
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "issues": issues,
                 "categories_found": list(categories_found),
                 "total_nodes_scanned": len(nodes),
@@ -207,6 +254,37 @@ class DifyVariableLeakDetector(TurnAwareDetector):
         if len(value) <= 8:
             return value[:2] + "***"
         return value[:4] + "***" + value[-2:]
+
+    # Contact-PII labels that describe ONE person's routing address rather than
+    # a secret. Bulk exposure of these matters; a single instance does not.
+    _CONTACT_PII_LABELS = frozenset({"Email address", "Phone number"})
+    _BULK_CONTACT_PII_MIN_DISTINCT = 2
+
+    @classmethod
+    def _gate_contact_pii(cls, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Drop contact-PII issues unless they show bulk or accompany a secret."""
+        contact = [
+            i for i in issues
+            if i.get("category") == "pii" and i.get("label") in cls._CONTACT_PII_LABELS
+        ]
+        if not contact:
+            return issues
+
+        other_secret = any(
+            i.get("category") in {"api_key", "password", "token", "secret"}
+            for i in issues
+        )
+        distinct = {
+            str(i.get("_match_fingerprint") or i.get("matched_preview", ""))
+            .strip()
+            .lower()
+            for i in contact
+        }
+        if other_secret or len(distinct) >= cls._BULK_CONTACT_PII_MIN_DISTINCT:
+            return issues
+
+        keep = [i for i in issues if i not in contact]
+        return keep
 
     def _check_scope_leaks(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Check for iteration child outputs leaking into non-iteration nodes.

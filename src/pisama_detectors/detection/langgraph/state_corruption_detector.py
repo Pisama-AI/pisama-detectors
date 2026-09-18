@@ -18,6 +18,10 @@ Detects state corruption between consecutive state_snapshots:
 import logging
 from typing import Any, Dict, List, Optional
 
+from pisama_detectors.detection.precision_guards import (
+    conforms_to_declared_type,
+    outcome_is_success,
+)
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -71,6 +75,97 @@ CORRUPTION_ERROR_KEYWORDS = {
     "invalid value",
     "malformed",
 }
+
+
+# Successful graphs may legitimately narrow a list, but only when the schema
+# says that field uses replacement / top-k semantics. Without that declaration
+# a shrink is ambiguous and must remain visible: an append-only audit log can be
+# truncated while the graph still reports ``completed``.
+_REPLACEMENT_SEMANTICS = frozenset({
+    "replace",
+    "replacement",
+    "overwrite",
+    "last_value",
+    "lastvalue",
+    "top_k",
+    "topk",
+})
+_FIELD_CONTAINERS = ("fields", "properties", "channels")
+_REDUCER_CONTAINERS = (
+    "reducers",
+    "field_reducers",
+    "merge_strategies",
+    "update_strategies",
+)
+_SEMANTIC_KEYS = (
+    "reducer",
+    "merge",
+    "merge_strategy",
+    "update",
+    "update_strategy",
+    "semantics",
+    "semantic",
+    "mode",
+)
+
+
+def _field_declaration(state_schema: Dict[str, Any], key: str) -> Any:
+    """Return a field declaration from supported flat or nested schemas."""
+    if key in state_schema:
+        return state_schema[key]
+    for container_name in _FIELD_CONTAINERS:
+        container = state_schema.get(container_name)
+        if isinstance(container, dict) and key in container:
+            return container[key]
+    return None
+
+
+def _declared_field_type(state_schema: Dict[str, Any], key: str) -> Optional[str]:
+    """Read a type annotation without confusing reducer metadata for a type."""
+    declaration = _field_declaration(state_schema, key)
+    if isinstance(declaration, str):
+        return declaration
+    if isinstance(declaration, dict):
+        for type_key in ("type", "annotation", "declared_type"):
+            declared = declaration.get(type_key)
+            if isinstance(declared, str):
+                return declared
+    return None
+
+
+def _contains_replacement_semantic(value: Any) -> bool:
+    """Return True only for an explicit replacement / top-k declaration."""
+    if isinstance(value, str):
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        return normalized in _REPLACEMENT_SEMANTICS
+    if isinstance(value, dict):
+        return any(_contains_replacement_semantic(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_contains_replacement_semantic(item) for item in value)
+    return False
+
+
+def _list_replacement_is_declared(
+    state_schema: Dict[str, Any], key: str
+) -> bool:
+    """Whether ``key`` explicitly permits list replacement / narrowing."""
+    declaration = _field_declaration(state_schema, key)
+    if isinstance(declaration, str):
+        # Some producers use ``{"documents": "top_k"}`` as a compact schema.
+        if _contains_replacement_semantic(declaration):
+            return True
+    elif isinstance(declaration, dict):
+        for semantic_key in _SEMANTIC_KEYS:
+            if _contains_replacement_semantic(declaration.get(semantic_key)):
+                return True
+
+    for container_name in _REDUCER_CONTAINERS:
+        container = state_schema.get(container_name)
+        if isinstance(container, dict) and _contains_replacement_semantic(
+            container.get(key)
+        ):
+            return True
+    return False
 
 
 def _value_size(value: Any) -> int:
@@ -136,9 +231,20 @@ class LangGraphStateCorruptionDetector(TurnAwareDetector):
         """Analyze state_snapshots and nodes for corruption signals."""
         snapshots = graph_execution.get("state_snapshots", [])
         nodes = graph_execution.get("nodes", [])
+        state_schema = graph_execution.get("state_schema") or {}
+        # Outcome awareness: did this run actually go wrong? A graph whose
+        # status is "completed" and none of whose nodes failed is weak-to-no
+        # evidence for the progress-shaped signals below, which all presuppose
+        # a run that derailed.
+        run_succeeded = (
+            outcome_is_success(graph_execution.get("status")) is True
+            and not any(
+                str(n.get("status", "")).lower() in {"failed", "error", "errored"}
+                for n in nodes
+            )
+        )
 
         corruption_signals: List[Dict[str, Any]] = []
-        affected_supersteps: List[int] = []
 
         # --- Check state snapshots for corruption ---
         if len(snapshots) >= 2:
@@ -150,25 +256,56 @@ class LangGraphStateCorruptionDetector(TurnAwareDetector):
                 prev_step = snapshots[i].get("superstep", i)
                 curr_step = snapshots[i + 1].get("superstep", i + 1)
 
-                signals = self._compare_states(prev_state, curr_state, prev_step, curr_step)
+                signals = self._compare_states(
+                    prev_state, curr_state, prev_step, curr_step,
+                    state_schema=state_schema,
+                )
                 corruption_signals.extend(signals)
-                for s in signals:
-                    affected_supersteps.append(s.get("superstep_to", curr_step))
+
+        # A successful run may legitimately stop incrementing a retry counter.
+        # List shrinkage is different: success does not prove that truncating an
+        # append-only field was safe. Suppress it only when the schema explicitly
+        # declares replacement / top-k semantics for that exact field.
+        if run_succeeded:
+            corruption_signals = [
+                s for s in corruption_signals
+                if s.get("type") != "counter_stall"
+                and not (
+                    s.get("type") == "list_shrinkage"
+                    and _list_replacement_is_declared(
+                        state_schema, str(s.get("key", ""))
+                    )
+                )
+            ]
 
         # --- Check nodes for error signals ---
         if nodes:
             node_signals = self._detect_node_errors(nodes)
             corruption_signals.extend(node_signals)
-            for s in node_signals:
-                step = s.get("superstep", -1)
-                if step >= 0:
-                    affected_supersteps.append(step)
+
+        # Derive affected steps from the final evidence set. Building this list
+        # before the success/schema filter leaked steps belonging only to
+        # suppressed signals into otherwise valid findings.
+        affected_supersteps = []
+        for signal in corruption_signals:
+            step = signal.get("superstep", signal.get("superstep_to", -1))
+            if isinstance(step, int) and step >= 0:
+                affected_supersteps.append(step)
 
         if not corruption_signals:
+            # Phase 15: negative-case conf was 0.85 — semantically meant
+            # "high confidence of no corruption" but the calibration
+            # framework treats conf as positive-class likelihood. That
+            # pushed the optimal threshold to 0.85, which on v1-lite hard
+            # samples blocked many true positives whose conf landed at
+            # 0.70-0.80. Mapping the negative case to 0.10 frees the
+            # threshold to find a lower positive-side optimum. Phase 12
+            # tried this and reverted because of an LLM-tier wrapper
+            # interaction that has since been cleaned up.
             return TurnAwareDetectionResult(
                 detected=False,
                 severity=TurnAwareSeverity.NONE,
-                confidence=0.85,
+                confidence=0.10,
                 failure_mode=None,
                 explanation="No state corruption detected across snapshots",
                 detector_name=self.name,
@@ -233,6 +370,7 @@ class LangGraphStateCorruptionDetector(TurnAwareDetector):
         curr_state: Dict[str, Any],
         prev_step: int,
         curr_step: int,
+        state_schema: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Compare two consecutive states and return corruption signals."""
         signals: List[Dict[str, Any]] = []
@@ -286,6 +424,12 @@ class LangGraphStateCorruptionDetector(TurnAwareDetector):
                 prev_val is None
                 and curr_val is not None
                 and key not in IDENTITY_FIELDS  # New fields appearing is normal for identities
+                # A value that still satisfies the type the graph DECLARED for
+                # this key is the schema working, not corruption. Filling in an
+                # Optional[list] from None is the canonical case.
+                and conforms_to_declared_type(
+                    curr_val, _declared_field_type(state_schema or {}, key)
+                ) is not True
             ):
                 signals.append(
                     {

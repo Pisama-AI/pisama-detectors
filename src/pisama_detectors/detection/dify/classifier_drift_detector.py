@@ -158,9 +158,14 @@ class DifyClassifierDriftDetector(TurnAwareDetector):
                 f"Classifier drift: {drift_signals} drift signal(s) across "
                 f"{len(classifier_nodes)} classifier node(s)"
             ),
-            affected_turns=list(range(len(set(affected_node_ids)))),
+            # Dify operates on workflow nodes, not conversation turns.
+            # Was returning list(range(len(node_ids))) — a count masquerading
+            # as indices. Real node IDs go in evidence; affected_turns left
+            # empty until a node→turn mapping exists.
+            affected_turns=[],
             evidence={
                 "issues": issues,
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "total_classifier_nodes": len(classifier_nodes),
                 "drift_signals": drift_signals,
             },

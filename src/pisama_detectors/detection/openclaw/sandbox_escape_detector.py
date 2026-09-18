@@ -16,6 +16,7 @@ Mapped to failure mode F5 (Security Violation / Sandbox Escape).
 import logging
 from typing import Any, Dict, List, Optional, Set
 
+from pisama_detectors.detection.precision_guards import policy_decision
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -58,6 +59,37 @@ class OpenClawSandboxEscapeDetector(TurnAwareDetector):
         session = (conversation_metadata or {}).get("session", {})
         return self.detect_session(session)
 
+    @staticmethod
+    def _explicitly_permitted(events: List[Dict[str, Any]], call_index: int) -> bool:
+        """Return whether the paired result reports an explicit policy allow.
+
+        OpenClaw telemetry is observational rather than tamper-proof. This
+        detector therefore reports what the instrumented sandbox observed and
+        does not present the result as independent enforcement verification.
+        Only a correlated result can suppress a finding; policy text placed on
+        the call itself cannot authorize the operation.
+        """
+        call = events[call_index]
+        call_id = call.get("call_id") or call.get("tool_call_id") or call.get("id")
+        for evt in events[call_index + 1:]:
+            evt_type = evt.get("type")
+            if evt_type == "tool.call":
+                break
+            if evt_type != "tool.result":
+                continue
+            result_call_id = (
+                evt.get("call_id") or evt.get("tool_call_id") or evt.get("id")
+            )
+            if (
+                call_id is not None or result_call_id is not None
+            ) and result_call_id != call_id:
+                continue
+            verdict = policy_decision(evt.get("tool_result"))
+            if verdict is None:
+                verdict = policy_decision(evt)
+            return verdict is True
+        return False
+
     def detect_session(self, session: dict) -> TurnAwareDetectionResult:
         events = session.get("events", [])
         sandbox_enabled = session.get("sandbox_enabled", False)
@@ -75,6 +107,17 @@ class OpenClawSandboxEscapeDetector(TurnAwareDetector):
                 continue
             tool_name = (evt.get("tool_name") or "").lower()
             if tool_name not in ALL_VIOLATION_TOOLS:
+                continue
+
+            # Outcome awareness. Matching a restricted tool NAME says nothing
+            # about whether the sandbox boundary was actually crossed: a
+            # sandbox exists so that read_file/run_code CAN be used safely
+            # inside it. When the enforcement layer explicitly ALLOWED the
+            # call, this is sanctioned use, not an escape. A DENIED call (an
+            # attempt the sandbox stopped) and a call with no policy signal at
+            # all both still count, so this can only ever suppress a fire on
+            # evidence of permission.
+            if self._explicitly_permitted(events, i):
                 continue
 
             category = next(

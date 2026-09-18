@@ -135,7 +135,7 @@ class LangGraphParallelSyncDetector(TurnAwareDetector):
             return TurnAwareDetectionResult(
                 detected=False,
                 severity=TurnAwareSeverity.NONE,
-                confidence=0.85,
+                confidence=0.10,  # Phase 18: negative-case verdict-confidence near 0, not 0.85
                 failure_mode=None,
                 explanation=msg,
                 detector_name=self.name,

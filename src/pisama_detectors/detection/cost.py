@@ -1,6 +1,7 @@
 """LLM cost tracking and pricing database."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Dict, Optional
 
 
@@ -94,7 +95,11 @@ class CostCalculator:
         self._custom_pricing: Dict[str, ModelPricing] = {}
 
     def add_custom_pricing(self, model: str, pricing: ModelPricing) -> None:
-        self._custom_pricing[model] = pricing
+        for value in (pricing.input_per_1m, pricing.output_per_1m):
+            rate = Decimal(str(value))
+            if not rate.is_finite() or rate < 0:
+                raise ValueError("Custom rates must be finite and nonnegative")
+        self._custom_pricing[self._resolve_model(model)] = pricing
 
     def _resolve_model(self, model: str) -> str:
         model_lower = model.lower()
@@ -102,9 +107,6 @@ class CostCalculator:
             return self.aliases[model_lower]
         if model_lower in self.pricing:
             return model_lower
-        for key in self.pricing:
-            if key in model_lower or model_lower in key:
-                return key
         return model_lower
 
     def get_pricing(self, model: str) -> Optional[ModelPricing]:

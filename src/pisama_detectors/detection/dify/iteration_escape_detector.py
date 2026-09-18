@@ -260,8 +260,11 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
                 f"Iteration escape: {len(issues)} issue(s) across "
                 f"{len(iter_nodes)} iteration/loop node(s)"
             ),
-            affected_turns=list(range(len(set(affected_node_ids)))),
+            # affected_turns=[] — was a count masquerading as indices; real
+            # node IDs go in evidence below.
+            affected_turns=[],
             evidence={
+                "affected_node_ids": sorted(set(affected_node_ids)),
                 "issues": issues,
                 "total_iteration_nodes": len(iter_nodes),
                 "max_iteration_count": max_iter,
@@ -271,6 +274,79 @@ class DifyIterationEscapeDetector(TurnAwareDetector):
                 "Set max_iterations limits in loop configuration. "
                 "Avoid modifying parent-scope variables from within iteration children."
             ),
+            detector_name=self.name,
+        )
+
+    @staticmethod
+    def _is_positive_bound(val: Any) -> bool:
+        """True when *val* is a finite, positive iteration cap (int or numeric str)."""
+        if isinstance(val, bool):
+            return False
+        if isinstance(val, int):
+            return val > 0
+        if isinstance(val, str):
+            try:
+                return int(val.strip()) > 0
+            except ValueError:
+                return False
+        return False
+
+    def detect_workflow_config(self, config: Dict[str, Any]) -> TurnAwareDetectionResult:
+        """Structural (config/DSL-shape) variant of iteration-escape detection.
+
+        ``detect_workflow_run`` consumes an executed workflow_run trace (nodes carry
+        ``node_type`` + child ``iteration_index`` execution records). This method
+        consumes a Dify app CONFIG/DSL graph instead — nodes carry ``data.type`` and
+        ``data.max_iterations`` — and flags any iteration/loop node that lacks a
+        finite ``max_iterations`` bound, the latent infinite-loop risk a
+        ``circuit_breaker`` fix removes.
+
+        This is the config-shape counterpart to ``detect_workflow_run``: it lets a
+        caller re-check a post-fix workflow config (e.g. after a patch sets
+        ``node.data.max_iterations`` on iteration/loop nodes) and confirm every
+        iteration node now carries a real bound. Anti-fakeable — it only goes quiet
+        once every iteration node carries a real bound. The run-shape detector
+        (``detect_workflow_run``) is unchanged.
+        """
+        nodes = config.get("nodes") or config.get("graph", {}).get("nodes", [])
+        iter_nodes = [
+            n for n in nodes
+            if (n.get("data", {}) or {}).get("type") in ("iteration", "loop")
+        ]
+        if not iter_nodes:
+            return self._no_detection("No iteration/loop nodes in config")
+
+        unbounded: List[str] = []
+        for node in iter_nodes:
+            data = node.get("data", {}) or {}
+            bound = data.get("max_iterations", data.get("max_attempts"))
+            if not self._is_positive_bound(bound):
+                unbounded.append(node.get("id") or data.get("title") or "")
+
+        if not unbounded:
+            return self._no_detection(
+                "All iteration/loop nodes carry a finite max_iterations bound"
+            )
+
+        return TurnAwareDetectionResult(
+            detected=True,
+            severity=TurnAwareSeverity.MODERATE,
+            confidence=0.8,
+            failure_mode="F11",
+            explanation=(
+                f"{len(unbounded)} of {len(iter_nodes)} iteration/loop node(s) lack a "
+                "finite max_iterations bound"
+            ),
+            affected_turns=[],
+            evidence={
+                "unbounded_nodes": unbounded,
+                "total_iteration_nodes": len(iter_nodes),
+                "issues": [
+                    {"type": "no_iteration_bound", "node_id": nid, "potentially_infinite": True}
+                    for nid in unbounded
+                ],
+            },
+            suggested_fix="Set a finite max_iterations on each iteration/loop node.",
             detector_name=self.name,
         )
 

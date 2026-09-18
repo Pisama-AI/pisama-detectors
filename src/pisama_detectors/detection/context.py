@@ -715,6 +715,30 @@ class ContextNeglectDetector:
                 f"(divergence={divergence:.2f})"
             )
 
+        # v1.6 Sprint 12 Phase A4: novel-domain divergence path.
+        # FN cluster: agent uses context keywords (high utilization) but
+        # semantically diverges into a different concept-space — e.g. task
+        # asks "quantum circuit design", output covers "unitary operator
+        # synthesis". Keyword match is high (shared vocabulary) but the
+        # meaning is different. The standard divergence_flip above requires
+        # utilization < 0.40 so it misses these.
+        # Gate is tighter (divergence >= 0.50 AND utilization >= 0.60) to
+        # avoid touching the broad mid-range. Skip when adaptation_detected
+        # since explicit adaptation is legitimate divergence.
+        if (
+            not detected
+            and divergence >= 0.50
+            and utilization >= 0.60
+            and not adaptation_detected
+        ):
+            detected = True
+            divergence_flip = True
+            missing.append(
+                f"novel-domain divergence: high keyword match "
+                f"(utilization={utilization:.2f}) but semantic distance is high "
+                f"(divergence={divergence:.2f})"
+            )
+
         if not detected:
             explanation = "Agent properly utilized upstream context"
             if context_referenced:

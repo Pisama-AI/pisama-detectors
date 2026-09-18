@@ -11,6 +11,7 @@ Detects recursion-related failures in LangGraph graph executions:
 import logging
 from typing import Any, Dict, List, Optional
 
+from pisama_detectors.detection.precision_guards import outcome_is_success
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -101,11 +102,23 @@ class LangGraphRecursionDetector(TurnAwareDetector):
                     }
                 )
 
-        # 3. Node repetition patterns across supersteps
-        node_repetition = self._detect_node_repetition(nodes)
-        if node_repetition:
-            issues.append(node_repetition)
-            affected_turns.extend(node_repetition.get("affected_indices", []))
+        # 3. Node repetition patterns across supersteps.
+        # "Unbounded cycle" is a claim about a run that did NOT terminate
+        # within its budget. A graph that finished successfully having used a
+        # small fraction of its recursion limit has demonstrably bounded
+        # itself, and revisiting a node is just the ReAct pattern: agent ->
+        # tool -> agent -> tool. Only look for repetition when the run does not
+        # already prove it terminated comfortably.
+        ran_bounded_to_success = (
+            outcome_is_success(status) is True
+            and recursion_limit > 0
+            and (total_supersteps / recursion_limit) <= self.limit_ratio_threshold
+        )
+        if not ran_bounded_to_success:
+            node_repetition = self._detect_node_repetition(nodes)
+            if node_repetition:
+                issues.append(node_repetition)
+                affected_turns.extend(node_repetition.get("affected_indices", []))
 
         if not issues:
             return TurnAwareDetectionResult(

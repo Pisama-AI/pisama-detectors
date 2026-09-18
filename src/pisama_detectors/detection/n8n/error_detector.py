@@ -237,6 +237,42 @@ class N8NErrorDetector(TurnAwareDetector):
 
         return None
 
+    def _detect_execution_failure(
+        self, turns: List[TurnSnapshot], metadata: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """The execution itself failed: n8n recorded a workflow-level failure and a node
+        errored. Distinct from the hidden-error checks (which target failures n8n HIDES):
+        this surfaces LOUD failures so a crashed execution always yields a detection.
+
+        Real-world validation motivated this: a terminal single-node failure in an 8-node
+        workflow trips none of the hidden-error checks (no continueOnFail, no downstream
+        turns, 12.5% < 15% rate, and success_despite_failures suppresses itself when the
+        workflow is already marked failed) — so the execution produced ZERO detections,
+        and anything gated on detections (dashboards, healing) never saw it.
+        """
+        if self._is_workflow_successful(metadata):
+            return None
+        failed_nodes = [(i, turn) for i, turn in enumerate(turns) if self._has_error(turn)]
+        if not failed_nodes:
+            return None
+        return {
+            "detected": True,
+            "type": "execution_failure",
+            "failed_nodes": [
+                {
+                    "turn": i,
+                    "node": turn.participant_id,
+                    "node_type": turn.turn_metadata.get("node_type", "unknown"),
+                }
+                for i, turn in failed_nodes
+            ],
+            "explanation": (
+                f"Execution failed: {len(failed_nodes)} node(s) errored and the "
+                f"workflow stopped"
+            ),
+            "turns": [i for i, _ in failed_nodes],
+        }
+
     def detect(
         self,
         turns: List[TurnSnapshot],
@@ -282,6 +318,12 @@ class N8NErrorDetector(TurnAwareDetector):
             issues.append(success_despite_failures)
             affected_turns.extend(success_despite_failures.get("turns", []))
 
+        # 5. Detect loud execution failure (workflow-level error + errored node)
+        execution_failure = self._detect_execution_failure(turns, conversation_metadata)
+        if execution_failure:
+            issues.append(execution_failure)
+            affected_turns.extend(execution_failure.get("turns", []))
+
         if not issues:
             return TurnAwareDetectionResult(
                 detected=False,
@@ -294,13 +336,20 @@ class N8NErrorDetector(TurnAwareDetector):
 
         # Determine severity
         severity = TurnAwareSeverity.MODERATE
-        if hidden or success_despite_failures:
+        if hidden or success_despite_failures or execution_failure:
             severity = TurnAwareSeverity.SEVERE
         elif high_error_rate:
             severity = TurnAwareSeverity.MODERATE
 
-        # Calculate confidence
-        confidence = 0.90 if hidden or success_despite_failures else 0.80
+        # Calculate confidence. A loud execution failure is a recorded fact (n8n itself
+        # marked the run failed and the node carries the error object), so it scores
+        # highest.
+        if execution_failure:
+            confidence = 0.95
+        elif hidden or success_despite_failures:
+            confidence = 0.90
+        else:
+            confidence = 0.80
 
         # Build explanation
         explanations = [issue["explanation"] for issue in issues]
@@ -316,6 +365,11 @@ class N8NErrorDetector(TurnAwareDetector):
             fixes.append("Review workflow logic - high error rate indicates systemic issues")
         if success_despite_failures:
             fixes.append("Add error handler nodes to properly handle failures")
+        if execution_failure:
+            fixes.append(
+                "Inspect the failing node's error and configuration; the workflow "
+                "stopped at it"
+            )
 
         suggested_fix = "; ".join(fixes) if fixes else None
 
@@ -358,19 +412,32 @@ class N8NErrorDetector(TurnAwareDetector):
         node_type = node.get("type", "").lower()
         return any(kw in node_type for kw in self._AI_NODE_KEYWORDS)
 
-    def _node_has_error_handling(self, node: Dict[str, Any]) -> bool:
-        """Return True if the node has any form of error handling configured.
+    # n8n `onError` values. Only routing failures to an error branch is handling;
+    # continuing with regular output SWALLOWS the error, which is the same
+    # behaviour this detector already flags as a hidden failure when it is spelled
+    # `continueOnFail: true` (see check 1 in detect_workflow).
+    _ONERROR_HANDLES = "continueErrorOutput"
+    _ONERROR_SWALLOWS = "continueRegularOutput"
 
-        Checks both the ``settings.continueOnFail`` flag and the newer
-        ``onError`` property.
+    def _node_has_error_handling(self, node: Dict[str, Any]) -> bool:
+        """Return True if the node has genuine error handling configured.
+
+        Checks the ``settings.continueOnFail`` flag and the newer ``onError``
+        property.
+
+        ``onError`` must actually route errors somewhere. Accepting any value
+        other than ``stopWorkflow`` meant a single ``onError:
+        continueRegularOutput`` -- which handles nothing, it discards the error
+        and carries on -- silenced this detector on 100% of its firing positives
+        (n=90; docs/plans/pisama-detectors-as-rlvr-graders.md section 11.2).
+        Treating an error-swallowing setting as error handling was also
+        internally inconsistent: the same configuration spelled
+        ``continueOnFail: true`` is reported as a hidden failure.
         """
         settings = node.get("settings", {}) or {}
         if settings.get("continueOnFail") is True:
             return True
-        if node.get("onError") not in (None, "", "stopWorkflow"):
-            # "stopWorkflow" is the default (no explicit handling)
-            return True
-        return False
+        return node.get("onError") == self._ONERROR_HANDLES
 
     def _build_connection_map(self, workflow_json: Dict[str, Any]) -> Dict[str, List[str]]:
         """Build a mapping from source-node name to list of target-node names.
@@ -506,13 +573,15 @@ class N8NErrorDetector(TurnAwareDetector):
         has_error_trigger = any(
             node.get("type", "") == "n8n-nodes-base.errorTrigger" for node in nodes
         )
-        # Count nodes with explicit error handling
+        # Count nodes with explicit error handling. Routed through the one
+        # predicate so every site agrees on what "handled" means: this used to be
+        # an independent truthiness test on `onError`, so patching
+        # _node_has_error_handling alone still left `onError:
+        # continueRegularOutput` clearing the 30% bar below and silencing this
+        # issue on 45 of 90 firing positives.
         nodes_with_error_handling = sum(
-            1
-            for n in nodes
-            if n.get("continueOnFail")
-            or n.get("onError")
-            or n.get("settings", {}).get("continueOnFail")
+            1 for n in nodes
+            if n.get("continueOnFail") is True or self._node_has_error_handling(n)
         )
         # Only flag missing trigger if < 30% of nodes have error handling
         # (a workflow with extensive node-level handling doesn't need a global trigger)
@@ -545,11 +614,13 @@ class N8NErrorDetector(TurnAwareDetector):
             if has_error_trigger and not self._is_ai_node(node):
                 continue
 
-            # If the source node has an explicit onError handler (not just
+            # If the source node routes errors to an error branch (not just
             # continueOnFail), the error is already handled gracefully — skip.
+            # Third site of the same presence-vs-semantics bug; must agree with
+            # _node_has_error_handling or the exemption reopens here.
             node_settings = node.get("settings", {}) or {}
             node_on_error = node_settings.get("onError") or node.get("onError", "")
-            if node_on_error and node_on_error != "stopWorkflow":
+            if node_on_error == self._ONERROR_HANDLES:
                 continue
 
             node_name = node.get("name", "")

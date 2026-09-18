@@ -17,6 +17,10 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from pisama_detectors.detection.precision_guards import (
+    driven_by_distinct_inputs,
+    outcome_is_success,
+)
 from pisama_detectors.detection.turn_aware._base import (
     TurnAwareDetectionResult,
     TurnAwareDetector,
@@ -28,6 +32,64 @@ logger = logging.getLogger(__name__)
 
 MIN_CONSECUTIVE_REPEATS = 3
 MIN_FUZZY_REPEATS = 5  # Higher threshold for fuzzy loops (same structure, different values)
+
+
+# --- Fuzzy message-loop support -------------------------------------------
+#
+# A message-loop check that tests `prev_content == curr_content` misses an
+# agent repeating itself with a few words changed. What separates a genuine
+# loop with decorative variation from legitimate repetitive work (e.g.
+# per-item status messages) is WHERE the variation sits: decorative variation
+# is APPENDED to a shared stem; informational variation is EMBEDDED, bracketed
+# by common text on both sides. A long shared prefix with a negligible shared
+# suffix means the message repeated and something was tacked on the end.
+_APPENDED_PREFIX_MIN = 0.25
+_APPENDED_SUFFIX_MAX = 0.15
+
+# One above the exact bar, not two. The tool lane uses MIN_FUZZY_REPEATS (5)
+# because a structural hash over tool arguments is a loose match; an
+# identical-stem-plus-appended-filler message is a much tighter one, so a
+# lower bar (4) is warranted. The exact tier already fires at 3 identical
+# messages, so 4 near-identical is consistent.
+MIN_FUZZY_MESSAGE_REPEATS = 4
+
+
+def _common_prefix_len(a: str, b: str) -> int:
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _common_suffix_len(a: str, b: str) -> int:
+    n = 0
+    for x, y in zip(reversed(a), reversed(b)):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _variation_is_appended(a: str, b: str) -> bool:
+    """True if two messages are the same message with text tacked on the end."""
+    longest = max(len(a), len(b))
+    if not longest:
+        return False
+    prefix = _common_prefix_len(a, b) / longest
+    suffix = _common_suffix_len(a, b) / longest
+    return prefix >= _APPENDED_PREFIX_MIN and suffix < _APPENDED_SUFFIX_MAX
+
+
+def _message_content(evt: dict) -> str:
+    """Message text, top-level or nested under `data`. Shared by both message tiers."""
+    content = evt.get("content", "") or evt.get("message", "") or evt.get("text", "")
+    if not content:
+        data = evt.get("data", {})
+        if isinstance(data, dict):
+            content = data.get("content", "") or data.get("message", "") or data.get("text", "")
+    return str(content).strip()
 
 
 def _hash_input(tool_input: Any) -> str:
@@ -104,6 +166,13 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             issues.append(msg_loop)
             affected_turns.extend(msg_loop.get("turns", []))
 
+        # --- 5. Fuzzy message loop (same message, decorative variation) ---
+        if not msg_loop["detected"]:
+            fuzzy_msg = self._detect_fuzzy_message_loop(events)
+            if fuzzy_msg["detected"]:
+                issues.append(fuzzy_msg)
+                affected_turns.extend(fuzzy_msg.get("turns", []))
+
         if not issues:
             return self._no_detection("No loop patterns detected")
 
@@ -155,8 +224,8 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             cur_idx, cur = tool_calls[i]
 
             # Allow intermediate events (agent.turn, tool.result) between tool calls
-            same_name = prev.get("tool_name") == cur.get("tool_name")
-            same_input = _hash_input(prev.get("tool_input")) == _hash_input(cur.get("tool_input"))
+            same_name = self._tool_name(prev) == self._tool_name(cur)
+            same_input = _hash_input(self._tool_input(prev)) == _hash_input(self._tool_input(cur))
             consecutive = cur_idx - prev_idx <= 4  # allow up to 3 events between tool calls
 
             if same_name and same_input and consecutive:
@@ -174,20 +243,109 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
 
         if best_run_len >= MIN_CONSECUTIVE_REPEATS:
             affected = [tool_calls[best_run_start + j][0] for j in range(best_run_len)]
+            # Outcome awareness: identical tool calls are how POLLING works.
+            # An agent that calls get_export_status(job_id) four times while
+            # the job walks queued -> 41% -> 88% -> completed is making
+            # progress, not spinning. Only treat the run as a loop when the
+            # results coming back do NOT change.
+            if self._results_show_progress(events, affected):
+                return {"detected": False}
             sample_evt = tool_calls[best_run_start][1]
+            _name = self._tool_name(sample_evt)
             return {
                 "detected": True,
                 "type": "tool_call_loop",
                 "repeat_count": best_run_len,
-                "tool_name": sample_evt.get("tool_name"),
+                "tool_name": _name,
                 "turns": affected,
                 "description": (
-                    f"Tool '{sample_evt.get('tool_name')}' called "
+                    f"Tool '{_name}' called "
                     f"{best_run_len} times consecutively with identical input"
                 ),
             }
 
         return {"detected": False}
+
+    @staticmethod
+    def _results_show_progress(events: List[dict], call_indices: List[int]) -> bool:
+        """Did the tool RESULTS between these repeated calls differ?
+
+        Distinct results mean the repetition was productive (a poll that
+        advanced). Identical or absent results mean the agent really is
+        re-asking the same question and getting the same answer, so the
+        detector fires exactly as before.
+        """
+        windows: List[List[str]] = []
+        results: List[Any] = []
+        bounds = list(call_indices) + [len(events)]
+        for start, end in zip(bounds, bounds[1:]):
+            window: List[str] = []
+            for evt in events[start + 1:end]:
+                if evt.get("type") == "tool.call":
+                    break  # a later call's result is not evidence for this poll
+                if evt.get("type") != "tool.result":
+                    continue
+                result = evt.get("tool_result")
+                results.append(result if result is not None else evt)
+                window.append(
+                    json.dumps(result, sort_keys=True, default=str)
+                    if result is not None
+                    else str(evt.get("content", ""))
+                )
+                break  # pair each call with its nearest following result only
+            windows.append(window)
+        if not driven_by_distinct_inputs(windows):
+            return False
+
+        # Different error prose is not progress. Repeated attempts that all
+        # fail with a changing timeout, request ID, timestamp, or retry count
+        # remain a loop. A changing result suppresses the detector only when
+        # there is positive evidence of completion or measurable advancement.
+        outcomes = [outcome_is_success(result) for result in results]
+        if results and all(outcome is False for outcome in outcomes):
+            return False
+
+        # A terminal success after queued/running/failed observations is real
+        # forward movement. Repeated calls that each return "success" with a
+        # different request ID are not: every attempt was already terminal.
+        if (
+            outcomes
+            and outcomes[-1] is True
+            and any(outcome is not True for outcome in outcomes[:-1])
+        ):
+            return True
+
+        return OpenClawSessionLoopDetector._has_monotonic_progress(results)
+
+    @staticmethod
+    def _has_monotonic_progress(results: List[Any]) -> bool:
+        """Recognize explicit monotonic progress without trusting volatile text."""
+        progress_keys = {
+            "progress", "percent", "percentage", "pct", "position",
+            "completed", "processed", "current", "offset",
+        }
+        values: List[float] = []
+
+        def find_progress(value: Any) -> Optional[float]:
+            if not isinstance(value, dict):
+                return None
+            for key, item in value.items():
+                if str(key).lower() in progress_keys and isinstance(item, (int, float)):
+                    return float(item)
+            for item in value.values():
+                found = find_progress(item)
+                if found is not None:
+                    return found
+            return None
+
+        for result in results:
+            value = find_progress(result)
+            if value is None:
+                return False
+            values.append(value)
+        return len(values) >= 2 and all(b >= a for a, b in zip(values, values[1:])) and any(
+            b > a for a, b in zip(values, values[1:])
+        )
 
     def _detect_fuzzy_tool_loop(self, events: List[dict]) -> Dict[str, Any]:
         """Detect tool call loops where inputs have same keys but minor value changes."""
@@ -207,12 +365,12 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             prev_idx, prev = tool_calls[i - 1]
             cur_idx, cur = tool_calls[i]
 
-            same_name = prev.get("tool_name") == cur.get("tool_name")
+            same_name = self._tool_name(prev) == self._tool_name(cur)
             consecutive = cur_idx - prev_idx <= 4
 
             # Same structure (keys match, types match) even if values differ
-            same_structure = _structural_hash(prev.get("tool_input")) == _structural_hash(
-                cur.get("tool_input")
+            same_structure = _structural_hash(self._tool_input(prev)) == _structural_hash(
+                self._tool_input(cur)
             )
 
             if same_name and same_structure and consecutive:
@@ -229,16 +387,26 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             best_run_start = run_start
 
         if best_run_len >= MIN_FUZZY_REPEATS:
+            run_inputs = [
+                _hash_input(self._tool_input(tool_calls[best_run_start + j][1]))
+                for j in range(best_run_len)
+            ]
+            if len(set(run_inputs)) == best_run_len:
+                # All inputs are distinct — this is diverse tool use, not a loop.
+                # A real fuzzy loop would have repeated or near-identical inputs
+                # (e.g. retrying with a slightly different query each time).
+                return {"detected": False}
+
             affected = [tool_calls[best_run_start + j][0] for j in range(best_run_len)]
             sample_evt = tool_calls[best_run_start][1]
             return {
                 "detected": True,
                 "type": "fuzzy_tool_loop",
                 "repeat_count": best_run_len,
-                "tool_name": sample_evt.get("tool_name"),
+                "tool_name": self._tool_name(sample_evt),
                 "turns": affected,
                 "description": (
-                    f"Tool '{sample_evt.get('tool_name')}' called "
+                    f"Tool '{self._tool_name(sample_evt)}' called "
                     f"{best_run_len} times with same structure but varying values"
                 ),
             }
@@ -414,6 +582,82 @@ class OpenClawSessionLoopDetector(TurnAwareDetector):
             }
 
         return {"detected": False}
+
+    def _detect_fuzzy_message_loop(self, events: List[dict]) -> Dict[str, Any]:
+        """Detect repeated message.sent whose only variation is appended text.
+
+        Mirrors _detect_fuzzy_tool_loop, including its HIGHER bar: a fuzzy match
+        is weaker evidence than an exact one, so it needs MIN_FUZZY_REPEATS
+        rather than MIN_CONSECUTIVE_REPEATS.
+        """
+        msg_events = [
+            (idx, evt)
+            for idx, evt in enumerate(events)
+            if evt.get("type") in ("message.sent", "message.send")
+        ]
+        if len(msg_events) < MIN_FUZZY_MESSAGE_REPEATS:
+            return {"detected": False}
+
+        best_run_start = run_start = 0
+        best_run_len = run_len = 1
+        for i in range(1, len(msg_events)):
+            prev = _message_content(msg_events[i - 1][1])
+            curr = _message_content(msg_events[i][1])
+            if prev and curr and _variation_is_appended(prev, curr):
+                run_len += 1
+            else:
+                if run_len > best_run_len:
+                    best_run_len, best_run_start = run_len, run_start
+                run_start, run_len = i, 1
+        if run_len > best_run_len:
+            best_run_len, best_run_start = run_len, run_start
+
+        if best_run_len < MIN_FUZZY_MESSAGE_REPEATS:
+            return {"detected": False}
+
+        affected = [msg_events[best_run_start + j][0] for j in range(best_run_len)]
+        return {
+            "detected": True,
+            "type": "fuzzy_message_loop",
+            "repeat_count": best_run_len,
+            "turns": affected,
+            "description": (
+                f"Agent sent {best_run_len} near-identical messages "
+                f"differing only by appended text"
+            ),
+        }
+
+    @staticmethod
+    def _tool_name(evt: dict) -> Any:
+        """Tool name, checking top-level then the nested ``data`` dict.
+
+        Golden fixtures put ``tool_name`` at the top level, but real ingested
+        sessions (the sync/webhook payload) nest it as ``data.name``. Reading
+        only the top level makes every ``tool.call`` resolve to None, which
+        makes the loop scan treat ALL tool calls as identical and report a
+        single run spanning the whole session (confidence 1.0 on every
+        session with >=5 tool calls -- even when each call was a *different*
+        tool). Mirrors ``_target`` / ``_message_content`` which already check
+        ``data``.
+        """
+        name = evt.get("tool_name")
+        if name is not None:
+            return name
+        data = evt.get("data")
+        if isinstance(data, dict):
+            return data.get("name") or data.get("tool_name")
+        return None
+
+    @staticmethod
+    def _tool_input(evt: dict) -> Any:
+        """Tool input, checking top-level then the nested ``data`` dict."""
+        ti = evt.get("tool_input")
+        if ti is not None:
+            return ti
+        data = evt.get("data")
+        if isinstance(data, dict):
+            return data.get("tool_input", data.get("input", data.get("args")))
+        return None
 
     def _target(self, evt: dict) -> str:
         """Extract target agent/session from event, checking nested data dict."""
