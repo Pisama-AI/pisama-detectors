@@ -578,12 +578,19 @@ class PersonaConsistencyScorer:
         if not task or len(task.split()) < 2:
             return 0.0
 
-        task_emb = self.embedder.encode(task)
-        persona_emb = self.embedder.encode(persona_desc)
-        output_emb = self.embedder.encode(output)
+        # Without the optional sentence-transformers extra there is no embedding
+        # to judge relevance with. Stay inert (0.0), exactly as when no task is
+        # supplied, so the score falls back to the task-agnostic signals.
+        embedder = self.embedder
+        if embedder is None:
+            return 0.0
 
-        persona_task = float(self.embedder.similarity(persona_emb, task_emb))
-        task_output = float(self.embedder.similarity(task_emb, output_emb))
+        task_emb = embedder.encode(task)
+        persona_emb = embedder.encode(persona_desc)
+        output_emb = embedder.encode(output)
+
+        persona_task = float(embedder.similarity(persona_emb, task_emb))
+        task_output = float(embedder.similarity(task_emb, output_emb))
 
         # Request must be in the persona's domain AND the output must genuinely
         # answer it. Either gate failing earns zero relevance.
@@ -596,7 +603,8 @@ class PersonaConsistencyScorer:
         """True when a substantial sentence is far from BOTH the persona and the
         task — the answer-then-drift signature. A benign on-task answer stays
         close to the task throughout; an evasion that answers then pivots leaves
-        a segment far from both. Inert without a task or a multi-sentence output.
+        a segment far from both. Inert without a task, a multi-sentence output,
+        or the optional embedding extra.
         """
         if not task:
             return False
@@ -605,12 +613,15 @@ class PersonaConsistencyScorer:
         ]
         if len(sentences) < 2:
             return False
-        persona_emb = self.embedder.encode(persona_desc)
-        task_emb = self.embedder.encode(task)
+        embedder = self.embedder
+        if embedder is None:
+            return False
+        persona_emb = embedder.encode(persona_desc)
+        task_emb = embedder.encode(task)
         for sent in sentences[:_OFFROLE_MAX_SENTENCES]:
-            sent_emb = self.embedder.encode(sent)
-            sim_persona = float(self.embedder.similarity(sent_emb, persona_emb))
-            sim_task = float(self.embedder.similarity(sent_emb, task_emb))
+            sent_emb = embedder.encode(sent)
+            sim_persona = float(embedder.similarity(sent_emb, persona_emb))
+            sim_task = float(embedder.similarity(sent_emb, task_emb))
             if sim_persona < _OFFROLE_PERSONA_GATE and sim_task < _OFFROLE_TASK_GATE:
                 return True
         return False
@@ -889,11 +900,12 @@ class PersonaConsistencyScorer:
         drift_detected = False
         drift_magnitude = None
 
-        if recent_outputs and len(recent_outputs) >= 3:
-            recent_embeddings = self.embedder.encode(recent_outputs)
+        embedder = self.embedder
+        if recent_outputs and len(recent_outputs) >= 3 and embedder is not None:
+            recent_embeddings = embedder.encode(recent_outputs)
             avg_recent = np.mean(recent_embeddings, axis=0)
-            output_embedding = self.embedder.encode(output)
-            drift_magnitude = float(1 - self.embedder.similarity(avg_recent, output_embedding))
+            output_embedding = embedder.encode(output)
+            drift_magnitude = float(1 - embedder.similarity(avg_recent, output_embedding))
 
             adjusted_drift_threshold = drift_threshold
             if role_type == RoleType.CREATIVE:
@@ -1005,17 +1017,28 @@ class PersonaConsistencyScorer:
         output: str,
         all_agents: List[Agent],
     ) -> Optional[str]:
-        agent_embedding = self.embedder.encode(agent.persona_description)
-        output_embedding = self.embedder.encode(output)
+        """Return the id of another agent whose persona the output fits clearly
+        better than the agent's own, or None.
 
-        own_similarity = self.embedder.similarity(agent_embedding, output_embedding)
+        The 0.1 margin is tuned for embedding similarity. Without the optional
+        embedding extra there is no calibrated way to compare, so this abstains
+        (None) rather than accuse an agent on an untuned lexical margin.
+        """
+        embedder = self.embedder
+        if embedder is None:
+            return None
+
+        agent_embedding = embedder.encode(agent.persona_description)
+        output_embedding = embedder.encode(output)
+
+        own_similarity = embedder.similarity(agent_embedding, output_embedding)
 
         for other_agent in all_agents:
             if other_agent.id == agent.id:
                 continue
 
-            other_embedding = self.embedder.encode(other_agent.persona_description)
-            other_similarity = self.embedder.similarity(other_embedding, output_embedding)
+            other_embedding = embedder.encode(other_agent.persona_description)
+            other_similarity = embedder.similarity(other_embedding, output_embedding)
 
             if other_similarity > own_similarity + 0.1:
                 return other_agent.id
