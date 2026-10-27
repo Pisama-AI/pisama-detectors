@@ -133,13 +133,16 @@ reference, not current readiness claims. In particular, the archived label
 evaluation, a measured ceiling, or a performance guarantee for the defaults.
 
 The separately bundled [TRAIL evidence card](https://github.com/Pisama-AI/pisama-detectors/blob/main/benchmarks/evidence.json)
-describes an archived platform run, not an evaluation of a package release:
-144 of 148 traces overlap calibration material, it is not held out, and neither
-prediction-level evidence nor an independent negative candidate set is available.
-All 14 categories record zero false positives, so the archived F1 arithmetic
-does not independently establish precision. The evidence verifier checks the
-archive's digest and arithmetic; passing it is not production certification.
-These limitations cannot be repaired by relabeling data or thresholds.
+describes an archived platform run from 2026-07-29, not an evaluation of a package
+release: 144 of 148 traces overlap calibration material, it is not held out, and
+prediction-level evidence is not available. Every detector was scored against every
+span, so false positives are counted: 16,609 against 348 true positives across 11
+detector categories, for macro-F1 0.107 and micro-F1 0.039. TRAIL annotations may
+not be exhaustive, so measured precision is a lower bound. It supersedes an earlier
+archive that scored only annotated spans and therefore recorded zero false positives
+by construction. The evidence verifier checks the archive's digest and arithmetic;
+passing it is not production certification. These limitations cannot be repaired
+by relabeling data or thresholds.
 
 | Detector | Function | What It Detects | Archived label | Archived F1 |
 |----------|----------|-----------------|------|----|

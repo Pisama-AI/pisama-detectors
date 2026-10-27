@@ -4,6 +4,25 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-27
+
+### Changed
+
+- Replace the bundled TRAIL evidence (`benchmarks/trail.json`, run `dfad8a45`) with
+  the 2026-07-29 platform run `30efb591`. The old archive scored only annotated
+  spans, so it recorded zero false positives by construction and its F1 restated
+  recall. The new run scores every span: 16,609 false positives against 348 true
+  positives across 11 detector categories, macro-F1 0.107, micro-F1 0.039. It is
+  still in-distribution and still not an evaluation of this package release.
+  `benchmarks/verify_report.py` now rejects a report with no countable false
+  positives.
+- Port validated backend detector fixes into 34 canonical detector files, with a
+  new shared `precision_guards` module (#24). n8n schema, error, resource, timeout
+  and cycle detectors and the Dify variable-leak detector change behavior; see
+  the pull request for each change and its evidence.
+- Persona drift degrades instead of crashing when the embedding extra is absent
+  (#25).
+
 ## [0.3.6] - 2026-09-08
 
 - Correct the package count to 41 failure detectors plus one cost utility.

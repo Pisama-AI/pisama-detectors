@@ -37,8 +37,8 @@ def _verify_evidence(path: Path, evidence_path: Path) -> dict[str, Any]:
         raise ValueError("TRAIL trace count or calibration overlap changed without review")
     if evaluation["prediction_level_artifact_available"]:
         raise ValueError("archived report does not include prediction-level evidence")
-    if evaluation["negative_candidate_set_available"]:
-        raise ValueError("archived report does not include a negative candidate set")
+    if not evaluation["negative_candidate_set_available"]:
+        raise ValueError("report must score unlabeled spans so false positives are countable")
 
     return evidence
 
@@ -88,6 +88,17 @@ def verify_report(
     _close(macro_f1, float(result["macro_f1"]), "macro_f1")
     _close(micro_f1, float(result["micro_f1"]), "micro_f1")
 
+    if fp_total == 0:
+        raise ValueError("no false positive recorded in any category; precision is not measured")
+    if int(result["prediction_count"]) <= archived_mapped_annotations:
+        raise ValueError(
+            "predictions are limited to annotated spans; false positives are not representable"
+        )
+    if (int(result["true_positive_count"]), int(result["false_positive_count"])) != (
+        tp_total,
+        fp_total,
+    ):
+        raise ValueError("aggregate true/false positive counts disagree with the category counts")
     if int(result["error_count"]) != 0:
         raise ValueError("archived run contains processing errors")
     if int(result["processed_traces"]) != int(result["total_traces"]):
