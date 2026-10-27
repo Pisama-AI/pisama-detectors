@@ -4,6 +4,15 @@ All notable changes to `pisama-detectors` are documented here.
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-10-27
+
+### Fixed
+
+- Reword the README's TRAIL evidence paragraph. "11 detector categories" read as a
+  claim that the package has 11 detectors; the registry has 41 failure detectors
+  and one cost utility. It now says "11 scoring categories". No code or evidence
+  changed.
+
 ## [0.3.7] - 2026-10-27
 
 ### Changed
