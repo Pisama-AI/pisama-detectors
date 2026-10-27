@@ -137,7 +137,7 @@ describes an archived platform run from 2026-07-29, not an evaluation of a packa
 release: 144 of 148 traces overlap calibration material, it is not held out, and
 prediction-level evidence is not available. Every detector was scored against every
 span, so false positives are counted: 16,609 against 348 true positives across 11
-detector categories, for macro-F1 0.107 and micro-F1 0.039. TRAIL annotations may
+scoring categories, for macro-F1 0.107 and micro-F1 0.039. TRAIL annotations may
 not be exhaustive, so measured precision is a lower bound. It supersedes an earlier
 archive that scored only annotated spans and therefore recorded zero false positives
 by construction. The evidence verifier checks the archive's digest and arithmetic;
