@@ -11,21 +11,21 @@ from benchmarks.verify_report import verify_report
 def test_trail_report_confusion_counts_reproduce_published_f1() -> None:
     summary = verify_report(Path("benchmarks/trail.json"))
     assert summary == {
-        "archived_joint_accuracy": 0.599,
+        "archived_joint_accuracy": 0.4388,
         "archived_mapped_annotations": 813,
         "calibration_overlap_traces": 144,
-        "category_support": 808,
-        "categories_verified": 14,
+        "category_support": 793,
+        "categories_verified": 11,
         "evaluation_scope": "archived_pisama_platform_run",
         "evidence_sha256_verified": True,
-        "fn": 327,
-        "fp": 0,
+        "fn": 445,
+        "fp": 16609,
         "held_out": False,
-        "macro_f1": 0.7535,
-        "metadata_gap": 5,
-        "micro_f1": 0.7463,
+        "macro_f1": 0.1072,
+        "metadata_gap": 20,
+        "micro_f1": 0.0392,
         "package_release_evaluated": None,
-        "tp": 481,
+        "tp": 348,
     }
 
 
@@ -58,4 +58,14 @@ def test_trail_evidence_rejects_held_out_relabeling(tmp_path: Path) -> None:
     evidence_path.write_text(json.dumps(evidence))
 
     with pytest.raises(ValueError, match="must not be labeled held out"):
+        verify_report(Path("benchmarks/trail.json"), evidence_path)
+
+
+def test_trail_evidence_rejects_a_report_without_countable_false_positives(tmp_path: Path) -> None:
+    evidence = json.loads(Path("benchmarks/evidence.json").read_text())
+    evidence["evaluation"]["negative_candidate_set_available"] = False
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence))
+
+    with pytest.raises(ValueError, match="false positives are countable"):
         verify_report(Path("benchmarks/trail.json"), evidence_path)

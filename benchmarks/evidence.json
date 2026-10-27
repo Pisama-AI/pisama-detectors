@@ -2,8 +2,8 @@
   "schema_version": 1,
   "artifact": {
     "path": "trail.json",
-    "sha256": "26b1df07012c89afd14555cdbcf2e0206f215428b5b9ad960bbcebe0b7c85203",
-    "run_id": "dfad8a45"
+    "sha256": "6f34e1f3ee878dbec4bd13bee71c3c18013ab13144cd1b41be3b607780edf4aa",
+    "run_id": "30efb591"
   },
   "evaluation": {
     "scope": "archived_pisama_platform_run",
@@ -13,13 +13,15 @@
     "calibration_overlap_traces": 144,
     "held_out": false,
     "prediction_level_artifact_available": false,
-    "negative_candidate_set_available": false
+    "negative_candidate_set_available": true
   },
   "claim_boundary": [
-    "The archived confusion counts reproduce aggregate recall and F1 arithmetic.",
+    "The archived confusion counts reproduce per-category precision, recall and F1 and the aggregate macro and micro F1.",
+    "Every detector was scored against every span, so a detection without a matching gold label counts as a false positive.",
+    "TRAIL annotations may not be exhaustive, so measured precision is a lower bound.",
+    "Categories are 11 Pisama detector buckets mapped from the 14 TRAIL categories, not the TRAIL categories themselves.",
     "The run is in-distribution because 144 of 148 traces appeared in calibration material.",
-    "The run does not establish held-out generalization for this package release.",
-    "The archive does not contain the prediction-level data needed to reproduce joint accuracy.",
-    "The archive does not contain a negative candidate set that independently establishes precision."
+    "The run evaluated the Pisama platform detectors on 2026-07-29, not this package release.",
+    "The archive does not contain the prediction-level data needed to reproduce joint accuracy."
   ]
 }

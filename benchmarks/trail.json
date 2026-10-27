@@ -1,195 +1,193 @@
 {
   "benchmark": "TRAIL (PatronusAI)",
   "result": {
-    "run_id": "dfad8a45",
-    "started_at": "2026-04-09T04:56:25.239569",
-    "completed_at": "2026-04-09T04:56:50.738279",
-    "duration_seconds": 25.5,
+    "run_id": "30efb591",
+    "started_at": "2026-07-29T23:45:08.263524",
+    "completed_at": "2026-07-30T00:14:19.746624",
+    "duration_seconds": 1751.48,
     "total_traces": 148,
     "processed_traces": 148,
     "total_annotations": 841,
     "mapped_annotations": 813,
-    "prediction_count": 813,
-    "positive_count": 484,
-    "joint_accuracy": 0.599,
-    "macro_f1": 0.7535,
-    "micro_f1": 0.7463,
-    "error_count": 0
+    "prediction_count": 33007,
+    "positive_count": 16963,
+    "true_positive_count": 348,
+    "false_positive_count": 16609,
+    "joint_accuracy": 0.4388,
+    "macro_f1": 0.1072,
+    "micro_f1": 0.0392,
+    "error_count": 0,
+    "split_metrics": {
+      "train": {
+        "trace_count": 101,
+        "mapped_annotations": 556,
+        "prediction_count": 21575,
+        "positive_count": 10975,
+        "true_positive_count": 231,
+        "false_positive_count": 10744,
+        "false_negative_count": 314,
+        "joint_accuracy": 0.4239,
+        "macro_f1": 0.1037,
+        "micro_f1": 0.0401
+      },
+      "holdout": {
+        "trace_count": 47,
+        "mapped_annotations": 257,
+        "prediction_count": 11432,
+        "positive_count": 5988,
+        "true_positive_count": 117,
+        "false_positive_count": 5865,
+        "false_negative_count": 131,
+        "joint_accuracy": 0.4718,
+        "macro_f1": 0.1119,
+        "micro_f1": 0.0376
+      }
+    }
   },
   "per_category_f1": {
-    "Context Handling Failures": {
-      "category": "Context Handling Failures",
-      "precision": 1.0,
-      "recall": 0.9565,
-      "f1": 0.9778,
-      "tp": 44,
-      "fp": 0,
-      "fn": 2,
-      "support": 46
-    },
-    "Formatting Errors": {
-      "category": "Formatting Errors",
-      "precision": 1.0,
-      "recall": 0.2959,
-      "f1": 0.4567,
-      "tp": 58,
-      "fp": 0,
-      "fn": 138,
+    "completion": {
+      "category": "completion",
+      "precision": 0.0353,
+      "recall": 0.2704,
+      "f1": 0.0625,
+      "tp": 53,
+      "fp": 1448,
+      "fn": 143,
       "support": 196
     },
-    "Goal Deviation": {
-      "category": "Goal Deviation",
-      "precision": 1.0,
-      "recall": 0.7077,
-      "f1": 0.8288,
+    "context": {
+      "category": "context",
+      "precision": 0.0119,
+      "recall": 0.9583,
+      "f1": 0.0234,
       "tp": 46,
-      "fp": 0,
-      "fn": 19,
-      "support": 65
-    },
-    "Incorrect Memory Usage": {
-      "category": "Incorrect Memory Usage",
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "tp": 2,
-      "fp": 0,
-      "fn": 0,
-      "support": 2
-    },
-    "Incorrect Problem Identification": {
-      "category": "Incorrect Problem Identification",
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "tp": 28,
-      "fp": 0,
-      "fn": 0,
-      "support": 28
-    },
-    "Instruction Non-compliance": {
-      "category": "Instruction Non-compliance",
-      "precision": 1.0,
-      "recall": 0.5909,
-      "f1": 0.7429,
-      "tp": 91,
-      "fp": 0,
-      "fn": 63,
-      "support": 154
-    },
-    "Language-only hallucinations": {
-      "category": "Language-only hallucinations",
-      "precision": 1.0,
-      "recall": 0.7925,
-      "f1": 0.8842,
-      "tp": 42,
-      "fp": 0,
-      "fn": 11,
-      "support": 53
-    },
-    "Poor Information Retrieval": {
-      "category": "Poor Information Retrieval",
-      "precision": 1.0,
-      "recall": 0.8049,
-      "f1": 0.8919,
-      "tp": 33,
-      "fp": 0,
-      "fn": 8,
-      "support": 41
-    },
-    "Resource Abuse": {
-      "category": "Resource Abuse",
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "tp": 57,
-      "fp": 0,
-      "fn": 0,
-      "support": 57
-    },
-    "Resource Exhaustion": {
-      "category": "Resource Exhaustion",
-      "precision": 1.0,
-      "recall": 0.3333,
-      "f1": 0.5,
-      "tp": 1,
-      "fp": 0,
+      "fp": 3833,
       "fn": 2,
-      "support": 3
+      "support": 48
     },
-    "Task Orchestration": {
-      "category": "Task Orchestration",
+    "coordination": {
+      "category": "coordination",
+      "precision": 0.3017,
+      "recall": 0.7143,
+      "f1": 0.4242,
+      "tp": 35,
+      "fp": 81,
+      "fn": 14,
+      "support": 49
+    },
+    "derailment": {
+      "category": "derailment",
+      "precision": 0.0319,
+      "recall": 0.1561,
+      "f1": 0.053,
+      "tp": 32,
+      "fp": 970,
+      "fn": 173,
+      "support": 205
+    },
+    "grounding": {
+      "category": "grounding",
+      "precision": 0.0045,
+      "recall": 0.4118,
+      "f1": 0.0089,
+      "tp": 7,
+      "fp": 1542,
+      "fn": 10,
+      "support": 17
+    },
+    "hallucination": {
+      "category": "hallucination",
+      "precision": 0.0499,
+      "recall": 0.6538,
+      "f1": 0.0926,
+      "tp": 68,
+      "fp": 1296,
+      "fn": 36,
+      "support": 104
+    },
+    "loop": {
+      "category": "loop",
       "precision": 0.0,
       "recall": 0.0,
       "f1": 0.0,
       "tp": 0,
       "fp": 0,
-      "fn": 49,
-      "support": 49
+      "fn": 57,
+      "support": 57
     },
-    "Tool Output Misinterpretation": {
-      "category": "Tool Output Misinterpretation",
-      "precision": 1.0,
-      "recall": 0.4118,
-      "f1": 0.5833,
-      "tp": 7,
-      "fp": 0,
-      "fn": 10,
-      "support": 17
+    "overflow": {
+      "category": "overflow",
+      "precision": 0.0172,
+      "recall": 0.3333,
+      "f1": 0.0328,
+      "tp": 1,
+      "fp": 57,
+      "fn": 2,
+      "support": 3
     },
-    "Tool Selection Errors": {
-      "category": "Tool Selection Errors",
-      "precision": 1.0,
+    "retrieval_quality": {
+      "category": "retrieval_quality",
+      "precision": 0.0103,
+      "recall": 0.8049,
+      "f1": 0.0204,
+      "tp": 33,
+      "fp": 3157,
+      "fn": 8,
+      "support": 41
+    },
+    "specification": {
+      "category": "specification",
+      "precision": 0.0068,
       "recall": 1.0,
-      "f1": 1.0,
+      "f1": 0.0134,
+      "tp": 28,
+      "fp": 4114,
+      "fn": 0,
+      "support": 28
+    },
+    "workflow": {
+      "category": "workflow",
+      "precision": 0.2885,
+      "recall": 1.0,
+      "f1": 0.4478,
       "tp": 45,
-      "fp": 0,
+      "fp": 111,
       "fn": 0,
       "support": 45
-    },
-    "Tool-related hallucinations": {
-      "category": "Tool-related hallucinations",
-      "precision": 1.0,
-      "recall": 0.5192,
-      "f1": 0.6835,
-      "tp": 27,
-      "fp": 0,
-      "fn": 25,
-      "support": 52
     }
   },
   "per_impact": {
     "HIGH": {
-      "total": 285,
-      "detected": 200,
-      "missed": 85,
-      "accuracy": 0.7018
+      "total": 283,
+      "detected": 152,
+      "missed": 131,
+      "accuracy": 0.5371
     },
     "MEDIUM": {
-      "total": 357,
-      "detected": 204,
-      "missed": 153,
-      "accuracy": 0.5714
+      "total": 360,
+      "detected": 151,
+      "missed": 209,
+      "accuracy": 0.4194
     },
     "LOW": {
-      "total": 171,
-      "detected": 80,
-      "missed": 91,
-      "accuracy": 0.4678
+      "total": 170,
+      "detected": 48,
+      "missed": 122,
+      "accuracy": 0.2824
     }
   },
   "per_source": {
     "gaia": {
       "traces": 117,
       "annotations": 557,
-      "joint_accuracy": 0.6275,
-      "macro_f1": 0.7025
+      "joint_accuracy": 0.4593,
+      "macro_f1": 0.1135
     },
     "swe-bench": {
       "traces": 31,
       "annotations": 256,
-      "joint_accuracy": 0.5373,
-      "macro_f1": 0.7347
+      "joint_accuracy": 0.3953,
+      "macro_f1": 0.0674
     }
   },
   "category_mapping": {
@@ -208,5 +206,5 @@
     "Tool Selection Errors": "workflow",
     "Resource Exhaustion": "overflow"
   },
-  "generated_at": "2026-04-09T04:56:50.741666"
+  "generated_at": "2026-07-30T00:14:20.891385"
 }
